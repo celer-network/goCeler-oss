@@ -1,0 +1,96 @@
+
+syntax = "proto3";
+
+option go_package = "github.com/celer-network/goCeler-oss/pem";
+
+// To compile, run: protoc -I. -I../../proto  --go_out=plugins=grpc:$GOPATH/src pem.proto
+// assuming proto dir and goCeler dir are in same parent dir.
+import "entity.proto";
+import "message.proto";
+package pem;
+
+// Next tag: 17
+enum PayMessageType {
+    UNDEFINED_TYPE = 0;
+    COND_PAY_REQUEST = 1;
+    COND_PAY_RESPONSE = 2;
+    COND_PAY_RECEIPT = 3;
+    REVEAL_SECRET = 4;
+    REVEAL_SECRET_ACK = 5;
+    PAY_SETTLE_PROOF = 6;
+    PAY_SETTLE_REQUEST = 7;
+    PAY_SETTLE_RESPONSE = 8;
+    SEND_TOKEN_API = 9;
+    SRC_SETTLE_EXPIRED_PAY_API = 10;
+    DST_SETTLE_EXPIRED_PAY_API = 11;
+    CONFIRM_ON_CHAIN_PAY_API = 12;
+    REJECT_BOOLEAN_PAY_API = 13;
+    SETTLE_ON_CHAIN_RESOLVED_PAY_API = 14;
+    WITHDRAW_REQUEST = 15;
+    WITHDRAW_RESPONSE = 16;
+}
+// Next tag: 27
+message PayEventMessage {
+    PayMessageType type = 1;  // all
+    // pay_id this message is about.
+    string pay_id = 2;  // pay req in, out local/remote, pay resp, settle resp
+    // token used by the pay.
+    string token = 3; // pay req in
+    // message src
+    string src = 5;  // pay req in
+    // message dst
+    string dst = 6;  // pay req out local/remote
+    // direct peer the message comes from.
+    string msg_from = 7;  // all
+    // secret of the pay hash lock.
+    string secret = 8;
+    // reason of pay settlement
+    rpc.PaymentSettleReason settle_reason = 9;
+    // direct peer the message goes to.
+    string msg_to = 10;  // pay req in, pay resp, settle resp
+    // which machine processed the message
+    string machine = 11;  // all
+    // cid this message comes from
+    string from_cid = 12;  // pay req in
+    // cid this message goes to
+    string to_cid = 13; // pay req out local/remote, pay resp, settle resp
+    // error occured during message processing
+    repeated string error = 14;
+    // start timestamp of message processing
+    int64 start_time_stamp = 15;
+    // end timestamp of message processing
+    int64 end_time_stamp = 16;
+    // execution time in milliseconds
+    float execution_time_ms = 17;
+    // if exists in ack msg, the message may contains several pays and this field is complete pay id set.
+    repeated string pay_ids = 20;  // cond pay resp, settle pay resp
+    // if exists in nack msg, the message may contains several pays and this field is complete pay id set.
+    repeated string nack_pay_ids = 21;  // cond pay resp, settle pay resp
+    // indicating if this machine that processes the message is forwarding out message outside the OSP.
+    bool forwarding_external = 22;
+    // simplex sequence numbers
+    SimplexSeqNums seq_nums = 23;
+    // error returned in the nack message
+    rpc.Error nack = 24; 
+    // resend messages due to nack
+    repeated PayEventMessage resend = 25;
+    // event is part of a direct-payment
+    bool direct_pay = 26;
+}
+
+message SimplexSeqNums {
+    // sequence number sent in outgoing message.
+    uint64 out = 1;
+    // base of sequence number sent in outgoing message.
+    uint64 out_base = 2;
+    // sequence number of received message
+    uint64 in = 3;
+    // base sequence number of received message
+    uint64 in_base = 4;
+    // stored co-signed simplex sequence number
+    uint64 stored = 5;
+    // sequence number acked by the message
+    uint64 ack = 6; 
+    // highest inflight sequence number, usually needed only when there is a nack to trigger resend
+    uint64 last_inflight = 7;
+}

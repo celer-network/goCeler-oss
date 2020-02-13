@@ -1,0 +1,16 @@
+// Copyright 2018 Celer Network
+
+syntax = "proto3";
+option go_package = "github.com/celer-network/goCeler-oss/rpc";
+
+package rpc;
+
+import "message.proto";
+
+// Interface exported by the server.
+service Rpc {
+  rpc CelerOpenChannel(OpenChannelRequest) returns (OpenChannelResponse) {}
+  // unified offchain bidi streaming rpc and msg definition
+  rpc CelerStream(stream CelerMsg) returns (stream CelerMsg) {}
+}
+

@@ -1,0 +1,121 @@
+
+syntax = "proto3";
+package rpc;
+option go_package = "github.com/celer-network/goCeler-oss/rpc";
+
+import "google/api/annotations.proto";
+import "google/protobuf/any.proto";
+import "google/protobuf/empty.proto";
+import "entity.proto";
+
+// Next Tag: 3
+message RegisterStreamRequest {
+  string peer_rpc_address = 1;
+  bytes peer_eth_address = 2;
+}
+
+// Next Tag: 5
+message SendTokenRequest {
+  string dst_addr = 1;
+  string amt_wei = 2;
+  string token_addr = 3;
+  google.protobuf.Any note = 4;
+}
+
+// Next Tag: 3
+message SendTokenResponse {
+  int32 status = 1;
+  string error = 2;
+  string pay_id = 3;
+}
+
+// Admin request to ask the receiving osp to open a channel with peer.
+// Next tag: 6
+message OspOpenChannelRequest {
+  // Peer to open channel with the osp.
+  bytes peer_eth_address = 1;
+  // ETH or ERC20
+  entity.TokenType token_type = 2;
+  // where the token is defined.
+  bytes token_address = 3;
+  // Deposit from myself in wei in decimal
+  string self_deposit_amt_wei = 4;
+  // Deposit asking to peer in wei in decimal
+  string peer_deposit_amt_wei = 5;
+}
+
+// Admin request to build routing table.
+// Next tag: 2
+message BuildRoutingTableRequest {
+  bytes token_address = 1;
+}
+
+// Admin request to clear expired pays.
+// Next tag: 2
+message ClearExpiredPaysRequest {
+  bytes token_address = 1;
+}
+
+// Admin request to confirm on-chain resolved pays.
+// Next tag: 2
+message ConfirmOnChainResolvedPaysRequest {
+  bytes token_address = 1;
+}
+
+// Admin request to list all active peer osps.
+// Next tag: 2
+message ActivePeerOspsResponse {
+  // eth addr of peer osps.
+  repeated string osps = 1;
+}
+
+service Admin {
+  // ConfirmOnChainResolvedPaysWithPeerOsps instructs Osp to confirm on-chain resolved pays between itself and connected osps.
+  rpc ConfirmOnChainResolvedPaysWithPeerOsps(ConfirmOnChainResolvedPaysRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {
+      post: "/admin/peer/confirm_onchain_resolved_pays"
+      body: "*"
+    };
+  }
+  // ClearExpiredPaysWithPeerOsps instructs Osp to clear expired pays between itself and connected osps.
+  rpc ClearExpiredPaysWithPeerOsps(ClearExpiredPaysRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {
+      post: "/admin/peer/clear_expired_pays"
+      body: "*"
+    };
+  }
+  // BuildRoutingTable instructs Osp to build routing table.
+  rpc BuildRoutingTable(BuildRoutingTableRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {
+      post: "/admin/route/build"
+      body: "*"
+    };
+  }
+  // GetActivePeerOsps returns eth addresses of active peer osps. Keep admin informed about who are connecting to the osp.
+  rpc GetActivePeerOsps(google.protobuf.Empty) returns (ActivePeerOspsResponse) {
+    option (google.api.http) = {
+      get: "/admin/peer/active_osps"
+    };
+  }
+  // OspOpenChannel instructs Osp to open a state channel with a peer described in request.
+  rpc OspOpenChannel(OspOpenChannelRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {
+      post: "/admin/peer/openchannel"
+      body: "*"
+    };
+  }
+  // SendToken instruscts the OSP to send token specified in SendTokenRequest.
+  rpc SendToken(SendTokenRequest) returns (SendTokenResponse) {
+    option (google.api.http) = {
+      post: "/admin/sendtoken"
+      body: "*"
+    };
+  }
+  // RegisterStream instructs the OSP to connect with other osp specified in RegisterStreamRequest.
+  rpc RegisterStream(RegisterStreamRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {
+      post: "/admin/peer/registerstream"
+      body: "*"
+    };
+  }
+}

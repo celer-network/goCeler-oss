@@ -1,0 +1,36 @@
+version: '3'
+services:
+  cnode:
+    image: "cmnty/server:latest"
+    command:
+      - -profile
+      - /profile/ropsten.json
+      - -ks
+      - /profile/nodeks.json
+      - -rtc
+      - /profile/rtconfig.json
+      - -routeData
+      - /profile/routes/channels-ropsten-2020-02-12.json
+      - -logdir
+      - /logdir
+      - -nopassword
+      - "true"
+    ports:
+      - "10000:10000"
+      - "8090:8090"
+    volumes:
+      - ./profile:/profile
+      - ./logdir:/logdir
+      - ./nodedata:/tmp/cnodestore
+    tty: true
+  webproxy:
+    image: "cmnty/server:latest"
+    entrypoint: webproxy
+    command:
+      - -port
+      - "29980"
+      - -server
+      - "cnode:10000"
+    ports:
+      - "29980:29980"
+    tty: true

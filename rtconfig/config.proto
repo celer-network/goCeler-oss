@@ -1,0 +1,79 @@
+// proto definition for OSP server runtime configs
+
+syntax = "proto3";
+option go_package = "github.com/celer-network/goCeler-oss/rtconfig";
+
+// RuntimeConfig is the data object holding configs reloadable during runtime
+// numeric field name should end with unit, eg. gwei, ms
+// Next tag: 16
+message RuntimeConfig {
+  // wait seconds before accepting next open chan request
+  // if 0, means no wait. negative values are treated as 0
+  // use int64 instead of uint64 because golang time use int64
+  int64 open_chan_wait_s = 1;
+  // minimal gas price in gwei for onchain tx
+  // 0 isn't a valid value
+  uint64 min_gas_gwei = 2;
+  // max gas price in gwei for onchain tx
+  // if 0, means no max
+  uint64 max_gas_gwei = 3;
+  // wait time (in seconds) of stream send.
+  uint64 stream_send_timeout_s = 4;
+  // decimal. eth deposit cap for cold bootstrap
+  string eth_cold_bootstrap_deposit = 5;
+  // key:hex without "0x", value:decimal. Per token deposit cap for cold
+  // bootstrap
+  map<string, string> erc20_cold_bootstrap_deposit_map = 6;
+  // decimal. Default token deposit cap for cold bootstrap
+  string erc20_cold_bootstrap_deposit_default = 7;
+  // Multiplier cap
+  int64 osp_deposit_multiplier = 8;
+  // max dispute timeout in open channel request.
+  uint64 max_dispute_timeout = 9;
+  // min dispute timeout in open channel request.
+  uint64 min_dispute_timeout = 10;
+  // log level: trace, debug, info, warn, error, fatal, panic
+  string log_level = 11;
+  StandardConfigs standard_configs = 13;
+  // OspToOsp config is keyed by pair (peerOspAddr, tokenAddr)
+  OspToOspOpenConfigs osp_to_osp_open_configs = 17;
+  // max payment timeout (in block number) OSP accepts
+  uint64 max_payment_timeout = 14;
+  // max number of pending pay IDs in the simplex state
+  uint64 max_num_pending_pays = 15;
+}
+
+// Next Tag: 3
+message Token {
+  string erc_type = 1;
+  string address = 2;
+}
+
+// Next Tag: 7
+message StandardConfig {
+  Token token = 1;
+  string min_deposit = 5;
+  string max_deposit = 2;
+  uint64 min_deadline_delta = 3;
+  uint64 max_deadline_delta = 4;
+  // matching ratio of approving osp
+  // deposit of approving osp / deposit of requesting osp <= matching ratio
+  float matching_ratio = 6;
+}
+
+// Next Tag: 2
+message StandardConfigs {
+  // keyed by token addr.
+  map<string, StandardConfig> config = 1;
+}
+
+// Next Tag: 2
+message OspToOspOpenConfig {
+  // tokenAddr -> OneTokenOspToOspOpenConfig
+  map<string, StandardConfig> tokens_config = 1;
+}
+// Next Tag: 2
+message OspToOspOpenConfigs {
+  // ospAddr ->  OspToOspOpenConfig
+  map<string, OspToOspOpenConfig> configs = 1;
+}

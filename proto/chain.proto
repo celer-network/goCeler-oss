@@ -1,0 +1,68 @@
+syntax = "proto3";
+option go_package = "github.com/celer-network/goCeler-oss/chain";
+
+package chain;
+
+// Next Tag: 3
+message OpenChannelRequest {
+  // serialized entity.PaymentChannelInitializer message
+  bytes channel_initializer = 1;
+  // require an ascending order based on addresses associated with these sigs
+  repeated bytes sigs = 2;
+}
+
+// Next Tag: 3
+message CooperativeWithdrawRequest {
+  // serialized entity.CooperativeWithdrawInfo message
+  bytes withdraw_info = 1;
+  // require an ascending order based on addresses associated with these sigs
+  repeated bytes sigs = 2;
+}
+
+// Next Tag: 3
+message CooperativeSettleRequest {
+  // serialized entity.CooperativeSettleInfo message
+  bytes settle_info = 1;
+  // require an ascending order based on addresses associated with these sigs
+  repeated bytes sigs = 2;
+}
+
+// Next Tag: 3
+message ResolvePayByConditionsRequest {
+  // serialized entity.ConditionalPay message
+  bytes cond_pay = 1;
+  // preimages of the cond_pay hash locks in the same order
+  repeated bytes hash_preimages = 2;
+}
+
+// Next Tag: 3
+message SignedSimplexState {
+  // serialized entity.SimplexPaymentChannel message
+  bytes simplex_state = 1;
+  // require an ascending order based on addresses associated with these sigs
+  repeated bytes sigs = 2;
+}
+
+// Next Tag: 2
+// Using this message to intendSettle is flexible:
+//   * you can put multiple signed simplex states in one array as long as not exceeding gas limit
+//   * you can put signed simplex states of multiple channels in one array 
+//       to intendSettle these channels in one function call
+// How to use:
+//   * channelIds of these simplex states must be ascending
+//   * non-null simplex states should be cosigned by both peers of the channel
+//   * null simplex states should set seqNum as 0 and be signed by 
+//       exactly one of the peers of the channel
+// Note: if you are submitting one simplex state of the duplex channel,
+//   you are intending to settle the whole duplex channel.
+message SignedSimplexStateArray {
+  repeated SignedSimplexState signed_simplex_states = 1;
+}
+
+// Next Tag: 3
+message ChannelMigrationRequest {
+  // serialized entity.ChannelMigrationInfo message
+  bytes channel_migration_info = 1;
+  // require an ascending order based on addresses associated with these sigs
+  repeated bytes sigs = 2;
+}

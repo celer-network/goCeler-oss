@@ -1,0 +1,277 @@
+// Copyright 2018 Celer Network
+
+syntax = "proto3";
+option go_package = "github.com/celer-network/goCeler-oss/rpc";
+
+package rpc;
+
+// For Proto V2
+import "entity.proto";
+import "google/protobuf/any.proto";
+
+// MID is the message identifier, used as map key for unary over stream
+// NOTE: all field types must be golang comparable so map[MID] can work
+// Auth requester should set its mid to start_mid in AuthAck
+message MID {
+  // tag is string to identify requester to avoid seq conflict
+  // for a typical req/resp flow, both req and resp messages have the same tag
+  // that identifies requester, and same seq so requester side can correlate
+  // resp with req
+  string tag = 1;
+  // sender must increment seq for new messages
+  uint64 seq = 2;
+}
+
+// Envelope msg for unified bidi-streaming
+message CelerMsg {
+  MID mid = 1;
+  // if ret_mid is set in received msg, use it as mid in next msg to send
+  // this is to support multi-msg exchanges and let both ends be able to correlate
+  // their own MID req/resp
+  MID ret_mid = 2;
+  // bitmask flags for nature of this msg, eg. End2End, First msg in subflow, Last of subflow etc
+  uint64 flag = 3;
+  // to_addr is only used for end-to-end msg to save relay node looking into payload
+  // for hop-by-hop, expected peer addr is already checked in authreq/ack so no need in every msg
+  bytes to_addr = 4;
+
+  oneof message {
+    // error with enum code and string reason
+    Error error = 6;
+    // ====== hop-by-hop =====
+    // first msg on a new stream to tell peer my addr and prove I do own it
+    // optionally require peer to prove as well
+    AuthReq auth_req = 7;
+    // response to auth_req
+    AuthAck auth_ack = 8;
+    // send a new condpay
+    CondPayRequest cond_pay_request = 9;
+    // condpay response
+    CondPayResponse cond_pay_response = 10;
+    // request peer to update simplex and send back PaymentSettleRequest
+    PaymentSettleProof payment_settle_proof = 11;
+    // send a new simplex with some pays settled
+    PaymentSettleRequest payment_settle_request = 12;
+    // pay settle response
+    PaymentSettleResponse payment_settle_response = 13;
+    // request to move balance from offchain to onchain
+    CooperativeWithdrawRequest withdraw_request = 14;
+    // withdraw response
+    CooperativeWithdrawResponse withdraw_response = 15;
+    // skip 16-30 for future msgs
+
+    // ====== end-to-end =====
+    // sent by pay dest to notify pay src
+    CondPayReceipt cond_pay_receipt = 31;
+    // sent by pay src to pay dest to reveal hash lock preimage
+    RevealSecret reveal_secret = 32;
+    // sent by pay dest to pay src, indicate pay dest has received preimage
+    RevealSecretAck reveal_secret_ack = 33;
+    // sent by pay dest to vouch pay result, only needed for payment with numeric conditions
+    entity.VouchedCondPayResult pay_result_vouch_request = 34;
+    // sent by pay src with cosigned vouched pay result, only needed for payment with numeric conditions
+    entity.VouchedCondPayResult pay_result_vouch_response = 35;
+  }
+}
+
+// Next Tag: 8
+enum ErrCode {
+  // reserve 0 so not setting this is not a valid error code
+  OK = 0;
+  // not yet authreq/authack
+  UNAUTHORIZED = 1;
+  // sig in authreq can't recover claimed my_addr
+  INVALID_SIG = 2;
+  // timestamp in req out of allowed range
+  INCORRECT_CLOCK = 3;
+  // I'm not your expected peer
+  WRONG_PEER = 4;
+  // invalid simplex state sequence number
+  INVALID_SEQ_NUM = 5;
+  // forwared the pay before and receiving again, probably a loop.
+  PAY_ROUTE_LOOP = 6;
+  // can't find a route to dst.
+  NO_ROUTE_TO_DST = 7;
+}
+
+message Error {
+  ErrCode code = 1;
+  string reason = 2;
+  // sequence number of the errored message, needed for non-unary rpc
+  uint64 seq = 3;
+}
+
+// prove to peer I own this addr
+message AuthReq {
+  bytes my_addr = 1;
+  // protect against replay attack
+  uint64 timestamp = 2;
+  // sig of timestamp field
+  bytes my_sig = 3;
+  bytes expect_peer = 4;
+  // whether to require peer proving it owns expect_peer
+  bool mutual_auth = 5;
+  // add protocol version field when we have incompatible design
+}
+
+message AuthAck {
+  // expect requester to set mid to start_mid in next message
+  // including the assigned tag
+  MID start_mid = 1;
+  // if req set mutual_auth, return acker's sig of authreq.timestamp
+  // we assume requester has context to verify against expect_peer
+  bytes my_sig = 2;
+}
+
+message RevealSecret {
+  bytes pay_id = 1;
+  // preimage of the hash
+  bytes secret = 2;
+}
+
+message RevealSecretAck {
+  // include pay_id for avoid preimage->pay reverse lookup
+  bytes pay_id = 1;
+  // pay dest sign secret to avoid spoof
+  bytes pay_dest_secret_sig = 2;
+}
+
+// CondPayRequest is the first request setting up a pay path.
+message CondPayRequest {
+  // use serialized entity.ConditionalPay to ensure byte-perfect consistency across all platforms
+  // and simplify payment info verification especially during on-chain settlement
+  bytes cond_pay = 1;
+  SignedSimplexState state_only_peer_from_sig = 2;
+  google.protobuf.Any note = 3;
+  // Sequence num of the previous simplex state that this new state is based on.
+  // Useful for failure recover.
+  uint64 base_seq = 4;
+  // Optimization: payment between direct peers needs only one roundtrip.
+  // A direct payment is one where the source and destination of the payment
+  // are directly-connected peers (e.g. client sending a payment to its OSP)
+  // and the payment is unconditional.
+  bool direct_pay = 5;
+}
+
+// CondPayResponse is returning the signature of the other side in PSC.
+message CondPayResponse {
+  SignedSimplexState state_cosigned = 1;
+  Error error = 2;
+}
+
+// Next Tag: 6
+enum PaymentSettleReason {
+  PAY_VOUCHED = 0;
+  PAY_EXPIRED = 1;
+  PAY_REJECTED = 2;
+  PAY_RESOLVED_ONCHAIN = 3;
+  PAY_PAID_MAX = 4;
+  PAY_DEST_UNREACHABLE = 5;
+}
+
+// Next Tag: 3
+message SettledPayment {
+  bytes settled_pay_id = 1; // confirmed, rejected or expired
+  PaymentSettleReason reason = 2;
+  bytes amount = 3;
+}
+
+// PaymentSettleProof provides all condition results to settle a pay.
+// Expect after receives this msg, peer will send PaymentSettleRequest
+// Next Tag: 3
+message PaymentSettleProof {
+  repeated entity.VouchedCondPayResult vouched_cond_pay_results = 1;
+  // valid reasons for settled_pays in PaymentSettleProof
+  // EXPIRED, REJECTED, RESOLVED_ONCHAIN, DEST_UNREACHABLE
+  repeated SettledPayment settled_pays = 2;
+}
+
+// When peer_from of a simplex channel wants to settle a pay the updated simplex
+// will be sent along with its signature.
+message PaymentSettleRequest {
+  repeated SettledPayment settled_pays = 1;
+  SignedSimplexState state_only_peer_from_sig = 2;
+  // Sequence num of the previous simplex state that this new state is based on.
+  // Useful for failure recover.
+  uint64 base_seq = 3;
+}
+
+// peer_to of a simplex channel confirms the settlement by providing its sig
+// Next Tag: 4
+message PaymentSettleResponse {
+  SignedSimplexState state_cosigned = 1;
+  Error error = 3;
+}
+
+// Next Tag: 3
+enum OpenChannelBy {
+  UNDEFINED_OPEN_BY = 0;
+  OPEN_CHANNEL_PROPOSER = 1;
+  OPEN_CHANNEL_APPROVER = 2;
+}
+
+// Next Tag: 4
+enum OpenChannelStatus {
+  UNDEFINED_OPEN_CHANNEL_STATUS = 0;
+  // OpenChannel is approved by approver.
+  // But no on-chain transaction has been made.
+  OPEN_CHANNEL_APPROVED = 1;
+  // OpenChannel transaction is submitted on-chain by approver.
+  OPEN_CHANNEL_TX_SUBMITTED = 2;
+  OPEN_CHANNEL_TCB_OPENED = 3;
+}
+
+// OpenChannelRequest when one wants to open a channel with peer.
+// Next Tag: 5
+message OpenChannelRequest {
+  // serialized entity.PaymentChannelInitializer
+  bytes channel_initializer = 1;
+  bytes requester_sig = 2;
+  OpenChannelBy open_by = 3;
+  // osp_to_osp set to true to indicate the channel is an OSP-OSP channel.
+  bool osp_to_osp = 4;
+}
+
+// Next Tag: 6
+message OpenChannelResponse {
+  // serialized entity.PaymentChannelInitializer
+  bytes channel_initializer = 1;
+  bytes requester_sig = 2;
+  bytes approver_sig = 3;
+  OpenChannelStatus status = 4;
+  bytes payment_channel_id = 5;
+}
+
+// Next Tag: 3
+message CooperativeWithdrawRequest {
+  entity.CooperativeWithdrawInfo withdraw_info = 1;
+  bytes requester_sig = 2;
+}
+
+// Next Tag: 4
+message CooperativeWithdrawResponse {
+  entity.CooperativeWithdrawInfo withdraw_info = 1;
+  bytes requester_sig = 2;
+  bytes approver_sig = 3;
+}
+
+// Next Tag: 3
+message CondPayReceipt {
+  // refer to pay by its id is enough
+  bytes pay_id = 1;
+  bytes pay_dest_sig = 2;
+}
+
+// Next Tag: 4
+message SignedSimplexState {
+  // serialized simplexPaymentChannel message
+  bytes simplex_state = 1;
+  bytes sig_of_peer_from = 2;
+  bytes sig_of_peer_to = 3;
+}
+
+// Next Tag: 2
+message SignedDuplexState {
+  // only expect two messages for duplex
+  repeated SignedSimplexState simplex_states = 1;
+}

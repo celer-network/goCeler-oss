@@ -1,0 +1,19 @@
+{
+  "version": "0.1",
+  "ethereum": {
+    "gateway": "https://alchemy xxx",
+    "chainId": 3,
+    "blockIntervalSec": 15,
+    "blockDelayNum": 5,
+    "contracts": {
+      "ledger": "abcdef..",
+      "resolver": "123456..",
+      "ethPool": "11111..",
+      "payRegistry": "fedcba.."
+    }
+  },
+  "osp": {
+    "host": "xxx.celer.app:10000",
+    "address": "c5b5.."
+  }
+}

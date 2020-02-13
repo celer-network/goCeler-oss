@@ -1,0 +1,21 @@
+// Copyright 2019 Celer Network
+
+syntax = "proto3";
+
+option go_package = "github.com/celer-network/goCeler-oss/webproxy/rpc";
+
+package webproxyrpc;
+
+import "google/protobuf/empty.proto";
+import "message.proto";
+
+message SessionToken {
+  string token = 1;
+}
+
+service WebProxyRpc {
+  rpc CreateSession(google.protobuf.Empty) returns (SessionToken) {}
+  rpc OpenChannel(rpc.OpenChannelRequest) returns (rpc.OpenChannelResponse) {}
+  rpc SubscribeMessages(rpc.AuthReq) returns (stream rpc.CelerMsg) {}
+  rpc SendMessage(rpc.CelerMsg) returns (google.protobuf.Empty) {}
+}

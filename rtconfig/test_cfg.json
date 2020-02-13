@@ -1,0 +1,10 @@
+{
+    "open_chan_wait_s": 10,
+    "min_gas_gwei": 4,
+    "max_gas_gwei": 10,
+    "stream_send_timeout_s": 1,
+    "standard_configs": {
+        "config": {
+        }
+    }
+}

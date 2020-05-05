@@ -21,7 +21,7 @@ Take a look at the constants in [setup.go](./setup.go). In addition to start a t
 
 First, open a new terminal for running tools, go to [tools/osp-setup](../../tools/osp-setup/), run **`go run osp_setup.go -profile /tmp/celer_manual_test/profile/o1_profile.json -ks ../../testing/env/keystore/osp1.json -ethpoolamt 10000 -blkDelay 0 -nopassword`** to deposit 1000 ETH into the EthPool contract with approval to the CelerLedger contract, and also register the OSP as a network router.
 
-Then, open a new terminal, go to this manual test folder and run **`./run_osp 1.sh`** to start OSP1.
+Then, open a new terminal, go to this manual test folder and run **`./run_osp.sh 1`** to start OSP1.
 
 You can see from the log that the OSP is up and running. OSP data store is created at `/tmp/celer_manual_test/store/[ospAddr]`
 
@@ -29,7 +29,7 @@ You can see from the log that the OSP is up and running. OSP data store is creat
 
 First, in the tools terminal, run **`go run osp_setup.go -profile /tmp/celer_manual_test/profile/o2_profile.json -ks ../../testing/env/keystore/osp2.json -ethpoolamt 10000 -blkDelay 0 -nopassword`**
 
-Then, open a new terminal, go to this manual test folder and run **`./run_osp 2.sh`** to start OSP2.
+Then, open a new terminal, go to this manual test folder and run **`./run_osp.sh 1`** to start OSP2.
 
 ## Connect two OSPs through grpc stream
 

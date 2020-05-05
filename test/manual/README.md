@@ -29,7 +29,7 @@ You can see from the log that the OSP is up and running. OSP data store is creat
 
 First, in the tools terminal, run **`go run osp_setup.go -profile /tmp/celer_manual_test/profile/o2_profile.json -ks ../../testing/env/keystore/osp2.json -ethpoolamt 10000 -blkDelay 0 -nopassword`**
 
-Then, open a new terminal, go to this manual test folder and run **`./run_osp.sh 1`** to start OSP2.
+Then, open a new terminal, go to this manual test folder and run **`./run_osp.sh 2`** to start OSP2.
 
 ## Connect two OSPs through grpc stream
 

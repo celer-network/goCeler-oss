@@ -1,4 +1,4 @@
-// Copyright 2018-2019 Celer Network
+// Copyright 2018-2020 Celer Network
 
 package rtconfig
 
@@ -29,6 +29,10 @@ func TestInitAndSignal(t *testing.T) {
 	if ocw != 10 {
 		t.Error("mismatch open_chan_wait_s: ", ocw, " expect: ", 10)
 	}
+	tcbConfig := GetTcbConfigs()
+	if tcbConfig == nil {
+		t.Error("tcbConfig is null")
+	}
 	standardConfig := GetStandardConfigs()
 	if standardConfig == nil {
 		t.Error("standardConfig is null")
@@ -41,6 +45,10 @@ func TestInitAndSignal(t *testing.T) {
 	ocw = GetOpenChanWaitSecond()
 	if ocw != 20 { // cfg2 value
 		t.Error("mismatch open_chan_wait_s: ", ocw, " expect: ", 20)
+	}
+	tcbConfig = GetTcbConfigs()
+	if tcbConfig != nil {
+		t.Error("tcbConfig is not null")
 	}
 	standardConfig = GetStandardConfigs()
 	if standardConfig != nil {

@@ -1,4 +1,4 @@
-// Copyright 2018-2019 Celer Network
+// Copyright 2018-2020 Celer Network
 
 package route
 
@@ -9,19 +9,19 @@ import (
 	"math/big"
 	"strings"
 
-	"github.com/celer-network/goCeler-oss/chain/channel-eth-go/ledger"
-	log "github.com/celer-network/goCeler-oss/clog"
-	"github.com/celer-network/goCeler-oss/common"
-	"github.com/celer-network/goCeler-oss/common/event"
-	"github.com/celer-network/goCeler-oss/ctype"
-	"github.com/celer-network/goCeler-oss/route/graph"
+	"github.com/celer-network/goCeler/chain/channel-eth-go/ledger"
+	"github.com/celer-network/goCeler/common"
+	"github.com/celer-network/goCeler/common/event"
+	"github.com/celer-network/goCeler/common/structs"
+	"github.com/celer-network/goCeler/ctype"
+	"github.com/celer-network/goutils/log"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	ec "github.com/ethereum/go-ethereum/common"
 )
 
 // Channel describes a channel info
-type Channel = graph.Edge
+type Channel = structs.Edge
 
 // Data describes a data structure to store all valid channels and the end of block number
 type Data struct {
@@ -29,21 +29,12 @@ type Data struct {
 	Channels       []*Channel
 }
 
-// RoutingTableRecoverBuilder defines the function needed from routing builder
-type RoutingTableRecoverBuilder interface {
-	AddEdge(p1 ctype.Addr, p2 ctype.Addr, cid ctype.CidType, tokenAddr ctype.Addr) error
-	Build(tokenAddr ctype.Addr) (map[ctype.Addr]ctype.CidType, error)
-	RemoveEdge(cid ctype.CidType) error
-	GetAllTokens() map[ctype.Addr]bool
-}
-
 // StartRoutingRecoverProcess starts the routing recover process from existing routing data.
 // If there already exists routing table in database, the process would do nothing.
-func StartRoutingRecoverProcess(
+func (p *Controller) startRoutingRecoverProcess(
 	currentBlk *big.Int,
 	routingData []byte,
 	nodeConfig common.GlobalNodeConfig,
-	builder RoutingTableRecoverBuilder,
 ) error {
 	// This judgement is used to skip the recover process
 	// when the Osp does not start from scratch.
@@ -52,12 +43,12 @@ func StartRoutingRecoverProcess(
 		return nil
 	}
 
-	if builder == nil || nodeConfig == nil || currentBlk == nil {
+	if nodeConfig == nil || currentBlk == nil {
 		return errors.New("Invalid input")
 	}
 
 	// Check whether the database has routing info or not
-	tks := builder.GetAllTokens()
+	tks := p.rtBuilder.getAllTokens()
 	if len(tks) != 0 {
 		// Osp already has routing info, just return
 		return nil
@@ -75,8 +66,8 @@ func StartRoutingRecoverProcess(
 
 	// Recover data from routing data
 	for _, c := range data.Channels {
-		err = builder.AddEdge(c.P1, c.P2, c.Cid, c.TokenAddr)
-		tokens[c.TokenAddr] = true
+		err = p.AddEdge(c.P1, c.P2, c.Cid, c.Token)
+		tokens[c.Token] = true
 		if err != nil {
 			log.Errorln(err)
 			return err
@@ -96,14 +87,14 @@ func StartRoutingRecoverProcess(
 	}
 
 	openChanEv, ok := parsedABI.Events[event.OpenChannel]
-	openChanEvHash := openChanEv.Id()
+	openChanEvHash := openChanEv.ID()
 	openChanString := openChanEvHash.Hex()
 	if !ok {
 		log.Errorf("Unknown event name: %s", event.OpenChannel)
 		return errors.New("Unknown event name")
 	}
 	settleChanEv, ok := parsedABI.Events[event.ConfirmSettle]
-	settleChanEvHash := settleChanEv.Id()
+	settleChanEvHash := settleChanEv.ID()
 	settleChanString := settleChanEvHash.Hex()
 	if !ok {
 		log.Errorf("Unknown event name: %s", event.ConfirmSettle)
@@ -140,7 +131,7 @@ func StartRoutingRecoverProcess(
 				return err
 			}
 			if len(e.PeerAddrs) == 2 {
-				if err := builder.AddEdge(e.PeerAddrs[0], e.PeerAddrs[1], ctype.CidType(e.ChannelId), e.TokenAddress); err != nil {
+				if err := p.AddEdge(e.PeerAddrs[0], e.PeerAddrs[1], ctype.CidType(e.ChannelId), e.TokenAddress); err != nil {
 					tokens[e.TokenAddress] = true
 					log.Errorln(err)
 					return err
@@ -152,7 +143,7 @@ func StartRoutingRecoverProcess(
 				log.Errorln(err)
 				return err
 			}
-			if err := builder.RemoveEdge(ctype.CidType(e.ChannelId)); err != nil {
+			if err := p.RemoveEdge(ctype.CidType(e.ChannelId)); err != nil {
 				log.Errorln(err)
 				return err
 			}
@@ -160,7 +151,7 @@ func StartRoutingRecoverProcess(
 	}
 
 	for token := range tokens {
-		builder.Build(token)
+		p.BuildTable(token)
 	}
 	log.Infoln("Routing recovery done..")
 

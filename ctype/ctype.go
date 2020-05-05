@@ -1,4 +1,4 @@
-// Copyright 2018-2019 Celer Network
+// Copyright 2018-2020 Celer Network
 
 // util package to handle various types and hex string, bytes etc
 package ctype
@@ -14,18 +14,26 @@ import (
 	"encoding/hex"
 	"math/big"
 
-	log "github.com/celer-network/goCeler-oss/clog"
-	"github.com/celer-network/goCeler-oss/entity"
+	"github.com/celer-network/goCeler/entity"
+	"github.com/celer-network/goutils/log"
 	ec "github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/golang/protobuf/proto"
 )
 
+const (
+	EthTokenAddrStr     = "0000000000000000000000000000000000000000"
+	InvalidTokenAddrStr = "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"
+)
+
 var (
 	// ZeroAddr is all 0s
 	ZeroAddr Addr
-	// ZeroAddrHex is string of 20 0s
-	ZeroAddrHex = Addr2Hex(ZeroAddr)
+	// EthTokenAddr is all 0s
+	EthTokenAddr = Hex2Addr(EthTokenAddrStr)
+	// InvalidTokenAddr is all Fs
+	InvalidTokenAddr = Hex2Addr(InvalidTokenAddrStr)
+
 	// ZeroPayID is all 0s
 	ZeroPayID PayIDType
 	// ZeroPayIDHex is string of 32 0s
@@ -35,6 +43,8 @@ var (
 	// ZeroCid is all 0s
 	ZeroCid CidType
 )
+
+type Hash = ec.Hash
 
 // PayIDType is the ID type for pays
 type PayIDType = ec.Hash

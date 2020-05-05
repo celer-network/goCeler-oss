@@ -1,4 +1,4 @@
-// Copyright 2018-2019 Celer Network
+// Copyright 2018-2020 Celer Network
 
 package webproxy
 
@@ -10,17 +10,15 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
-
-	"github.com/rs/cors"
-
-	log "github.com/celer-network/goCeler-oss/clog"
-	"github.com/celer-network/goCeler-oss/config"
-	"github.com/celer-network/goCeler-oss/rpc"
-	"github.com/celer-network/goCeler-oss/utils"
-	proxyrpc "github.com/celer-network/goCeler-oss/webproxy/rpc"
+	"github.com/celer-network/goCeler/config"
+	"github.com/celer-network/goCeler/rpc"
+	"github.com/celer-network/goCeler/utils"
+	proxyrpc "github.com/celer-network/goCeler/webproxy/rpc"
+	"github.com/celer-network/goutils/log"
 	"github.com/golang/protobuf/ptypes/empty"
+	"github.com/google/uuid"
 	"github.com/improbable-eng/grpc-web/go/grpcweb"
+	"github.com/rs/cors"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 )

@@ -1,5 +1,5 @@
 syntax = "proto3";
-option go_package = "github.com/celer-network/goCeler-oss/entity";
+option go_package = "github.com/celer-network/goCeler/entity";
 
 import "google/protobuf/descriptor.proto";
 

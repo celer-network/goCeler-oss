@@ -1,6 +1,11 @@
-// Copyright 2018-2019 Celer Network
+// Copyright 2018-2020 Celer Network
 
 package celersdkintf
+
+import (
+	"errors"
+	"fmt"
+)
 
 // do NOT re-number existing fields,
 // these fields are exposed to sdk
@@ -16,6 +21,7 @@ const (
 	PAY_STATUS_INITIALIZING            = 8 // before pending
 )
 
+// TODO: More metadata about pay
 type Payment struct {
 	Sender       string
 	Receiver     string
@@ -31,10 +37,22 @@ type Payment struct {
 
 // PaymentList returns an array of payment
 type PaymentList struct {
-	PayList []*Payment
+	Length  int
+	PayList []*Payment // will be skipped by gomobile due to unsupported type
+}
+
+func (pl *PaymentList) Get(idx int) (*Payment, error) {
+	if idx >= 0 && idx < len(pl.PayList) {
+		return pl.PayList[idx], nil
+	}
+	return nil, errors.New("invalid index for payment list")
 }
 
 type E struct {
-	Reason string
 	Code   int
+	Reason string
+}
+
+func (e *E) Error() string {
+	return fmt.Sprintf("%+v", *e)
 }

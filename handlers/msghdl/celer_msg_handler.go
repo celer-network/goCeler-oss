@@ -1,25 +1,27 @@
-// Copyright 2018-2019 Celer Network
+// Copyright 2018-2020 Celer Network
 
 package msghdl
 
 import (
 	"sync"
 
-	log "github.com/celer-network/goCeler-oss/clog"
-	"github.com/celer-network/goCeler-oss/common"
-	"github.com/celer-network/goCeler-oss/common/event"
-	"github.com/celer-network/goCeler-oss/common/intfs"
-	"github.com/celer-network/goCeler-oss/dispute"
-	"github.com/celer-network/goCeler-oss/handlers"
-	"github.com/celer-network/goCeler-oss/messager"
-	"github.com/celer-network/goCeler-oss/pem"
-	"github.com/celer-network/goCeler-oss/rpc"
-	"github.com/celer-network/goCeler-oss/storage"
+	"github.com/celer-network/goCeler/common"
+	"github.com/celer-network/goCeler/common/event"
+	"github.com/celer-network/goCeler/common/intfs"
+	"github.com/celer-network/goCeler/ctype"
+	"github.com/celer-network/goCeler/dispute"
+	"github.com/celer-network/goCeler/handlers"
+	"github.com/celer-network/goCeler/messager"
+	"github.com/celer-network/goCeler/pem"
+	"github.com/celer-network/goCeler/route"
+	"github.com/celer-network/goCeler/rpc"
+	"github.com/celer-network/goCeler/storage"
+	"github.com/celer-network/goutils/log"
 )
 
 type CooperativeWithdraw interface {
-	ProcessRequest(*rpc.CooperativeWithdrawRequest) error
-	ProcessResponse(*rpc.CooperativeWithdrawResponse) error
+	ProcessRequest(*common.MsgFrame) error
+	ProcessResponse(*common.MsgFrame) error
 }
 
 const (
@@ -33,14 +35,14 @@ const (
 	CondPayResultMsgName    = "CondPayResultMessage"
 	WithdrawRequestMsgName  = "WithdrawRequestMessage"
 	WithdrawResponseMsgName = "WithdrawResponseMessage"
+	RoutingRequestMsgName   = "RoutingRequestMessage"
 	UnkownMsgName           = "UnkownMessage"
 )
 
 type CelerMsgHandler struct {
 	nodeConfig          common.GlobalNodeConfig
 	streamWriter        common.StreamWriter
-	crypto              common.Crypto
-	channelRouter       common.StateChannelRouter
+	signer              common.Signer
 	monitorService      intfs.MonitorService
 	serverForwarder     handlers.ForwardToServerCallback
 	onReceivingToken    event.OnReceivingTokenCallback
@@ -49,7 +51,9 @@ type CelerMsgHandler struct {
 	sendingCallbackLock *sync.RWMutex
 	disputer            *dispute.Processor
 	cooperativeWithdraw CooperativeWithdraw
-	messager            messager.Sender
+	routeForwarder      *route.Forwarder
+	routeController     *route.Controller
+	messager            *messager.Messager
 	dal                 *storage.DAL
 	msgName             string
 }
@@ -57,8 +61,7 @@ type CelerMsgHandler struct {
 func NewCelerMsgHandler(
 	nodeConfig common.GlobalNodeConfig,
 	streamWriter common.StreamWriter,
-	crypto common.Crypto,
-	channelRouter common.StateChannelRouter,
+	signer common.Signer,
 	monitorService intfs.MonitorService,
 	serverForwarder handlers.ForwardToServerCallback,
 	onReceivingToken event.OnReceivingTokenCallback,
@@ -67,14 +70,15 @@ func NewCelerMsgHandler(
 	sendingCallbackLock *sync.RWMutex,
 	disputer *dispute.Processor,
 	cooperativeWithdraw CooperativeWithdraw,
-	messager messager.Sender,
+	routeForwarder *route.Forwarder,
+	routeController *route.Controller,
+	messager *messager.Messager,
 	dal *storage.DAL,
 ) *CelerMsgHandler {
 	h := &CelerMsgHandler{
 		nodeConfig:          nodeConfig,
 		streamWriter:        streamWriter,
-		crypto:              crypto,
-		channelRouter:       channelRouter,
+		signer:              signer,
 		monitorService:      monitorService,
 		serverForwarder:     serverForwarder,
 		onReceivingToken:    onReceivingToken,
@@ -83,6 +87,8 @@ func NewCelerMsgHandler(
 		sendingCallbackLock: sendingCallbackLock,
 		disputer:            disputer,
 		cooperativeWithdraw: cooperativeWithdraw,
+		routeForwarder:      routeForwarder,
+		routeController:     routeController,
 		messager:            messager,
 		dal:                 dal,
 	}
@@ -127,14 +133,18 @@ func (h *CelerMsgHandler) Run(frame *common.MsgFrame) error {
 	case *rpc.CelerMsg_WithdrawRequest:
 		h.msgName = WithdrawRequestMsgName
 		frame.LogEntry.Type = pem.PayMessageType_WITHDRAW_REQUEST
-		err = h.cooperativeWithdraw.ProcessRequest(frame.Message.GetWithdrawRequest())
+		err = h.cooperativeWithdraw.ProcessRequest(frame)
 	case *rpc.CelerMsg_WithdrawResponse:
 		h.msgName = WithdrawResponseMsgName
 		frame.LogEntry.Type = pem.PayMessageType_WITHDRAW_RESPONSE
-		err = h.cooperativeWithdraw.ProcessResponse(frame.Message.GetWithdrawResponse())
+		err = h.cooperativeWithdraw.ProcessResponse(frame)
+	case *rpc.CelerMsg_RoutingRequest:
+		h.msgName = RoutingRequestMsgName
+		frame.LogEntry.Type = pem.PayMessageType_ROUTING_REQUEST
+		err = h.HandleRoutingRequest(frame)
 	default:
 		h.msgName = UnkownMsgName
-		log.Errorln("Can't find hop handler for", frame.Message, frame.PeerAddr.Hex())
+		log.Errorln("Can't find hop handler for", frame.Message, ctype.Addr2Hex(frame.PeerAddr))
 		err = common.ErrInvalidMsgType
 	}
 	return err

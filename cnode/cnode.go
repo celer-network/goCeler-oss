@@ -1,80 +1,81 @@
-// Copyright 2018 Celer Network
+// Copyright 2018-2020 Celer Network
 
 package cnode
 
 import (
-	"encoding/binary"
-	"encoding/hex"
-	"encoding/json"
-	"errors"
-	"expvar"
+	"flag"
 	"fmt"
 	"math/big"
 	"math/rand"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/celer-network/goCeler-oss/chain"
-	"github.com/celer-network/goCeler-oss/chain/channel-eth-go/ledger"
-	"github.com/celer-network/goCeler-oss/chain/channel-eth-go/payregistry"
-	"github.com/celer-network/goCeler-oss/chain/channel-eth-go/payresolver"
-	"github.com/celer-network/goCeler-oss/chain/channel-eth-go/routerregistry"
-	"github.com/celer-network/goCeler-oss/chain/channel-eth-go/virtresolver"
-	"github.com/celer-network/goCeler-oss/chain/channel-eth-go/wallet"
-	log "github.com/celer-network/goCeler-oss/clog"
-	"github.com/celer-network/goCeler-oss/cnode/cooperativewithdraw"
-	"github.com/celer-network/goCeler-oss/common"
-	"github.com/celer-network/goCeler-oss/common/cobj"
-	"github.com/celer-network/goCeler-oss/common/event"
-	"github.com/celer-network/goCeler-oss/common/intfs"
-	"github.com/celer-network/goCeler-oss/config"
-	"github.com/celer-network/goCeler-oss/ctype"
-	"github.com/celer-network/goCeler-oss/dispatchers"
-	"github.com/celer-network/goCeler-oss/dispute"
-	"github.com/celer-network/goCeler-oss/entity"
-	"github.com/celer-network/goCeler-oss/handlers"
-	"github.com/celer-network/goCeler-oss/ledgerview"
-	"github.com/celer-network/goCeler-oss/messager"
-	"github.com/celer-network/goCeler-oss/monitor"
-	"github.com/celer-network/goCeler-oss/route"
-	"github.com/celer-network/goCeler-oss/rpc"
-	"github.com/celer-network/goCeler-oss/storage"
-	"github.com/celer-network/goCeler-oss/transactor"
-	"github.com/celer-network/goCeler-oss/utils"
-	"github.com/celer-network/goCeler-oss/watcher"
-	"github.com/ethereum/go-ethereum/accounts/keystore"
-	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/celer-network/goCeler/app"
+	"github.com/celer-network/goCeler/chain/channel-eth-go/ledger"
+	"github.com/celer-network/goCeler/chain/channel-eth-go/payregistry"
+	"github.com/celer-network/goCeler/chain/channel-eth-go/payresolver"
+	"github.com/celer-network/goCeler/chain/channel-eth-go/routerregistry"
+	"github.com/celer-network/goCeler/chain/channel-eth-go/virtresolver"
+	"github.com/celer-network/goCeler/chain/channel-eth-go/wallet"
+	"github.com/celer-network/goCeler/cnode/cooperativewithdraw"
+	"github.com/celer-network/goCeler/common"
+	"github.com/celer-network/goCeler/common/cobj"
+	"github.com/celer-network/goCeler/common/event"
+	"github.com/celer-network/goCeler/common/intfs"
+	enums "github.com/celer-network/goCeler/common/structs"
+	"github.com/celer-network/goCeler/config"
+	"github.com/celer-network/goCeler/ctype"
+	"github.com/celer-network/goCeler/deposit"
+	"github.com/celer-network/goCeler/dispatchers"
+	"github.com/celer-network/goCeler/dispute"
+	"github.com/celer-network/goCeler/handlers"
+	"github.com/celer-network/goCeler/ledgerview"
+	"github.com/celer-network/goCeler/lrucache"
+	"github.com/celer-network/goCeler/messager"
+	"github.com/celer-network/goCeler/migrate"
+	"github.com/celer-network/goCeler/monitor"
+	"github.com/celer-network/goCeler/route"
+	"github.com/celer-network/goCeler/rpc"
+	"github.com/celer-network/goCeler/storage"
+	"github.com/celer-network/goCeler/transactor"
+	"github.com/celer-network/goCeler/utils"
+	"github.com/celer-network/goCeler/watcher"
+	"github.com/celer-network/goutils/log"
 	"github.com/ethereum/go-ethereum/ethclient"
 	ethrpc "github.com/ethereum/go-ethereum/rpc"
+	"github.com/golang/protobuf/proto"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 )
 
 const mutexLocked = 1 << iota
 
+var dropMsg = flag.Bool("dropmsg", false, "add grpc interceptor to test drop msg, only use for tests.")
+
 type CNode struct {
 	transactorPool     *transactor.Pool
 	nodeConfig         common.GlobalNodeConfig
 	streamWriter       common.StreamWriter
-	crypto             common.Crypto
-	channelRouter      common.StateChannelRouter
 	celerMsgDispatcher *dispatchers.CelerMsgDispatcher
 	monitorService     intfs.MonitorService
 	messager           *messager.Messager
 
-	// eth address of the node (hex string)
-	EthAddress string
-	// private key (hex string)
-	PrivKey string
+	EthAddress        ctype.Addr // ETH address of the node
+	signer            common.Signer
+	externalSigner    bool // if the signer is external
+	masterTransactor  *transactor.Transactor
+	depositTransactor *transactor.Transactor
 
 	connManager *rpc.ConnectionManager
 
 	onNewStreamLock sync.RWMutex
 	onNewStream     event.OnNewStreamCallback
 
-	// PSP server ETH address (for convenience)
-	ServerAddr string
+	// OSP server ETH address (for convenience)
+	ServerAddr ctype.Addr
 
 	ethclient                    *ethclient.Client
 	kvstore                      storage.KVStore
@@ -82,25 +83,28 @@ type CNode struct {
 	watch                        *watcher.WatchService
 	openChannelProcessor         *openChannelProcessor
 	cooperativeWithdrawProcessor *cooperativewithdraw.Processor
-	depositProcessor             *depositProcessor
+	depositProcessor             *deposit.Processor
 	isOSP                        bool
 	listenOnChain                bool
-	// on-chain dispute related data structrues and functions
-	Disputer      *dispute.Processor
-	rtEdgeBuilder routingTableEdgeBuilder
+	Disputer                     *dispute.Processor
+	routeForwarder               *route.Forwarder
+	routeController              *route.Controller
+	migrateChannelProcessor      *migrate.MigrateChannelProcessor
 
 	// For the multi-server setup.
 	isMultiServer   bool
+	clientCache     *lrucache.LRUCache // dest client -> osp server
+	serverCache     *lrucache.LRUCache // osp server -> grpc conn
+	serverCacheLock sync.Mutex
 	serverForwarder handlers.ForwardToServerCallback
+
+	AppClient *app.AppClient
 
 	// grpc client streaminterceptor. currently only used by client for test
 	msgDropper *clientStreamMsgDropper
-}
-type routingTableEdgeBuilder interface {
-	AddEdge(ctype.Addr, ctype.Addr, ctype.CidType, ctype.Addr) error
-	RemoveEdge(ctype.CidType) error
-	Build(ctype.Addr) (map[ctype.Addr]ctype.CidType, error)
-	GetOspInfo() map[ctype.Addr]uint64
+
+	// signal for goroutines to exit
+	quit chan bool
 }
 
 func (c *CNode) GetConnManager() *rpc.ConnectionManager {
@@ -111,61 +115,80 @@ func (c *CNode) GetKVStore() storage.KVStore {
 	return c.kvstore
 }
 
-func (c *CNode) RegisterStream(peerOnChainAddr string, peerHTTPTarget string) error {
+func (c *CNode) GetDAL() *storage.DAL {
+	return c.dal
+}
 
-	conn, err := grpc.Dial(peerHTTPTarget, utils.GetClientTlsOption(), grpc.WithBlock(),
-		grpc.WithTimeout(4*time.Second), grpc.WithKeepaliveParams(config.KeepAliveClientParams),
-		grpc.WithStreamInterceptor(c.streamInterceptor))
+func (c *CNode) dialOpts(drop bool) []grpc.DialOption {
+	opts := []grpc.DialOption{
+		utils.GetClientTlsOption(), grpc.WithBlock(),
+		grpc.WithTimeout(config.GrpcDialTimeout * time.Second),
+		grpc.WithKeepaliveParams(config.KeepAliveClientParams),
+	}
+	if drop {
+		opts = append(opts, grpc.WithStreamInterceptor(c.streamInterceptor))
+	}
+	return opts
+}
+
+// WARNING: msg drop interceptor only supports single stream, and should only be used in testing
+func (c *CNode) RegisterStream(peerAddr ctype.Addr, peerHTTPTarget string) error {
+	conn, err := grpc.Dial(peerHTTPTarget, c.dialOpts(*dropMsg)...)
 	if err != nil {
 		log.Errorln("RegisterStream:", err, peerHTTPTarget)
-		return fmt.Errorf("grpcDial %s failed: %s", peerHTTPTarget, err)
+		return fmt.Errorf("grpcDial %s failed: %w", peerHTTPTarget, err)
 	}
-	c.connManager.AddConnection(peerOnChainAddr, conn)
-	dialClient, err := c.connManager.GetClient(peerOnChainAddr)
+	c.connManager.AddConnection(peerAddr, conn)
+	dialClient := rpc.NewRpcClient(conn)
+	celerStream, err := dialClient.CelerStream(context.Background())
 	if err != nil {
-		return fmt.Errorf("getClient fail: %s", err)
+		log.Errorln("CelerStream failed:", err)
+		return fmt.Errorf("CelerStream failed: %w", err)
 	}
-
-	celerStream, dialErr := dialClient.CelerStream(context.Background())
-	if dialErr != nil {
-		log.Errorln("CelerStream failed:", dialErr)
-		return fmt.Errorf("CelerStream failed: %s", dialErr)
+	authReq, err := c.getAuthReq(peerAddr)
+	if err != nil {
+		return fmt.Errorf("getAuthReq failed %w", err)
 	}
-	if celerStream == nil {
-		log.Errorln("nil celer stream: gRPC connection is not established")
-		return errors.New("nil celer stream: gRPC connection is not established")
-	}
-	ts, tsSig := c.getTsAndSig()
-	authReq := &rpc.AuthReq{
-		MyAddr:     c.nodeConfig.GetOnChainAddrBytes(),
-		Timestamp:  ts,
-		MySig:      tsSig,
-		ExpectPeer: ctype.Hex2Bytes(peerOnChainAddr),
-	}
-	sendErr := celerStream.Send(&rpc.CelerMsg{
-		ToAddr:  ctype.Hex2Bytes(peerOnChainAddr),
+	err = celerStream.Send(&rpc.CelerMsg{
+		ToAddr:  peerAddr.Bytes(),
 		Message: &rpc.CelerMsg_AuthReq{AuthReq: authReq},
 	})
-	if sendErr != nil {
-		log.Errorln(sendErr)
-		return sendErr
+	if err != nil {
+		log.Errorln(err)
+		return err
 	}
-	msgProcessor := c.celerMsgDispatcher.NewStream(ctype.Hex2Addr(peerOnChainAddr))
-	c.connManager.AddCelerStream(peerOnChainAddr, celerStream, msgProcessor)
+	// after NewStream, dispatcher spins goroutine blocks on reading from msgChan
+	msgChan := c.celerMsgDispatcher.NewStream(peerAddr)
+	// Note we block here on celerStream.Recv and ensure AuthAck is right
+	// before moving on to commMgr.AddCelerStream which does loop Recv
+	// if auth failed, server will return err so err2 isn't nil
+	// have timeout to avoid blocking forever (esp. for sdk/mobile)
+	celerMsg, err := waitRecvWithTimeout(celerStream, config.AuthAckTimeout)
+	if err != nil {
+		return err
+	}
+	ackMsg := celerMsg.GetAuthAck()
+	if ackMsg == nil {
+		// unlikely case that we connect to old version osp, first msg isn't authack
+		log.Errorln("nil authack:", celerMsg)
+		return common.ErrInvalidMsgType
+	}
+	// verify ackMsg and update db if needed
+	c.HandleAuthAck(peerAddr, ackMsg)
+	// AddCelerStream spins goroutine that blocks on celerStream.Recv and write to msgChan
+	c.connManager.AddCelerStream(peerAddr, celerStream, msgChan)
 
 	// Notify application about new streams and they are ready to SEND/RECEIVE pay.
-
-	peerByte, err := hex.DecodeString(peerOnChainAddr)
-	if err != nil {
-		log.Errorln("RegisterStream:", err)
-		return errors.New("MALFORMED_PEER_ADDR")
-	}
+	// note for now only server.go implements HandleNewCelerStream for delegate.
+	// so code here only happens when one OSP dials to another.
 	c.onNewStreamLock.RLock()
 	if c.onNewStream != nil {
-		log.Debugf("Notifying onNewStream %x", peerByte)
-		go c.onNewStream.HandleNewCelerStream(peerByte)
+		log.Debugf("Notifying onNewStream %x", peerAddr)
+		go c.onNewStream.HandleNewCelerStream(peerAddr)
 	}
 	c.onNewStreamLock.RUnlock()
+	// When registering stream, start channel migration process
+	go c.migrateChannelProcessor.CheckPeerChannelMigration(peerAddr)
 	return nil
 }
 
@@ -180,62 +203,35 @@ func (c *CNode) OnNewStream(callback event.OnNewStreamCallback) {
 	defer c.onNewStreamLock.Unlock()
 	c.onNewStream = callback
 }
-func (c *CNode) RegisterStreamErrCallback(peerOnChainAddr string, callback rpc.ErrCallbackFunc) {
-	c.connManager.AddErrorCallback(peerOnChainAddr, callback)
+func (c *CNode) RegisterStreamErrCallback(peerAddr ctype.Addr, callback rpc.ErrCallbackFunc) {
+	c.connManager.AddErrorCallback(peerAddr, callback)
 }
 
-// Counter for stream with wrong signatures. During app upgrade, this metric can be used to
-// count how much traffic left unupgraded.
-var addStreamWrongSig = expvar.NewMap("AddStreamWrongSig").Init()
-
-// AddCelerStream checks the auth req in celerMsg coming. If auth passes, start listener on the stream and
+// AddCelerStream is called on server side after authReq passed
 // add the stream to connection manager.
 func (c *CNode) AddCelerStream(celerMsg *rpc.CelerMsg, stream rpc.CelerStream) (context.Context, error) {
 	authReq := celerMsg.GetAuthReq()
-	if authReq == nil {
-		return nil, errors.New("no AuthReq msg")
-	}
-	if !isTimestampValid(authReq.Timestamp) {
-		return nil, errors.New("invalid timestamp")
-	}
 	src := authReq.GetMyAddr()
-	tsByte := uint64ToBytes(authReq.Timestamp)
-	if !c.crypto.SigIsValid(ctype.Bytes2Hex(src), tsByte, authReq.GetMySig()) {
-		addStreamWrongSig.Add("Celer", 1)
-		return nil, errors.New("invalid signature")
-	}
-	msgProcessor := c.celerMsgDispatcher.NewStream(ctype.Bytes2Addr(src))
-	ctx := c.connManager.AddCelerStream(ctype.Bytes2Hex(src), stream, msgProcessor)
+	msgChan := c.celerMsgDispatcher.NewStream(ctype.Bytes2Addr(src))
+	ctx := c.connManager.AddCelerStream(ctype.Bytes2Addr(src), stream, msgChan)
 	c.onNewStreamLock.RLock()
 	if c.onNewStream != nil {
 		log.Debugln("calling callback onNewStream src", ctype.Bytes2Hex(src))
-		go c.onNewStream.HandleNewCelerStream(src)
+		go c.onNewStream.HandleNewCelerStream(ctype.Bytes2Addr(src))
 	}
 	c.onNewStreamLock.RUnlock()
 	return ctx, nil
 }
 
-func (c *CNode) getTsAndSig() (ts uint64, sig []byte) {
-	ts = uint64(time.Now().Unix())
-	sig, _ = c.crypto.Sign(uint64ToBytes(ts))
-	return ts, sig
-}
-
-func uint64ToBytes(i uint64) []byte {
-	ret := make([]byte, 8) // 8 bytes for uint64
-	binary.BigEndian.PutUint64(ret, i)
-	return ret
-}
-
-func isTimestampValid(ts uint64) bool {
-	now := uint64(time.Now().Unix())
-	return ts >= now-config.AllowedTimeWindow && ts <= now+config.AllowedTimeWindow
-}
-
 func (c *CNode) SetMsgDropper(dropRecv, dropSend bool) {
-	c.msgDropper.dropRecv = dropRecv
-	c.msgDropper.dropSend = dropSend
-	log.Infoln("SetMsgDropper to dropRecv", dropRecv, "dropSend", dropSend)
+	if c.msgDropper != nil {
+		c.msgDropper.dropRecv = dropRecv
+		c.msgDropper.dropSend = dropSend
+		log.Infoln("SetMsgDropper to dropRecv", dropRecv, "dropSend", dropSend)
+	} else {
+		log.Info("Ignore drop request due to nil msgDropper")
+	}
+
 }
 
 // streamInterceptor is grpc.StreamClientInterceptor to be used by grpc.WithStreamInterceptor
@@ -257,7 +253,7 @@ func (c *CNode) streamInterceptor(ctx context.Context, desc *grpc.StreamDesc, cc
 //------------------------------main logic--------------------------------
 
 func (c *CNode) IntendSettlePaymentChannel(cid ctype.CidType) error {
-	if err := c.Disputer.IntendSettlePaymentChannel(cid); err != nil {
+	if err := c.Disputer.IntendSettlePaymentChannel(cid, true); err != nil {
 		log.Error(err)
 		return err
 	}
@@ -265,7 +261,7 @@ func (c *CNode) IntendSettlePaymentChannel(cid ctype.CidType) error {
 }
 
 func (c *CNode) ConfirmSettlePaymentChannel(cid ctype.CidType) error {
-	if err := c.Disputer.ConfirmSettlePaymentChannel(cid); err != nil {
+	if err := c.Disputer.ConfirmSettlePaymentChannel(cid, true); err != nil {
 		log.Error(err)
 		return err
 	}
@@ -276,81 +272,73 @@ func (c *CNode) GetSettleFinalizedTime(cid ctype.CidType) (*big.Int, error) {
 	return ledgerview.GetOnChainSettleFinalizedTime(cid, c.nodeConfig)
 }
 
-func getAddrPrivKey(keyStore string, passPhrase string) (string, string, error) {
-	key, err := keystore.DecryptKey([]byte(keyStore), passPhrase)
-	if err != nil {
-		return "", "", err
-	}
-	addr := ctype.Addr2Hex(key.Address)
-	privKey := ctype.Bytes2Hex(crypto.FromECDSA(key.PrivateKey))
-	return addr, privKey, nil
+func NewCNode(
+	masterTxConfig *transactor.TransactorConfig,
+	depositTxConfig *transactor.TransactorConfig,
+	transactorConfigs []*transactor.TransactorConfig,
+	profile common.CProfile,
+	routingPolicy route.RoutingPolicy,
+	routingData []byte) (*CNode, error) {
+	return newCNode(
+		masterTxConfig, depositTxConfig, transactorConfigs,
+		ctype.ZeroAddr, nil, false, profile, routingPolicy, routingData)
 }
 
-func NewCNode(
-	keyStore string,
-	passPhrase string,
+// NewCNodeWithExternalSigner is only used by client
+func NewCNodeWithExternalSigner(
+	address ctype.Addr,
+	signer common.Signer,
+	profile common.CProfile) (*CNode, error) {
+	return newCNode(nil, nil, nil, address, signer, true, profile, route.GateWayPolicy, nil)
+}
+
+func newCNode(
+	masterTxConfig *transactor.TransactorConfig,
+	depositTxConfig *transactor.TransactorConfig,
 	transactorConfigs []*transactor.TransactorConfig,
-	config common.CProfile,
-	routingPolicy common.RoutingPolicy,
+	address ctype.Addr,
+	signer common.Signer,
+	externalSigner bool,
+	profile common.CProfile,
+	routingPolicy route.RoutingPolicy,
 	routingData []byte) (*CNode, error) {
-	rc := &CNode{}
 
-	log.Infoln("CNode config:", config)
+	c := &CNode{quit: make(chan bool)}
 
-	// ctx, _ := context.WithTimeout(context.Background(), 4*time.Second)
-	err := rc.initialize(
-		context.Background(),
-		keyStore,
-		passPhrase,
-		transactorConfigs,
-		&config,
-		routingPolicy,
-		routingData)
+	log.Infoln("CNode config:", profile)
+	config.ChainID = big.NewInt(profile.ChainId)
+	config.BlockDelay = profile.BlockDelayNum
+
+	err := c.setupEthClient(&profile)
 	if err != nil {
-		log.Errorf("cNode init error: %s", err)
+		log.Errorln("cNode setup ethClient error:", err)
+		return nil, err
+	}
+
+	if externalSigner {
+		err = c.setupExternalTransactor(address, signer)
+		if err != nil {
+			log.Errorln("cNode setupExternalTransactor error:", err)
+			return nil, err
+		}
+	} else {
+		err = c.setupTransactor(masterTxConfig, depositTxConfig, transactorConfigs, &profile)
+		if err != nil {
+			log.Errorln("cNode setupTransactors error:", err)
+			return nil, err
+		}
+	}
+
+	err = c.initialize(&profile, routingPolicy, routingData)
+	if err != nil {
+		log.Errorln("cNode initialize error:", err)
 		return nil, err
 	}
 	log.Info("Finishing NewCNode")
-	return rc, nil
+	return c, nil
 }
 
-func (c *CNode) initialize(
-	ctx context.Context,
-	keyStore string,
-	passPhrase string,
-	transactorConfigs []*transactor.TransactorConfig,
-	profile *common.CProfile,
-	routingPolicy common.RoutingPolicy,
-	routingData []byte) error {
-	// Seed the rand
-	rand.Seed(time.Now().UTC().UnixNano())
-
-	c.isOSP = profile.IsOSP
-	c.initMultiServer(profile)
-	if c.isMultiServer {
-		return errors.New("no multiserver support")
-	}
-	c.listenOnChain = true
-
-	if profile.DisputeTimeout != 0 {
-		config.ChannelDisputeTimeout = profile.DisputeTimeout
-	}
-
-	// Initialize the server storage layer.
-	if err := c.setupKVStore(profile, keyStore); err != nil {
-		c.Close()
-		return err
-	}
-
-	// set up node account
-	var privKeyErr error
-	c.EthAddress, c.PrivKey, privKeyErr = getAddrPrivKey(keyStore, passPhrase)
-	if privKeyErr != nil {
-		c.Close()
-		return privKeyErr
-	}
-	c.ServerAddr = profile.SvrETHAddr
-
+func (c *CNode) setupEthClient(profile *common.CProfile) error {
 	// initialize on-chain transactor
 	// create an IPC based RPC connection to a remote node and an authorized transactor
 	ethCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -361,8 +349,8 @@ func (c *CNode) initialize(
 	} else {
 		wsOrigin = "http://celer.network"
 	}
-	var rpcClient *ethrpc.Client
 	var err error
+	var rpcClient *ethrpc.Client
 	ethInstance := profile.ETHInstance
 	if strings.HasPrefix(ethInstance, "ws") {
 		rpcClient, err = ethrpc.DialWebsocket(ethCtx, ethInstance, wsOrigin)
@@ -373,7 +361,7 @@ func (c *CNode) initialize(
 			if err != nil {
 				log.Errorln("Dial ETHInstance WS failed.")
 				c.Close()
-				return fmt.Errorf("DialETH failed: %s", err)
+				return fmt.Errorf("DialETH failed: %w", err)
 			}
 		}
 	} else {
@@ -385,34 +373,120 @@ func (c *CNode) initialize(
 			if err != nil {
 				log.Errorln("Dial ETHInstance HTTP failed.")
 				c.Close()
-				return fmt.Errorf("DialETH failed: %s", err)
+				return fmt.Errorf("DialETH failed: %w", err)
 			}
 		}
 	}
 	c.ethclient = ethclient.NewClient(rpcClient)
-	// Create transactor pool. If the list of transactor keys isn't specified, use the signing key
-	// as the sole transactor.
-	if len(transactorConfigs) == 0 {
-		transactorConfigs = []*transactor.TransactorConfig{
-			transactor.NewTransactorConfig(keyStore, passPhrase),
-		}
+	return nil
+}
+
+func (c *CNode) setupTransactor(
+	masterTxConfig *transactor.TransactorConfig,
+	depositTxConfig *transactor.TransactorConfig,
+	transactorConfigs []*transactor.TransactorConfig,
+	profile *common.CProfile) error {
+
+	var err error
+	var privKey string
+	// set up node account and signer
+	c.EthAddress, privKey, err =
+		utils.GetAddrAndPrivKey(masterTxConfig.KeyStore, masterTxConfig.PassPhrase)
+	if err != nil {
+		c.Close()
+		return err
 	}
-
-	blockDelay := profile.BlockDelayNum
-
-	chainId := big.NewInt(profile.ChainId)
-	c.transactorPool, err = transactor.NewPool(c.ethclient, blockDelay, chainId, transactorConfigs)
+	c.signer, err = cobj.NewCelerSigner(privKey)
 	if err != nil {
 		c.Close()
 		return err
 	}
 
+	// Create transactor pool. If the list of transactor keys isn't specified, use the signing key
+	// as the sole transactor.
+	if len(transactorConfigs) == 0 {
+		transactorConfigs = []*transactor.TransactorConfig{
+			transactor.NewTransactorConfig(masterTxConfig.KeyStore, masterTxConfig.PassPhrase),
+		}
+	}
+
+	c.transactorPool, err = transactor.NewPoolFromConfig(c.ethclient, transactorConfigs)
+	if err != nil {
+		c.Close()
+		return err
+	}
+	c.masterTransactor, err =
+		transactor.NewTransactor(masterTxConfig.KeyStore, masterTxConfig.PassPhrase, c.ethclient)
+	if err != nil {
+		c.Close()
+		return err
+	}
+	if depositTxConfig != nil {
+		c.depositTransactor, err =
+			transactor.NewTransactor(depositTxConfig.KeyStore, depositTxConfig.PassPhrase, c.ethclient)
+		if err != nil {
+			c.Close()
+			return err
+		}
+	} else {
+		c.depositTransactor = c.masterTransactor
+	}
+
+	return nil
+}
+
+func (c *CNode) setupExternalTransactor(address ctype.Addr, signer common.Signer) error {
+	c.EthAddress = address
+	c.signer = signer
+	c.masterTransactor = transactor.NewTransactorByExternalSigner(address, signer, c.ethclient)
+	c.depositTransactor = c.masterTransactor
+	var err error
+	c.transactorPool, err = transactor.NewPool([]*transactor.Transactor{c.masterTransactor})
+	if err != nil {
+		c.Close()
+		return err
+	}
+	return nil
+}
+
+func (c *CNode) initialize(
+	profile *common.CProfile,
+	routingPolicy route.RoutingPolicy,
+	routingData []byte) error {
+	// Seed the rand
+	rand.Seed(time.Now().UnixNano())
+
+	c.isOSP = profile.IsOSP
+	c.initMultiServer(profile)
+	if c.isMultiServer {
+		c.listenOnChain = profile.ListenOnChain
+	} else {
+		c.listenOnChain = true
+	}
+
+	if profile.DisputeTimeout != 0 {
+		config.ChannelDisputeTimeout = profile.DisputeTimeout
+	}
+
+	// Initialize the storage layer.
+	err := c.setupKVStore(profile, c.EthAddress)
+	if err != nil {
+		c.Close()
+		return err
+	}
+
+	c.ServerAddr = ctype.Hex2Addr(profile.SvrETHAddr)
+
 	// In the multi-server setup provide the connection manager with
 	// a callback to register clients that connect at this OSP.
 	var regClient rpc.RegisterClientCallbackFunc
+	if c.isMultiServer {
+		regClient = c.registerClientForServer
+	}
 	c.connManager = rpc.NewConnectionManager(regClient)
 
 	// Initialize the watcher service.
+	blockDelay := profile.BlockDelayNum
 	log.Infof("Setting up watch service (block delay %d)", blockDelay)
 	var pollingInterval uint64 = 10
 	if profile.PollingInterval != 0 {
@@ -422,7 +496,7 @@ func (c *CNode) initialize(
 	if c.watch == nil {
 		log.Error("Cannot setup watch service")
 		c.Close()
-		return fmt.Errorf("newWatchService failed: %s", err)
+		return fmt.Errorf("newWatchService failed: %w", err)
 	}
 
 	c.nodeConfig = cobj.NewCelerGlobalNodeConfig(
@@ -435,84 +509,84 @@ func (c *CNode) initialize(
 		payresolver.PayResolverABI,
 		payregistry.PayRegistryABI,
 		routerregistry.RouterRegistryABI,
+		c.dal,
 	)
+
+	if c.isOSP && c.listenOnChain {
+		err = c.registerEventListener()
+		if err != nil {
+			c.Close()
+			return err
+		}
+		go c.keepAliveEventListener()
+	}
+
 	// Init monitor service
-	monitorService :=
-		monitor.NewService(c.watch, blockDelay, !c.isOSP || c.listenOnChain, c.GetRPCAddr())
+	monitorService := monitor.NewService(c.watch, blockDelay, !c.isOSP || c.listenOnChain, c.GetRPCAddr())
 	monitorService.Init()
 	c.monitorService = monitorService
-	c.channelRouter = cobj.NewCelerChannelRouter(routingPolicy, c.dal, ctype.Hex2Addr(profile.SvrETHAddr))
-	c.crypto = cobj.NewCelerCrypto(c.PrivKey, c.EthAddress)
 	c.streamWriter = cobj.NewCelerStreamWriter(c.connManager)
 
-	selfAddress := c.nodeConfig.GetOnChainAddr()
-	ledger := c.nodeConfig.GetLedgerContract().(*chain.BoundContract)
 	c.cooperativeWithdrawProcessor, err = cooperativewithdraw.StartProcessor(
-		selfAddress,
-		c.crypto,
+		c.nodeConfig,
+		c.nodeConfig.GetOnChainAddr(),
+		c.signer,
 		c.transactorPool,
 		c.connManager,
 		c.monitorService,
 		c.dal,
 		c.streamWriter,
-		ledger,
-		c,
 		c.isOSP,
 		!c.isOSP)
 	if err != nil {
 		c.Close()
 		return err
 	}
-	masterTransactor, err :=
-		transactor.NewTransactor(keyStore, passPhrase, chainId, c.ethclient, blockDelay)
-	if err != nil {
-		c.Close()
-		return err
-	}
-	if routingPolicy == common.ServiceProviderPolicy && c.listenOnChain {
-		builder := route.NewRoutingTableBuilder(ctype.Hex2Addr(c.nodeConfig.GetOnChainAddr()), c.dal)
-		if builder == nil {
-			c.Close()
-			return errors.New("Fail to initialize routing table builder")
-		}
-		c.rtEdgeBuilder = builder
 
-		if err = route.StartRoutingRecoverProcess(c.GetCurrentBlockNumber(), routingData, c.nodeConfig, builder); err != nil {
+	c.routeForwarder = route.NewForwarder(routingPolicy, c.dal, ctype.Hex2Addr(profile.SvrETHAddr))
+	if routingPolicy == route.ServiceProviderPolicy && c.listenOnChain {
+		c.routeController, err = route.NewController(
+			c.nodeConfig,
+			c.masterTransactor,
+			c.monitorService,
+			c.dal,
+			c.signer,
+			c.bcastSend,
+			routingData,
+			profile.SvrRPC,
+			profile.ExplorerUrl)
+		if err != nil {
 			c.Close()
 			return err
 		}
-
-		routerProcessor := route.NewRouterProcessor(
-			c.nodeConfig, masterTransactor, c.monitorService,
-			builder, 0 /*blkDelay*/, "localhost"+profile.WebPort /*adminWebHostAndPort*/)
-		routerProcessor.Start()
+		c.routeController.Start()
 	} else {
-		c.rtEdgeBuilder = nil
+		c.routeController = nil
 	}
-	c.openChannelProcessor, err = startOpenChannelProcessor(
+
+	c.depositProcessor, err = deposit.StartProcessor(
 		c.nodeConfig,
-		c.crypto,
-		masterTransactor,
+		c.depositTransactor,
 		c.dal,
-		ledger,
-		c.connManager,
 		c.monitorService,
-		c,
-		c.rtEdgeBuilder,
-		c.isOSP)
+		c.isOSP,
+		c.listenOnChain,
+		c.quit)
 	if err != nil {
 		c.Close()
 		return err
 	}
 
-	c.depositProcessor, err = startDepositProcessor(
+	c.openChannelProcessor, err = startOpenChannelProcessor(
 		c.nodeConfig,
-		masterTransactor,
+		c.signer,
+		c.masterTransactor,
 		c.dal,
-		ledger,
+		c.connManager,
 		c.monitorService,
-		c,
-		!c.isOSP)
+		c.routeController,
+		c.depositProcessor,
+		c.isOSP)
 	if err != nil {
 		c.Close()
 		return err
@@ -520,36 +594,64 @@ func (c *CNode) initialize(
 
 	c.Disputer = dispute.NewProcessor(
 		c.nodeConfig,
-		masterTransactor,
+		c.masterTransactor,
 		c.transactorPool,
-		c.rtEdgeBuilder,
+		c.routeController,
 		c.monitorService,
 		c.dal,
 		c.isOSP)
 
-	c.serverForwarder = c.defServerForwarder
+	c.AppClient = app.NewAppClient(
+		c.nodeConfig,
+		c.masterTransactor,
+		c.transactorPool,
+		c.monitorService,
+		c.dal,
+		c.signer)
+
+	if c.isMultiServer {
+		c.serverForwarder = c.multiServerForwarder
+	} else {
+		c.serverForwarder = c.defServerForwarder
+	}
 
 	c.messager = messager.NewMessager(
 		c.nodeConfig,
-		c.crypto,
+		c.signer,
 		c.streamWriter,
-		c.channelRouter,
+		c.routeForwarder,
 		c.monitorService,
 		c.serverForwarder,
-		c.dal)
+		c.depositProcessor,
+		c.dal,
+		c.isOSP)
 	c.connManager.SetMsgQueueCallback(c.messager.EnableMsgQueue, c.messager.DisableMsgQueue)
 
 	c.celerMsgDispatcher = dispatchers.NewCelerMsgDispatcher(
 		c.nodeConfig,
 		c.streamWriter,
-		c.crypto,
-		c.channelRouter,
+		c.signer,
 		c.monitorService,
 		c.dal,
 		c.cooperativeWithdrawProcessor,
 		c.serverForwarder,
 		c.Disputer,
+		c.routeForwarder,
+		c.routeController,
 		c.messager)
+
+	c.migrateChannelProcessor = migrate.NewMigrateChannelProcessor(
+		c.nodeConfig,
+		c.signer,
+		c.dal,
+		c.connManager,
+		c.monitorService,
+		c.isOSP,
+	)
+
+	if c.isOSP {
+		go c.runOspRoutineJob()
+	}
 
 	return nil
 }
@@ -559,28 +661,79 @@ func (c *CNode) recoverCallbacks() error {
 	return nil
 }
 
-//----------------------State Persistence-----------------------
-// Initialize the server key/value storage.
-func (c *CNode) setupKVStore(profile *common.CProfile, keyStore string) error {
-	type addrOnly struct {
-		Address string
-	}
-	var ksjson addrOnly
-	err := json.Unmarshal([]byte(keyStore), &ksjson)
+func (c *CNode) SetDelegation(tokens []ctype.Addr, timeout int64) error {
+	client, err := c.connManager.GetClient(c.ServerAddr)
 	if err != nil {
-		log.Error(err)
+		return err
+	}
+	delegatedTks := make([][]byte, 0, len(tokens))
+	for _, tk := range tokens {
+		delegatedTks = append(delegatedTks, tk.Bytes())
+	}
+	desc := &rpc.DelegationDescription{
+		Delegator:         c.ServerAddr.Bytes(),
+		Delegatee:         c.nodeConfig.GetOnChainAddr().Bytes(),
+		ExpiresAfterBlock: c.monitorService.GetCurrentBlockNumber().Int64() + timeout,
+		TokenToDelegate:   delegatedTks,
+	}
+	descBytes, err := proto.Marshal(desc)
+	if err != nil {
+		return err
+	}
+	sig, err := c.signer.SignEthMessage(descBytes)
+	if err != nil {
+		return err
+	}
+	req := &rpc.DelegationRequest{
+		Proof: &rpc.DelegationProof{
+			DelegationDescriptionBytes: descBytes,
+			Signature:                  sig,
+			Signer:                     c.nodeConfig.GetOnChainAddr().Bytes(),
+		},
+	}
+	_, err = client.RequestDelegation(context.Background(), req)
+	return err
+}
+
+//----------------------State Persistence-----------------------
+// Initialize the server-side storage.
+func (c *CNode) setupServerStore(db string) error {
+	log.Infof("Setting up server store at %s", db)
+	st, err := storage.NewKVStoreSQL("postgres", db)
+	if err != nil {
+		return fmt.Errorf("Cannot setup SQL store: %s: %w", db, err)
 	}
 
-	dir := profile.StoreDir
-	if dir == "" {
-		dir = fmt.Sprintf("/tmp/cnodestore/%s", ksjson.Address)
-	} else {
-		dir = fmt.Sprintf("%s/%s", dir, ksjson.Address)
-	}
-	log.Infof("Setting up local kvstore at %s", dir)
-	c.kvstore, err = storage.NewKVStoreLocal(dir, false)
+	c.kvstore = st
+	return nil
+}
+
+// Initialize the client-side storage.
+func (c *CNode) setupClientStore(dir string) error {
+	log.Infof("Setting up local store at %s", dir)
+	fpath := filepath.Join(dir, "sqlite", "celer.db")
+	st, err := storage.NewKVStoreSQL("sqlite3", fpath)
 	if err != nil {
-		err = fmt.Errorf("Cannot setup local store: %s: %s", dir, err)
+		return fmt.Errorf("Cannot setup local store: %s: %w", fpath, err)
+	}
+	c.kvstore = st
+	return nil
+}
+
+func (c *CNode) setupKVStore(profile *common.CProfile, addr ctype.Addr) error {
+	var err error
+	if profile.StoreSql != "" {
+		err = c.setupServerStore(profile.StoreSql)
+	} else {
+		dir := profile.StoreDir
+		if dir == "" {
+			dir = filepath.Join(os.TempDir(), "cnodestore")
+		}
+		dir = filepath.Join(dir, ctype.Addr2Hex(addr))
+		err = c.setupClientStore(dir)
+	}
+
+	if err != nil {
 		log.Errorln(err)
 		return err
 	}
@@ -590,6 +743,7 @@ func (c *CNode) setupKVStore(profile *common.CProfile, keyStore string) error {
 }
 
 func (c *CNode) Close() {
+	close(c.quit)
 	if c.kvstore != nil {
 		c.kvstore.Close()
 		c.kvstore = nil
@@ -597,6 +751,17 @@ func (c *CNode) Close() {
 	}
 	if c.ethclient != nil {
 		c.ethclient.Close()
+	}
+	if c.monitorService != nil {
+		// exit monitorEvent should also call watcher.Close which unregisters and inner_close
+		c.monitorService.Close()
+		time.Sleep(500 * time.Millisecond) // not required just to be nice so when watch.Close is called, map should be empty
+		// must call watch.Close after monitorService.Close to avoid monitor re-creating watchers
+		// note this should be only close(ws.quit) cause individual watches should have already Close
+		c.watch.Close()
+	}
+	if c.connManager != nil {
+		c.connManager.CloseNoRetry(c.ServerAddr)
 	}
 }
 
@@ -629,14 +794,40 @@ func (c *CNode) GetCurrentBlockNumber() *big.Int {
 	return c.monitorService.GetCurrentBlockNumber()
 }
 
-func (c *CNode) CooperativeWithdraw(
-	cid ctype.CidType,
-	tokenType entity.TokenType,
-	tokenAddress string,
-	amount string,
-	callback cooperativewithdraw.Callback) (string, error) {
-	return c.cooperativeWithdrawProcessor.CooperativeWithdraw(
-		cid, tokenType, tokenAddress, amount, callback)
+func (c *CNode) DepositWithCallback(amt *big.Int, cid ctype.CidType, cb deposit.DepositCallback) (string, error) {
+	return c.depositProcessor.DepositWithCallback(amt, cid, cb)
+}
+
+func (c *CNode) MonitorDepositJobWithCallback(jobID string, cb deposit.DepositCallback) {
+	c.depositProcessor.MonitorJobWithCallback(jobID, cb)
+}
+
+func (c *CNode) RemoveDepositJob(jobID string) error {
+	return c.depositProcessor.RemoveJob(jobID)
+}
+
+func (c *CNode) RequestDeposit(
+	peerAddr ctype.Addr, tokenAddr ctype.Addr, toPeer bool, amount *big.Int, maxWait time.Duration) (string, error) {
+	token := utils.GetTokenInfoFromAddress(tokenAddr)
+	cid, state, found, err := c.dal.GetCidStateByPeerToken(peerAddr, token)
+	if err != nil {
+		return "", fmt.Errorf("GetCidByPeerToken err: %w", err)
+	}
+	if !found {
+		return "", common.ErrChannelNotFound
+	}
+	if state != enums.ChanState_OPENED {
+		return "", common.ErrInvalidChannelState
+	}
+	return c.depositProcessor.RequestDeposit(cid, amount, toPeer, maxWait)
+}
+
+func (c *CNode) QueryDeposit(depositID string) (int, string, error) {
+	return c.depositProcessor.GetDepositState(depositID)
+}
+
+func (c *CNode) CooperativeWithdraw(cid ctype.CidType, amount *big.Int, callback cooperativewithdraw.Callback) (string, error) {
+	return c.cooperativeWithdrawProcessor.CooperativeWithdraw(cid, amount, callback)
 }
 
 func (c *CNode) MonitorCooperativeWithdrawJob(
@@ -650,22 +841,99 @@ func (c *CNode) RemoveCooperativeWithdrawJob(withdrawHash string) {
 }
 
 func (c *CNode) BuildRoutingTable(token ctype.Addr) (map[ctype.Addr]ctype.CidType, error) {
-	return c.rtEdgeBuilder.Build(token)
-}
-func (c *CNode) GetActiveOsps() map[ctype.Addr]bool {
-	osps := c.rtEdgeBuilder.GetOspInfo()
-	activeOsps := make(map[ctype.Addr]bool)
-	for osp := range osps {
-		if c.connManager.GetCelerStream(ctype.Addr2Hex(osp)) != nil {
-			activeOsps[osp] = true
-		}
+	if c.routeController != nil {
+		return c.routeController.BuildTable(token)
 	}
-	return activeOsps
+	return nil, fmt.Errorf("route controller not initialized")
 }
 
-// GetPaymentState returns the ingress and egress state of a payment
-func (c *CNode) GetPaymentState(payID ctype.PayIDType) (string, string) {
-	_, inState, _, _ := c.dal.GetPayIngressState(payID)
-	_, outState, _, _ := c.dal.GetPayEgressState(payID)
-	return inState, outState
+func (c *CNode) RecvBcastRoutingInfo(in *rpc.RoutingRequest) error {
+	if c.routeController != nil {
+		return c.routeController.RecvBcastRoutingInfo(in)
+	}
+	return fmt.Errorf("route controller not initialized")
+}
+
+func (c *CNode) GetConnectedOsps() map[ctype.Addr]bool {
+	connectedOsps := make(map[ctype.Addr]bool)
+	if c.routeController != nil {
+		peerOsps := c.routeController.GetAllNeighbors()
+		for ospAddr := range peerOsps {
+			if c.IsLocalPeer(ospAddr) {
+				connectedOsps[ospAddr] = true
+			}
+		}
+	} else if c.isMultiServer {
+		res, err := utils.QueryPeerOsps(config.EventListenerHttp)
+		if err != nil {
+			log.Error(err)
+			return nil
+		}
+		for _, osp := range res.PeerOsps {
+			ospAddr := ctype.Hex2Addr(osp.GetOspAddress())
+			if c.IsLocalPeer(ospAddr) {
+				connectedOsps[ospAddr] = true
+			}
+		}
+	}
+	return connectedOsps
+}
+
+func (c *CNode) GetPeerOsps() map[ctype.Addr]*route.NeighborInfo {
+	if c.routeController != nil {
+		return c.routeController.GetAllNeighbors()
+	}
+	log.Warn("route controller not initialized")
+	return nil
+}
+
+func (c *CNode) getConnectedOspCids() ([]ctype.CidType, error) {
+	var connectedCids []ctype.CidType
+	if c.routeController != nil {
+		peerOsps := c.routeController.GetAllNeighbors()
+		for ospAddr, osp := range peerOsps {
+			if c.IsLocalPeer(ospAddr) {
+				for _, cid := range osp.TokenCids {
+					connectedCids = append(connectedCids, cid)
+				}
+			}
+		}
+	} else if c.isMultiServer {
+		res, err := utils.QueryPeerOsps(config.EventListenerHttp)
+		if err != nil {
+			return nil, err
+		}
+		for _, osp := range res.PeerOsps {
+			ospAddr := ctype.Hex2Addr(osp.GetOspAddress())
+			if c.IsLocalPeer(ospAddr) {
+				for _, tkcid := range osp.GetTokenCidPairs() {
+					connectedCids = append(connectedCids, ctype.Hex2Cid(tkcid.GetCid()))
+				}
+			}
+		}
+	}
+
+	return connectedCids, nil
+}
+
+// ProcessMigrateChannelRequest handles channel migration request
+func (c *CNode) ProcessMigrateChannelRequest(in *rpc.MigrateChannelRequest) (*rpc.MigrateChannelResponse, error) {
+	return c.migrateChannelProcessor.ProcessMigrateChannelRequest(in)
+}
+
+func (c *CNode) runOspRoutineJob() {
+	clearPayTicker := time.NewTicker(config.OspClearPaysInterval)
+	defer func() {
+		clearPayTicker.Stop()
+	}()
+
+	for {
+		select {
+		case <-clearPayTicker.C:
+			err := c.ClearPaymentsWithPeerOsps()
+			if err != nil {
+				log.Error(err)
+			}
+		}
+	}
 }

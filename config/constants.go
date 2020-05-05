@@ -1,14 +1,22 @@
-// Copyright 2018-2019 Celer Network
+// Copyright 2018-2020 Celer Network
 
 package config
 
 import (
+	"math/big"
 	"time"
 
 	"google.golang.org/grpc/keepalive"
 )
 
 var ChannelDisputeTimeout = uint64(10000)
+var ChainID *big.Int
+var BlockDelay = uint64(5)
+var EventListenerHttp = ""
+var RouterBcastInterval = 293 * time.Second
+var RouterBuildInterval = 367 * time.Second
+var RouterAliveTimeout = 900 * time.Second
+var OspClearPaysInterval = 613 * time.Second
 
 const (
 	ClientCacheSize            = 1000
@@ -21,11 +29,19 @@ const (
 	PayRecvTimeoutSafeMargin   = uint64(4)
 	AdminSendTokenTimeout      = uint64(50)
 	QuickCatchBlockDelay       = uint64(2)
-	// AllowedTimeWindow is the window in seconds we allow client side timestamp to be different from server
-	// ie. if server time is t, [t-window, t+window] are valid
-	// if we want to be more strict, we'll need
-	// a global map of addr->last auth ts and ensure it increments
-	AllowedTimeWindow = 60
+	TcbTimeoutInBlockNumber    = 576000
+
+	// Protocol Version in AuthReq, >=1 support sync
+	AuthProtocolVersion = uint64(1)
+	// AuthAckTimeout is duration client will wait for AuthAck msg
+	AuthAckTimeout = 5 * time.Second
+
+	// grpc dial timeout second, block until 15s
+	GrpcDialTimeout = 15
+
+	EventListenerLeaseName          = "eventlistener"
+	EventListenerLeaseRenewInterval = 60 * time.Second
+	EventListenerLeaseTimeout       = 90 * time.Second
 )
 
 // KeepAliveClientParams is grpc client side keeyalive parameters

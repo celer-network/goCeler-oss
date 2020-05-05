@@ -1,4 +1,4 @@
-// Copyright 2018-2019 Celer Network
+// Copyright 2018-2020 Celer Network
 
 package transactor
 
@@ -7,7 +7,7 @@ import (
 	"math/big"
 	"sync"
 
-	log "github.com/celer-network/goCeler-oss/clog"
+	"github.com/celer-network/goutils/log"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
@@ -20,33 +20,34 @@ type Pool struct {
 }
 
 type TransactorConfig struct {
-	keyStore   string
-	passPhrase string
+	KeyStore   string
+	PassPhrase string
 }
 
 func NewTransactorConfig(keyStore string, passPhrase string) *TransactorConfig {
-	return &TransactorConfig{keyStore: keyStore, passPhrase: passPhrase}
+	return &TransactorConfig{KeyStore: keyStore, PassPhrase: passPhrase}
 }
 
-func NewPool(
+func NewPool(transactors []*Transactor) (*Pool, error) {
+	if len(transactors) == 0 {
+		return nil, fmt.Errorf("Empty transactor pool")
+	}
+	return &Pool{transactors: transactors, current: 0}, nil
+}
+
+func NewPoolFromConfig(
 	client *ethclient.Client,
-	blockDelay uint64,
-	chainId *big.Int,
 	configs []*TransactorConfig) (*Pool, error) {
 	transactors := []*Transactor{}
 	for _, config := range configs {
-		transactor, err :=
-			NewTransactor(config.keyStore, config.passPhrase, chainId, client, blockDelay)
+		transactor, err := NewTransactor(config.KeyStore, config.PassPhrase, client)
 		if err != nil {
 			log.Errorln(err)
 		} else {
 			transactors = append(transactors, transactor)
 		}
 	}
-	if len(transactors) == 0 {
-		return nil, fmt.Errorf("Empty transactor pool")
-	}
-	return &Pool{transactors: transactors, current: 0}, nil
+	return NewPool(transactors)
 }
 
 func (p *Pool) Submit(
@@ -116,13 +117,12 @@ func (p *Pool) submitAndWaitMinedWithGenericHandler(
 		transactor bind.ContractTransactor, opts *bind.TransactOpts) (*types.Transaction, error),
 ) (*types.Receipt, error) {
 	receiptChan := make(chan *types.Receipt, 1)
-	_, err :=
-		p.SubmitWithGasLimit(
-			NewGenericTransactionHandler(description, receiptChan),
-			value,
-			gasLimit,
-			quickCatch,
-			method)
+	_, err := p.SubmitWithGasLimit(
+		newGenericTransactionHandler(description, receiptChan),
+		value,
+		gasLimit,
+		quickCatch,
+		method)
 	if err != nil {
 		return nil, err
 	}
@@ -144,4 +144,18 @@ func (p *Pool) ContractCaller() bind.ContractCaller {
 
 func (p *Pool) WaitMined(txHash string) (*types.Receipt, error) {
 	return p.nextTransactor().WaitMined(txHash)
+}
+
+func newGenericTransactionHandler(
+	description string, receiptChan chan *types.Receipt) *TransactionMinedHandler {
+	return &TransactionMinedHandler{
+		OnMined: func(receipt *types.Receipt) {
+			if receipt.Status == types.ReceiptStatusSuccessful {
+				log.Debugf("%s transaction %s succeeded", description, receipt.TxHash.String())
+			} else {
+				log.Errorf("%s transaction %s failed", description, receipt.TxHash.String())
+			}
+			receiptChan <- receipt
+		},
+	}
 }

@@ -27,20 +27,28 @@ const _ = proto.ProtoPackageIsVersion3 // please upgrade the proto package
 func init() { proto.RegisterFile("rpc.proto", fileDescriptor_77a6da22d6a3feb1) }
 
 var fileDescriptor_77a6da22d6a3feb1 = []byte{
-	// 200 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xe2, 0xe2, 0x2c, 0x2a, 0x48, 0xd6,
-	0x2b, 0x28, 0xca, 0x2f, 0xc9, 0x17, 0x62, 0x2e, 0x2a, 0x48, 0x96, 0xe2, 0xcd, 0x4d, 0x2d, 0x2e,
-	0x4e, 0x4c, 0x4f, 0x85, 0x88, 0x19, 0x35, 0x32, 0x72, 0x31, 0x07, 0x15, 0x24, 0x0b, 0xb9, 0x73,
-	0x09, 0x38, 0xa7, 0xe6, 0xa4, 0x16, 0xf9, 0x17, 0xa4, 0xe6, 0x39, 0x67, 0x24, 0xe6, 0xe5, 0xa5,
-	0xe6, 0x08, 0x89, 0xeb, 0x81, 0xf4, 0x22, 0x89, 0x04, 0xa5, 0x16, 0x96, 0xa6, 0x16, 0x97, 0x48,
-	0x49, 0x60, 0x4a, 0x14, 0x17, 0xe4, 0xe7, 0x15, 0xa7, 0x2a, 0x31, 0x08, 0x19, 0x72, 0x71, 0x83,
-	0x0d, 0x0a, 0x2e, 0x29, 0x4a, 0x4d, 0xcc, 0x15, 0xe2, 0x05, 0x2b, 0x05, 0x8b, 0xf8, 0x16, 0xa7,
-	0x4b, 0xa1, 0x72, 0x95, 0x18, 0x34, 0x18, 0x0d, 0x18, 0x9d, 0x7c, 0xb9, 0x24, 0xf3, 0x52, 0x4b,
-	0xca, 0xf3, 0x8b, 0xb2, 0xf5, 0x92, 0x41, 0x32, 0x7a, 0xe9, 0xf9, 0x10, 0xba, 0xa8, 0x20, 0xd9,
-	0x89, 0x23, 0xa8, 0x20, 0x39, 0x00, 0xe4, 0xd4, 0x00, 0xc6, 0x28, 0x95, 0xf4, 0xcc, 0x92, 0x8c,
-	0xd2, 0x24, 0xbd, 0xe4, 0xfc, 0x5c, 0x7d, 0xb0, 0x0a, 0x5d, 0xa8, 0x3e, 0xfd, 0xf4, 0x7c, 0xb0,
-	0x99, 0xfa, 0x45, 0x05, 0xc9, 0x49, 0x6c, 0x60, 0x9f, 0x19, 0x03, 0x02, 0x00, 0x00, 0xff, 0xff,
-	0x7b, 0x9a, 0xd1, 0xc9, 0xfa, 0x00, 0x00, 0x00,
+	// 334 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xa4, 0x92, 0xcd, 0x4e, 0xf2, 0x40,
+	0x14, 0x86, 0x21, 0x7c, 0xf9, 0xa2, 0x63, 0x08, 0x38, 0x26, 0x2a, 0xc5, 0x15, 0x71, 0xe1, 0xc6,
+	0xe2, 0xcf, 0xca, 0xa5, 0x60, 0x84, 0x98, 0xa0, 0x15, 0x5c, 0xb9, 0x1b, 0x86, 0x93, 0xa1, 0x11,
+	0x66, 0xc6, 0x33, 0xd3, 0x98, 0xde, 0x9b, 0x17, 0x67, 0x3a, 0xfd, 0x09, 0xb5, 0xdd, 0xb9, 0x6a,
+	0xfa, 0x9c, 0xf3, 0x3e, 0x79, 0xd3, 0x1e, 0xb2, 0x8f, 0x9a, 0xfb, 0x1a, 0x95, 0x55, 0xb4, 0x85,
+	0x9a, 0x7b, 0xed, 0x2d, 0x18, 0xc3, 0x04, 0xa4, 0xec, 0xe6, 0xfb, 0x1f, 0x69, 0xcd, 0x35, 0xa7,
+	0x53, 0xd2, 0x9e, 0x80, 0x0d, 0x58, 0x3c, 0x0d, 0x8d, 0x55, 0x18, 0xd3, 0x9e, 0x9f, 0x04, 0x4b,
+	0x6c, 0x0e, 0x9f, 0x11, 0x18, 0xeb, 0x79, 0x75, 0x23, 0xa3, 0x95, 0x34, 0x30, 0x68, 0xd0, 0x67,
+	0xd2, 0x79, 0x8d, 0x00, 0xe3, 0x07, 0xd8, 0x80, 0x60, 0x36, 0x54, 0x92, 0xf6, 0x5d, 0xe0, 0x17,
+	0xcd, 0x6d, 0x67, 0xf5, 0xc3, 0xc2, 0xf7, 0x48, 0x0e, 0xb3, 0xd5, 0x1d, 0xe3, 0xb1, 0x0b, 0x55,
+	0x65, 0x27, 0x15, 0x5e, 0x78, 0x26, 0xa4, 0x3b, 0x86, 0x0d, 0xe0, 0x8b, 0x06, 0x39, 0x5e, 0x33,
+	0x29, 0x61, 0x43, 0xd3, 0xf5, 0x1d, 0x92, 0x7b, 0x4e, 0xab, 0x83, 0x42, 0xf4, 0x44, 0x8e, 0x0a,
+	0xd1, 0x1b, 0x5f, 0xfe, 0xc9, 0x75, 0x47, 0xa8, 0x73, 0x25, 0x1f, 0x13, 0x00, 0x17, 0x96, 0xd9,
+	0xc8, 0xd0, 0xae, 0x4b, 0x24, 0xe0, 0x7e, 0xb5, 0x42, 0x30, 0xc6, 0xeb, 0x14, 0x24, 0x5d, 0x19,
+	0x34, 0xe8, 0x35, 0x39, 0x70, 0xd1, 0x85, 0x45, 0x60, 0x5b, 0xda, 0x76, 0x1b, 0x8e, 0xcc, 0x8c,
+	0xf0, 0xca, 0xaf, 0x83, 0xc6, 0x45, 0xf3, 0xaa, 0x49, 0x83, 0xac, 0xf9, 0x2c, 0x14, 0xc8, 0x2c,
+	0xe4, 0xcd, 0xd3, 0xff, 0x59, 0x86, 0x79, 0xf9, 0x7e, 0xed, 0x2c, 0xef, 0x3f, 0x9a, 0x91, 0x9e,
+	0x04, 0xfb, 0xa5, 0xf0, 0xc3, 0xe7, 0x89, 0xd9, 0x17, 0x2a, 0x7d, 0xa2, 0xe6, 0xa3, 0xbd, 0xb9,
+	0xe6, 0x41, 0x72, 0x65, 0x41, 0xf3, 0xfd, 0x5c, 0x84, 0x76, 0x1d, 0x2d, 0x7d, 0xae, 0xb6, 0x43,
+	0xb7, 0x71, 0x99, 0xe5, 0x86, 0x42, 0xb9, 0x4e, 0x43, 0xd4, 0x7c, 0xf9, 0xdf, 0x1d, 0xe5, 0xed,
+	0x4f, 0x00, 0x00, 0x00, 0xff, 0xff, 0x5e, 0xea, 0xed, 0x80, 0xb5, 0x02, 0x00, 0x00,
 }
 
 // Reference imports to suppress errors if they are not otherwise used.
@@ -55,9 +63,15 @@ const _ = grpc.SupportPackageIsVersion4
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://godoc.org/google.golang.org/grpc#ClientConn.NewStream.
 type RpcClient interface {
+	GetPayHistory(ctx context.Context, in *GetPayHistoryRequest, opts ...grpc.CallOption) (*GetPayHistoryResponse, error)
+	QueryDelegation(ctx context.Context, in *QueryDelegationRequest, opts ...grpc.CallOption) (*QueryDelegationResponse, error)
+	RequestDelegation(ctx context.Context, in *DelegationRequest, opts ...grpc.CallOption) (*DelegationResponse, error)
 	CelerOpenChannel(ctx context.Context, in *OpenChannelRequest, opts ...grpc.CallOption) (*OpenChannelResponse, error)
+	CelerOpenTcbChannel(ctx context.Context, in *OpenChannelRequest, opts ...grpc.CallOption) (*OpenChannelResponse, error)
+	CelerGetPeerStatus(ctx context.Context, in *PeerAddress, opts ...grpc.CallOption) (*PeerStatus, error)
 	// unified offchain bidi streaming rpc and msg definition
 	CelerStream(ctx context.Context, opts ...grpc.CallOption) (Rpc_CelerStreamClient, error)
+	CelerMigrateChannel(ctx context.Context, in *MigrateChannelRequest, opts ...grpc.CallOption) (*MigrateChannelResponse, error)
 }
 
 type rpcClient struct {
@@ -68,9 +82,54 @@ func NewRpcClient(cc *grpc.ClientConn) RpcClient {
 	return &rpcClient{cc}
 }
 
+func (c *rpcClient) GetPayHistory(ctx context.Context, in *GetPayHistoryRequest, opts ...grpc.CallOption) (*GetPayHistoryResponse, error) {
+	out := new(GetPayHistoryResponse)
+	err := c.cc.Invoke(ctx, "/rpc.Rpc/GetPayHistory", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *rpcClient) QueryDelegation(ctx context.Context, in *QueryDelegationRequest, opts ...grpc.CallOption) (*QueryDelegationResponse, error) {
+	out := new(QueryDelegationResponse)
+	err := c.cc.Invoke(ctx, "/rpc.Rpc/QueryDelegation", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *rpcClient) RequestDelegation(ctx context.Context, in *DelegationRequest, opts ...grpc.CallOption) (*DelegationResponse, error) {
+	out := new(DelegationResponse)
+	err := c.cc.Invoke(ctx, "/rpc.Rpc/RequestDelegation", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *rpcClient) CelerOpenChannel(ctx context.Context, in *OpenChannelRequest, opts ...grpc.CallOption) (*OpenChannelResponse, error) {
 	out := new(OpenChannelResponse)
 	err := c.cc.Invoke(ctx, "/rpc.Rpc/CelerOpenChannel", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *rpcClient) CelerOpenTcbChannel(ctx context.Context, in *OpenChannelRequest, opts ...grpc.CallOption) (*OpenChannelResponse, error) {
+	out := new(OpenChannelResponse)
+	err := c.cc.Invoke(ctx, "/rpc.Rpc/CelerOpenTcbChannel", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *rpcClient) CelerGetPeerStatus(ctx context.Context, in *PeerAddress, opts ...grpc.CallOption) (*PeerStatus, error) {
+	out := new(PeerStatus)
+	err := c.cc.Invoke(ctx, "/rpc.Rpc/CelerGetPeerStatus", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -108,26 +167,113 @@ func (x *rpcCelerStreamClient) Recv() (*CelerMsg, error) {
 	return m, nil
 }
 
+func (c *rpcClient) CelerMigrateChannel(ctx context.Context, in *MigrateChannelRequest, opts ...grpc.CallOption) (*MigrateChannelResponse, error) {
+	out := new(MigrateChannelResponse)
+	err := c.cc.Invoke(ctx, "/rpc.Rpc/CelerMigrateChannel", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // RpcServer is the server API for Rpc service.
 type RpcServer interface {
+	GetPayHistory(context.Context, *GetPayHistoryRequest) (*GetPayHistoryResponse, error)
+	QueryDelegation(context.Context, *QueryDelegationRequest) (*QueryDelegationResponse, error)
+	RequestDelegation(context.Context, *DelegationRequest) (*DelegationResponse, error)
 	CelerOpenChannel(context.Context, *OpenChannelRequest) (*OpenChannelResponse, error)
+	CelerOpenTcbChannel(context.Context, *OpenChannelRequest) (*OpenChannelResponse, error)
+	CelerGetPeerStatus(context.Context, *PeerAddress) (*PeerStatus, error)
 	// unified offchain bidi streaming rpc and msg definition
 	CelerStream(Rpc_CelerStreamServer) error
+	CelerMigrateChannel(context.Context, *MigrateChannelRequest) (*MigrateChannelResponse, error)
 }
 
 // UnimplementedRpcServer can be embedded to have forward compatible implementations.
 type UnimplementedRpcServer struct {
 }
 
+func (*UnimplementedRpcServer) GetPayHistory(ctx context.Context, req *GetPayHistoryRequest) (*GetPayHistoryResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetPayHistory not implemented")
+}
+func (*UnimplementedRpcServer) QueryDelegation(ctx context.Context, req *QueryDelegationRequest) (*QueryDelegationResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method QueryDelegation not implemented")
+}
+func (*UnimplementedRpcServer) RequestDelegation(ctx context.Context, req *DelegationRequest) (*DelegationResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RequestDelegation not implemented")
+}
 func (*UnimplementedRpcServer) CelerOpenChannel(ctx context.Context, req *OpenChannelRequest) (*OpenChannelResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CelerOpenChannel not implemented")
+}
+func (*UnimplementedRpcServer) CelerOpenTcbChannel(ctx context.Context, req *OpenChannelRequest) (*OpenChannelResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CelerOpenTcbChannel not implemented")
+}
+func (*UnimplementedRpcServer) CelerGetPeerStatus(ctx context.Context, req *PeerAddress) (*PeerStatus, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CelerGetPeerStatus not implemented")
 }
 func (*UnimplementedRpcServer) CelerStream(srv Rpc_CelerStreamServer) error {
 	return status.Errorf(codes.Unimplemented, "method CelerStream not implemented")
 }
+func (*UnimplementedRpcServer) CelerMigrateChannel(ctx context.Context, req *MigrateChannelRequest) (*MigrateChannelResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CelerMigrateChannel not implemented")
+}
 
 func RegisterRpcServer(s *grpc.Server, srv RpcServer) {
 	s.RegisterService(&_Rpc_serviceDesc, srv)
+}
+
+func _Rpc_GetPayHistory_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetPayHistoryRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RpcServer).GetPayHistory(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/rpc.Rpc/GetPayHistory",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RpcServer).GetPayHistory(ctx, req.(*GetPayHistoryRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Rpc_QueryDelegation_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(QueryDelegationRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RpcServer).QueryDelegation(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/rpc.Rpc/QueryDelegation",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RpcServer).QueryDelegation(ctx, req.(*QueryDelegationRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Rpc_RequestDelegation_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DelegationRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RpcServer).RequestDelegation(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/rpc.Rpc/RequestDelegation",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RpcServer).RequestDelegation(ctx, req.(*DelegationRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
 func _Rpc_CelerOpenChannel_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -144,6 +290,42 @@ func _Rpc_CelerOpenChannel_Handler(srv interface{}, ctx context.Context, dec fun
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(RpcServer).CelerOpenChannel(ctx, req.(*OpenChannelRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Rpc_CelerOpenTcbChannel_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(OpenChannelRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RpcServer).CelerOpenTcbChannel(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/rpc.Rpc/CelerOpenTcbChannel",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RpcServer).CelerOpenTcbChannel(ctx, req.(*OpenChannelRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Rpc_CelerGetPeerStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PeerAddress)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RpcServer).CelerGetPeerStatus(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/rpc.Rpc/CelerGetPeerStatus",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RpcServer).CelerGetPeerStatus(ctx, req.(*PeerAddress))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -174,13 +356,55 @@ func (x *rpcCelerStreamServer) Recv() (*CelerMsg, error) {
 	return m, nil
 }
 
+func _Rpc_CelerMigrateChannel_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(MigrateChannelRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RpcServer).CelerMigrateChannel(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/rpc.Rpc/CelerMigrateChannel",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RpcServer).CelerMigrateChannel(ctx, req.(*MigrateChannelRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 var _Rpc_serviceDesc = grpc.ServiceDesc{
 	ServiceName: "rpc.Rpc",
 	HandlerType: (*RpcServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
+			MethodName: "GetPayHistory",
+			Handler:    _Rpc_GetPayHistory_Handler,
+		},
+		{
+			MethodName: "QueryDelegation",
+			Handler:    _Rpc_QueryDelegation_Handler,
+		},
+		{
+			MethodName: "RequestDelegation",
+			Handler:    _Rpc_RequestDelegation_Handler,
+		},
+		{
 			MethodName: "CelerOpenChannel",
 			Handler:    _Rpc_CelerOpenChannel_Handler,
+		},
+		{
+			MethodName: "CelerOpenTcbChannel",
+			Handler:    _Rpc_CelerOpenTcbChannel_Handler,
+		},
+		{
+			MethodName: "CelerGetPeerStatus",
+			Handler:    _Rpc_CelerGetPeerStatus_Handler,
+		},
+		{
+			MethodName: "CelerMigrateChannel",
+			Handler:    _Rpc_CelerMigrateChannel_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

@@ -1,4 +1,4 @@
-// Copyright 2018-2019 Celer Network
+// Copyright 2018-2020 Celer Network
 
 // runtime config helpers, includes chan for os signal etc
 
@@ -12,11 +12,11 @@ import (
 	"os/signal"
 	"sync"
 	"syscall"
+	"time"
 
-	log "github.com/celer-network/goCeler-oss/clog"
-	"github.com/celer-network/goCeler-oss/ctype"
-	"github.com/golang/protobuf/jsonpb"
-	"github.com/golang/protobuf/proto"
+	"github.com/celer-network/goCeler/ctype"
+	"github.com/celer-network/goCeler/utils"
+	"github.com/celer-network/goutils/log"
 )
 
 var (
@@ -26,13 +26,18 @@ var (
 )
 
 const (
-	defaultStreamSendTimeoutS   = uint64(1)
-	defaultOspDepositMultiplier = int64(10)
-	defaultMaxDisputeTimeout    = uint64(20000)
-	defaultMinDisputeTimeout    = uint64(8000)
-	defaultColdBootstrapDeposit = uint64(1e18)
-	defaultMaxPaymentTimeout    = uint64(10000)
-	defaultMaxNumPendingPays    = uint64(200)
+	defaultStreamSendTimeoutS     = uint64(1)
+	defaultOspDepositMultiplier   = int64(10)
+	defaultMaxDisputeTimeout      = uint64(20000)
+	defaultMinDisputeTimeout      = uint64(8000)
+	defaultColdBootstrapDeposit   = uint64(1e18)
+	defaultMaxPaymentTimeout      = uint64(10000)
+	defaultMaxNumPendingPays      = uint64(200)
+	defaultRefillMaxWait          = uint64(180)
+	defaultRefillPoolLowRatio     = float64(0.2)
+	defaultDepositPollingInterval = uint64(10)
+	defaultDepositMinBatchSize    = uint64(10)
+	defaultDepositMaxBatchSize    = uint64(30) // upper bound is around 60 limited by gas
 )
 
 // Init parse the json config file at path and start a goroutine to reload upon syscall.SIGHUP
@@ -68,40 +73,23 @@ func updateConfigFromFile(path string) error {
 		log.Warnln("rtconfig: file read err", err)
 		return err
 	}
-	var newCfg RuntimeConfig
-	err = json.Unmarshal(raw, &newCfg)
+	newCfg := new(RuntimeConfig)
+	err = json.Unmarshal(raw, newCfg)
 	if err != nil {
 		log.Warnln("rtconfig: json parse err", err)
 		return err
 	}
 	lock.Lock()
-	rtc = &newCfg
+	rtc = newCfg
 	lock.Unlock()
-	setLogLevel(rtc.LogLevel)
-	log.Info("New runtime config:", pb2json(&newCfg))
-	return nil
-}
-
-func setLogLevel(level string) {
-	switch level {
-	case "trace":
-		log.SetLevel(log.TraceLevel)
-	case "debug":
-		log.SetLevel(log.DebugLevel)
-	case "info":
-		log.SetLevel(log.InfoLevel)
-	case "warn":
-		log.SetLevel(log.WarnLevel)
-	case "error":
-		log.SetLevel(log.ErrorLevel)
-	case "fatal":
-		log.SetLevel(log.FatalLevel)
-	case "panic":
-		log.SetLevel(log.PanicLevel)
-	default:
-		log.Warn("invalid log level input, set log to InfoLevel by default")
-		log.SetLevel(log.InfoLevel)
+	log.SetLevelByName(rtc.LogLevel)
+	jsonstr, err := utils.PbToJSONString(newCfg)
+	if err == nil { // jsonstr is good
+		log.Info("New runtime config:", jsonstr)
+	} else {
+		log.Warnf("New runtime config applied %+v but json marshal err:%v", newCfg, err)
 	}
+	return nil
 }
 
 // GetOpenChanWaitSecond returns open_chan_wait_s
@@ -198,11 +186,26 @@ func GetErc20ColdBootstrapDeposit(addr []byte) *big.Int {
 	}
 	return ret
 }
+func GetTcbConfigs() *TcbConfigs {
+	lock.RLock()
+	defer lock.RUnlock()
+	return rtc.TcbConfigs
+}
 func GetStandardConfigs() *StandardConfigs {
+	lock.RLock()
+	defer lock.RUnlock()
 	return rtc.StandardConfigs
 }
 func GetOspToOspOpenConfigs() *OspToOspOpenConfigs {
+	lock.RLock()
+	defer lock.RUnlock()
 	return rtc.OspToOspOpenConfigs
+}
+
+func GetRefillConfigs() *RefillConfigs {
+	lock.RLock()
+	defer lock.RUnlock()
+	return rtc.RefillConfigs
 }
 
 func GetMaxPaymentTimeout() uint64 {
@@ -223,11 +226,87 @@ func GetMaxNumPendingPays() uint64 {
 	return rtc.MaxNumPendingPays
 }
 
-func pb2json(pb proto.Message) string {
-	m := jsonpb.Marshaler{}
-	ret, err := m.MarshalToString(pb)
-	if err != nil {
-		log.Error("pb2json err: ", err)
+func GetRefillThreshold(tokenAddr string) *big.Int {
+	refillConfig, tokenRequired := GetRefillConfigs().GetConfig()[tokenAddr]
+	if !tokenRequired {
+		log.Traceln("No refill required. Token address:", tokenAddr)
+		return big.NewInt(0)
 	}
-	return ret
+
+	refillThreshold, success := new(big.Int).SetString(refillConfig.GetThreshold(), 10)
+	if !success {
+		log.Errorln("Can't parse refill threshold in decimal", refillConfig.GetThreshold())
+		return big.NewInt(0)
+	}
+
+	return refillThreshold
+}
+
+func GetRefillAmountAndMaxWait(tokenAddr string) (*big.Int, time.Duration) {
+	maxWait := defaultRefillMaxWait
+	configs := GetRefillConfigs()
+	if configs.GetMaxWaitS() != 0 {
+		maxWait = configs.GetMaxWaitS()
+	}
+	refillConfig, tokenRequired := configs.GetConfig()[tokenAddr]
+	if !tokenRequired {
+		log.Traceln("No refill required. Token address:", tokenAddr)
+		return big.NewInt(0), time.Duration(0)
+	}
+
+	refillAmount, success := new(big.Int).SetString(refillConfig.GetRefillAmount(), 10)
+	if !success {
+		log.Errorln("Can't parse refill threshold in decimal", refillConfig.GetThreshold())
+		return big.NewInt(0), time.Duration(0)
+	}
+
+	return refillAmount, time.Duration(maxWait) * time.Second
+}
+
+func GetRefillPoolThreshold(tokenAddr string) *big.Int {
+	refillConfig, tokenRequired := GetRefillConfigs().GetConfig()[tokenAddr]
+	if !tokenRequired {
+		log.Traceln("No refill required. Token address:", tokenAddr)
+		return big.NewInt(0)
+	}
+
+	poolsize, success := new(big.Float).SetString(refillConfig.GetPoolSize())
+	if !success {
+		log.Errorf("Failed to parse %s in big.Float", refillConfig.GetPoolSize())
+		return big.NewInt(0)
+	}
+	lowratio := defaultRefillPoolLowRatio
+	if refillConfig.GetPoolLowRatio() > 0 {
+		lowratio = refillConfig.GetPoolLowRatio()
+	}
+	threshold := new(big.Int)
+	new(big.Float).Mul(poolsize, big.NewFloat(lowratio)).Int(threshold)
+	return threshold
+}
+
+func GetDepositPollingInterval() uint64 {
+	lock.RLock()
+	defer lock.RUnlock()
+	if rtc.GetDepositConfig().GetPollingIntervalS() == 0 {
+		return defaultDepositPollingInterval
+	}
+	return rtc.GetDepositConfig().GetPollingIntervalS()
+}
+
+func GetDepositMinBatchSize() uint64 {
+	lock.RLock()
+	defer lock.RUnlock()
+	if rtc.GetDepositConfig().GetMinBatchSize() == 0 {
+		return defaultDepositMinBatchSize
+	}
+	return rtc.GetDepositConfig().GetMinBatchSize()
+}
+
+func GetDepositMaxBatchSize() uint64 {
+	lock.RLock()
+	defer lock.RUnlock()
+	if rtc.GetDepositConfig().GetMaxBatchSize() == 0 {
+		return defaultDepositMaxBatchSize
+	}
+	return rtc.GetDepositConfig().GetMaxBatchSize()
 }

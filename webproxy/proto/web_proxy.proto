@@ -1,8 +1,8 @@
-// Copyright 2019 Celer Network
+// Copyright 2019-2020 Celer Network
 
 syntax = "proto3";
 
-option go_package = "github.com/celer-network/goCeler-oss/webproxy/rpc";
+option go_package = "github.com/celer-network/goCeler/webproxy/rpc";
 
 package webproxyrpc;
 

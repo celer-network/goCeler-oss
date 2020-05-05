@@ -1,30 +1,58 @@
-// Copyright 2018-2019 Celer Network
+// Copyright 2018-2020 Celer Network
 
 package dispute
 
 import (
+	"bytes"
 	"fmt"
 	"math/big"
-	"strings"
 
-	"github.com/celer-network/goCeler-oss/chain/channel-eth-go/ledger"
-	log "github.com/celer-network/goCeler-oss/clog"
-	"github.com/celer-network/goCeler-oss/common/event"
-	"github.com/celer-network/goCeler-oss/common/structs"
-	"github.com/celer-network/goCeler-oss/ctype"
-	"github.com/celer-network/goCeler-oss/ledgerview"
-	"github.com/celer-network/goCeler-oss/metrics"
-	"github.com/celer-network/goCeler-oss/monitor"
-	"github.com/celer-network/goCeler-oss/storage"
-	"github.com/celer-network/goCeler-oss/transactor"
+	"github.com/celer-network/goCeler/chain"
+	"github.com/celer-network/goCeler/chain/channel-eth-go/ledger"
+	"github.com/celer-network/goCeler/common"
+	"github.com/celer-network/goCeler/common/event"
+	"github.com/celer-network/goCeler/common/structs"
+	"github.com/celer-network/goCeler/ctype"
+	"github.com/celer-network/goCeler/fsm"
+	"github.com/celer-network/goCeler/ledgerview"
+	"github.com/celer-network/goCeler/metrics"
+	"github.com/celer-network/goCeler/monitor"
+	"github.com/celer-network/goCeler/storage"
+	"github.com/celer-network/goCeler/transactor"
+	"github.com/celer-network/goutils/log"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/core/types"
 )
 
 func (p *Processor) IntendWithdraw(cidFrom ctype.CidType, amount *big.Int, cidTo ctype.CidType) error {
 	log.Infoln("Intend withdraw", cidFrom.Hex(), amount)
+	state, found, err := p.dal.GetChanState(cidFrom)
+	if err != nil {
+		return fmt.Errorf("%x IntendWithdraw err, err %w", cidFrom, err)
+	}
+	if !found {
+		return fmt.Errorf("%x IntendWithdraw err, channel not found", cidFrom)
+	}
+	if state != structs.ChanState_OPENED {
+		return fmt.Errorf("%x IntendWithdraw err, invalid channel state %s", cidFrom, fsm.ChanStateName(state))
+	}
+	receiver, _, _, _, err := ledgerview.GetOnChainWithdrawIntent(cidFrom, p.nodeConfig)
+	if receiver != ctype.ZeroAddr {
+		return fmt.Errorf("previous withdraw still pending")
+	}
+
+	blkNum := p.monitorService.GetCurrentBlockNumber().Uint64()
+	balance, err := ledgerview.GetBalance(p.dal, cidFrom, p.nodeConfig.GetOnChainAddr(), blkNum)
+	if err != nil {
+		log.Error(err)
+		return err
+	}
+	if balance.MyFree.Cmp(amount) < 0 {
+		return fmt.Errorf("insufficient balance: %s", balance.MyFree)
+	}
+
 	receiptChan := make(chan *types.Receipt, 1)
-	_, err := p.transactor.Transact(
+	_, err = p.transactor.Transact(
 		&transactor.TransactionMinedHandler{
 			OnMined: func(receipt *types.Receipt) {
 				receiptChan <- receipt
@@ -32,8 +60,12 @@ func (p *Processor) IntendWithdraw(cidFrom ctype.CidType, amount *big.Int, cidTo
 		},
 		big.NewInt(0),
 		func(transactor bind.ContractTransactor, opts *bind.TransactOpts) (*types.Transaction, error) {
+			chanLedger := p.nodeConfig.GetLedgerContractOf(cidFrom)
+			if chanLedger == nil {
+				return nil, fmt.Errorf("Fail to get ledger for channel: %x", cidFrom)
+			}
 			contract, err2 :=
-				ledger.NewCelerLedgerTransactor(p.nodeConfig.GetLedgerContract().GetAddr(), transactor)
+				ledger.NewCelerLedgerTransactor(chanLedger.GetAddr(), transactor)
 			if err2 != nil {
 				return nil, err2
 			}
@@ -60,8 +92,8 @@ func (p *Processor) ConfirmWithdraw(cid ctype.CidType) error {
 		log.Error("GetOnChainWithdrawIntent failed", err)
 		return err
 	}
-	if receiver != ctype.Hex2Addr(p.nodeConfig.GetOnChainAddr()) {
-		err2 := fmt.Errorf("withdraw receiver not match %s %s", ctype.Addr2Hex(receiver), p.nodeConfig.GetOnChainAddr())
+	if receiver != p.nodeConfig.GetOnChainAddr() {
+		err2 := fmt.Errorf("withdraw receiver not match %s %x", ctype.Addr2Hex(receiver), p.nodeConfig.GetOnChainAddr())
 		log.Error(err2)
 		return err2
 	}
@@ -84,8 +116,12 @@ func (p *Processor) ConfirmWithdraw(cid ctype.CidType) error {
 		},
 		big.NewInt(0),
 		func(transactor bind.ContractTransactor, opts *bind.TransactOpts) (*types.Transaction, error) {
+			chanLedger := p.nodeConfig.GetLedgerContractOf(cid)
+			if chanLedger == nil {
+				return nil, fmt.Errorf("Fail to get ledger for channel: %x", cid)
+			}
 			contract, err2 :=
-				ledger.NewCelerLedgerTransactor(p.nodeConfig.GetLedgerContract().GetAddr(), transactor)
+				ledger.NewCelerLedgerTransactor(chanLedger.GetAddr(), transactor)
 			if err2 != nil {
 				return nil, err2
 			}
@@ -104,7 +140,7 @@ func (p *Processor) ConfirmWithdraw(cid ctype.CidType) error {
 	log.Infof("ConfirmWithdraw transaction 0x%x succeeded", receipt.TxHash.String())
 	err = ledgerview.SyncOnChainBalance(p.dal, cid, p.nodeConfig)
 	if err != nil {
-		err2 := fmt.Errorf("SyncOnChainBalance error: %s", err)
+		err2 := fmt.Errorf("SyncOnChainBalance error: %w", err)
 		log.Error(err2)
 		return err2
 	}
@@ -122,8 +158,12 @@ func (p *Processor) VetoWithdraw(cid ctype.CidType) error {
 		},
 		big.NewInt(0),
 		func(transactor bind.ContractTransactor, opts *bind.TransactOpts) (*types.Transaction, error) {
+			chanLedger := p.nodeConfig.GetLedgerContractOf(cid)
+			if chanLedger == nil {
+				return nil, fmt.Errorf("Fail to get ledger for channel: %x", cid)
+			}
 			contract, err2 :=
-				ledger.NewCelerLedgerTransactor(p.nodeConfig.GetLedgerContract().GetAddr(), transactor)
+				ledger.NewCelerLedgerTransactor(chanLedger.GetAddr(), transactor)
 			if err2 != nil {
 				return nil, err2
 			}
@@ -143,17 +183,19 @@ func (p *Processor) VetoWithdraw(cid ctype.CidType) error {
 	return nil
 }
 
-func (p *Processor) monitorNoncooperativeWithdrawEvent() {
+func (p *Processor) monitorNoncooperativeWithdrawEvent(ledgerContract chain.Contract) {
 	_, monErr := p.monitorService.Monitor(
 		event.IntendWithdraw,
-		p.nodeConfig.GetLedgerContract(),
+		ledgerContract,
 		p.monitorService.GetCurrentBlockNumber(),
 		nil,   /*endBlock*/
 		false, /*quickCatch*/
 		false, /*reset*/
 		func(id monitor.CallbackID, eLog types.Log) {
+			// CAVEAT!!!: suppose we have the same struct of event.
+			// If event struct changes, this monitor does not work.
 			e := &ledger.CelerLedgerIntendWithdraw{}
-			if err := p.nodeConfig.GetLedgerContract().ParseEvent(event.IntendWithdraw, eLog, e); err != nil {
+			if err := ledgerContract.ParseEvent(event.IntendWithdraw, eLog, e); err != nil {
 				log.Error(err)
 				return
 			}
@@ -161,14 +203,14 @@ func (p *Processor) monitorNoncooperativeWithdrawEvent() {
 			txHash := fmt.Sprintf("%x", eLog.TxHash)
 			log.Infoln("Seeing IntendWithdraw event, cid:", cid.Hex(), "receiver", ctype.Addr2Hex(e.Receiver),
 				"amount", e.Amount, "tx hash:", txHash, "callback id:", id, "blkNum:", eLog.BlockNumber)
-			exist, err := p.dal.HasChannelState(cid)
+			_, exist, err := p.dal.GetChanState(cid)
 			if err != nil {
 				log.Error(err)
 				return
 			}
 			if exist {
 				// OSP always veto withdraw if receiver is not itself
-				if e.Receiver != ctype.Hex2Addr(p.nodeConfig.GetOnChainAddr()) {
+				if e.Receiver != p.nodeConfig.GetOnChainAddr() {
 					p.VetoWithdraw(cid)
 					return
 				}
@@ -183,14 +225,16 @@ func (p *Processor) monitorNoncooperativeWithdrawEvent() {
 
 	_, monErr = p.monitorService.Monitor(
 		event.ConfirmWithdraw,
-		p.nodeConfig.GetLedgerContract(),
+		ledgerContract,
 		p.monitorService.GetCurrentBlockNumber(),
 		nil,   /*endBlock*/
 		false, /*quickCatch*/
 		false, /*reset*/
 		func(id monitor.CallbackID, eLog types.Log) {
+			// CAVEAT!!!: suppose we have the same struct of event.
+			// If event struct changes, this monitor does not work.
 			e := &ledger.CelerLedgerConfirmWithdraw{}
-			if err := p.nodeConfig.GetLedgerContract().ParseEvent(event.ConfirmWithdraw, eLog, e); err != nil {
+			if err := ledgerContract.ParseEvent(event.ConfirmWithdraw, eLog, e); err != nil {
 				log.Error(err)
 				return
 			}
@@ -198,20 +242,15 @@ func (p *Processor) monitorNoncooperativeWithdrawEvent() {
 			txHash := fmt.Sprintf("%x", eLog.TxHash)
 			log.Infoln("Seeing ConfirmWithdraw event, cid:", cid.Hex(), "receiver", ctype.Addr2Hex(e.Receiver),
 				"amount", e.WithdrawnAmount, "tx hash:", txHash, "callback id:", id, "blkNum:", eLog.BlockNumber)
-			exist, err := p.dal.HasChannelState(cid)
+			peer, exist, err := p.dal.GetChanPeer(cid)
 			if err != nil {
-				log.Error(err)
+				log.Error(err, cid.Hex())
 				return
 			}
 			if exist {
-				selfStr := p.nodeConfig.GetOnChainAddr()
-				peerStr, err := p.dal.GetPeer(cid)
-				if err != nil {
-					log.Error(err)
-					return
-				}
+				self := p.nodeConfig.GetOnChainAddr()
 				receiver := e.Receiver
-				if receiver != ctype.Hex2Addr(selfStr) && receiver != ctype.Hex2Addr(peerStr) {
+				if receiver != self && receiver != peer {
 					return
 				}
 				if len(e.Deposits) != 2 || len(e.Withdrawals) != 2 {
@@ -219,7 +258,7 @@ func (p *Processor) monitorNoncooperativeWithdrawEvent() {
 					return
 				}
 				var myIndex int
-				if strings.Compare(selfStr, peerStr) < 0 {
+				if bytes.Compare(self.Bytes(), peer.Bytes()) < 0 {
 					myIndex = 0
 				} else {
 					myIndex = 1
@@ -231,12 +270,15 @@ func (p *Processor) monitorNoncooperativeWithdrawEvent() {
 					PeerWithdrawal: e.Withdrawals[1-myIndex],
 				}
 				updateBalanceTx := func(tx *storage.DALTx, args ...interface{}) error {
-					balance, err2 := tx.GetOnChainBalance(cid)
+					balance, found, err2 := tx.GetOnChainBalance(cid)
 					if err2 != nil {
-						return fmt.Errorf("GetOnChainBalance err %s", err2)
+						return fmt.Errorf("GetOnChainBalance err %w", err2)
+					}
+					if !found {
+						return fmt.Errorf("GetOnChainBalance err %w", common.ErrChannelNotFound)
 					}
 					onChainBalance.PendingWithdrawal = balance.PendingWithdrawal
-					return tx.PutOnChainBalance(cid, onChainBalance)
+					return tx.UpdateOnChainBalance(cid, onChainBalance)
 				}
 				if err := p.dal.Transactional(updateBalanceTx); err != nil {
 					log.Error(err)

@@ -1,99 +1,64 @@
-// Copyright 2018-2019 Celer Network
+// Copyright 2018-2020 Celer Network
 
 package messager
 
 import (
 	"bytes"
-	"math/big"
 
-	log "github.com/celer-network/goCeler-oss/clog"
-	"github.com/celer-network/goCeler-oss/common"
-	"github.com/celer-network/goCeler-oss/common/intfs"
-	"github.com/celer-network/goCeler-oss/ctype"
-	"github.com/celer-network/goCeler-oss/entity"
-	"github.com/celer-network/goCeler-oss/handlers"
-	"github.com/celer-network/goCeler-oss/pem"
-	"github.com/celer-network/goCeler-oss/rpc"
-	"github.com/celer-network/goCeler-oss/storage"
-	"github.com/celer-network/goCeler-oss/utils"
-	"github.com/golang/protobuf/ptypes/any"
+	"github.com/celer-network/goCeler/common"
+	"github.com/celer-network/goCeler/common/intfs"
+	"github.com/celer-network/goCeler/ctype"
+	"github.com/celer-network/goCeler/deposit"
+	"github.com/celer-network/goCeler/entity"
+	"github.com/celer-network/goCeler/handlers"
+	"github.com/celer-network/goCeler/route"
+	"github.com/celer-network/goCeler/rpc"
+	"github.com/celer-network/goCeler/storage"
+	"github.com/celer-network/goCeler/utils"
+	"github.com/celer-network/goutils/log"
 )
-
-type Sender interface {
-	SendCondPayRequest(pay *entity.ConditionalPay, note *any.Any, logEntry *pem.PayEventMessage) error
-
-	ForwardCondPayRequestMsg(*common.MsgFrame) error
-
-	SendOnePaySettleRequest(
-		pay *entity.ConditionalPay,
-		payAmt *big.Int,
-		reason rpc.PaymentSettleReason, logEntry *pem.PayEventMessage) error
-
-	SendPaysSettleRequest(
-		pays []*entity.ConditionalPay,
-		payAmts []*big.Int, // total amount for all setted payments
-		reason rpc.PaymentSettleReason, logEntry *pem.PayEventMessage) ([]*entity.ConditionalPay, error)
-
-	ForwardPaySettleRequestMsg(frame *common.MsgFrame) error
-
-	SendOnePaySettleProof(
-		payID ctype.PayIDType,
-		reason rpc.PaymentSettleReason,
-		logEntry *pem.PayEventMessage) error
-
-	SendPaysSettleProof(
-		payIDs []ctype.PayIDType,
-		reason rpc.PaymentSettleReason,
-		logEntry *pem.PayEventMessage) error
-
-	ForwardPaySettleProofMsg(frame *common.MsgFrame) error
-
-	ForwardCelerMsg(peerTo string, msg *rpc.CelerMsg) error
-
-	AckMsgQueue(cid ctype.CidType, ack uint64, nack uint64) error
-
-	ResendMsgQueue(cid ctype.CidType, seqnum uint64) error
-
-	GetMsgQueue(cid ctype.CidType, seqnum uint64) (*rpc.CelerMsg, bool)
-
-	IsDirectPay(pay *entity.ConditionalPay, peer string) bool
-}
 
 // Messager sends hop and flow messages
 type Messager struct {
-	nodeConfig      common.GlobalNodeConfig
-	signer          common.Signer
-	streamWriter    common.StreamWriter
-	channelRouter   common.StateChannelRouter
-	monitorService  intfs.MonitorService
-	serverForwarder handlers.ForwardToServerCallback
-	dal             *storage.DAL
-	msgQueue        *MsgQueue
+	nodeConfig       common.GlobalNodeConfig
+	signer           common.Signer
+	streamWriter     common.StreamWriter
+	routeForwarder   *route.Forwarder
+	monitorService   intfs.MonitorService
+	serverForwarder  handlers.ForwardToServerCallback
+	depositProcessor *deposit.Processor
+	dal              *storage.DAL
+	msgQueue         *MsgQueue
+	isOSP            bool
 }
 
 func NewMessager(
 	nodeConfig common.GlobalNodeConfig,
 	signer common.Signer,
 	streamWriter common.StreamWriter,
-	channelRouter common.StateChannelRouter,
+	routeForwarder *route.Forwarder,
 	monitorService intfs.MonitorService,
 	serverForwarder handlers.ForwardToServerCallback,
+	depositProcessor *deposit.Processor,
 	dal *storage.DAL,
+	isOSP bool,
 ) *Messager {
 	return &Messager{
-		nodeConfig:      nodeConfig,
-		signer:          signer,
-		streamWriter:    streamWriter,
-		channelRouter:   channelRouter,
-		monitorService:  monitorService,
-		serverForwarder: serverForwarder,
-		dal:             dal,
-		msgQueue:        NewMsqQueue(dal, streamWriter, nodeConfig.GetOnChainAddr()),
+		nodeConfig:       nodeConfig,
+		signer:           signer,
+		streamWriter:     streamWriter,
+		routeForwarder:   routeForwarder,
+		monitorService:   monitorService,
+		serverForwarder:  serverForwarder,
+		depositProcessor: depositProcessor,
+		dal:              dal,
+		isOSP:            isOSP,
+		msgQueue:         NewMsqQueue(dal, streamWriter, nodeConfig.GetOnChainAddr()),
 	}
 }
 
-func (m *Messager) ForwardCelerMsg(peerTo string, msg *rpc.CelerMsg) error {
-	if isLocalPeer, err := m.serverForwarder(peerTo, msg); err != nil {
+func (m *Messager) ForwardCelerMsg(peerTo ctype.Addr, msg *rpc.CelerMsg) error {
+	if isLocalPeer, err := m.serverForwarder(peerTo, true, msg); err != nil {
 		return err
 	} else if isLocalPeer {
 		return m.streamWriter.WriteCelerMsg(peerTo, msg)
@@ -102,12 +67,12 @@ func (m *Messager) ForwardCelerMsg(peerTo string, msg *rpc.CelerMsg) error {
 }
 
 // Enable message queue processing for this peer address.
-func (m *Messager) EnableMsgQueue(peer string) error {
+func (m *Messager) EnableMsgQueue(peer ctype.Addr) error {
 	return m.msgQueue.AddPeer(peer)
 }
 
 // Disable message queue processing for this peer address.
-func (m *Messager) DisableMsgQueue(peer string) error {
+func (m *Messager) DisableMsgQueue(peer ctype.Addr) error {
 	return m.msgQueue.RemovePeer(peer)
 }
 
@@ -131,24 +96,22 @@ func (m *Messager) GetMsgQueue(cid ctype.CidType, seqnum uint64) (*rpc.CelerMsg,
 // looked up.  For now only consider unconditional payments where I am the
 // source and the destination is my next hop peer.  This is typical of fee
 // (client to OSP) and prize (OSP to client) payments in centralized games.
-func (m *Messager) IsDirectPay(pay *entity.ConditionalPay, peer string) bool {
+func (m *Messager) IsDirectPay(pay *entity.ConditionalPay, peer ctype.Addr) bool {
 	if len(pay.GetConditions()) > 0 {
 		return false
 	}
 
-	myAddr := m.nodeConfig.GetOnChainAddrBytes()
-	if bytes.Compare(pay.GetSrc(), myAddr) != 0 {
+	if bytes.Compare(pay.GetSrc(), m.nodeConfig.GetOnChainAddr().Bytes()) != 0 {
 		return false
 	}
 
-	dest := ctype.Bytes2Hex(pay.GetDest())
-	if peer == "" {
+	dest := ctype.Bytes2Addr(pay.GetDest())
+	if peer == ctype.ZeroAddr {
 		var err error
-		token := pay.GetTransferFunc().GetMaxTransfer().GetToken()
-		tokenAddr := utils.GetTokenAddrStr(token)
-		_, peer, err = m.channelRouter.LookupNextChannelOnToken(dest, tokenAddr)
+		tokenAddr := utils.GetTokenAddr(pay.GetTransferFunc().GetMaxTransfer().GetToken())
+		_, peer, err = m.routeForwarder.LookupNextChannelOnToken(dest, tokenAddr)
 		if err != nil {
-			log.Warnln("IsDirectPay: cannot determine next-hop peer:", dest, tokenAddr, err)
+			log.Warnln("IsDirectPay: cannot determine next-hop peer:", dest.Hex(), tokenAddr.Hex(), err)
 			return false
 		}
 	}

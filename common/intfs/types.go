@@ -1,4 +1,4 @@
-// Copyright 2018 Celer Network
+// Copyright 2018-2020 Celer Network
 //
 // Common interfaces used across multiple Celer packages.
 // It exists to avoid package dependency cycles.
@@ -8,8 +8,8 @@ package intfs
 import (
 	"math/big"
 
-	"github.com/celer-network/goCeler-oss/chain"
-	"github.com/celer-network/goCeler-oss/monitor"
+	"github.com/celer-network/goCeler/chain"
+	"github.com/celer-network/goCeler/monitor"
 	"github.com/ethereum/go-ethereum/core/types"
 )
 
@@ -27,4 +27,5 @@ type MonitorService interface {
 	MonitorEvent(monitor.Event, bool) (monitor.CallbackID, error)
 	RemoveDeadline(id monitor.CallbackID)
 	RemoveEvent(id monitor.CallbackID)
+	Close()
 }

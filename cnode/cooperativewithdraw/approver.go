@@ -1,19 +1,22 @@
-// Copyright 2018-2019 Celer Network
+// Copyright 2018-2020 Celer Network
 
 package cooperativewithdraw
 
 import (
 	"errors"
 
-	log "github.com/celer-network/goCeler-oss/clog"
-	"github.com/celer-network/goCeler-oss/ctype"
-	"github.com/celer-network/goCeler-oss/rpc"
+	"github.com/celer-network/goCeler/common"
+	"github.com/celer-network/goCeler/ctype"
+	"github.com/celer-network/goCeler/rpc"
+	"github.com/celer-network/goCeler/utils"
+	"github.com/celer-network/goutils/log"
 	"github.com/golang/protobuf/proto"
 )
 
-func (p *Processor) ProcessRequest(
-	request *rpc.CooperativeWithdrawRequest) error {
+func (p *Processor) ProcessRequest(frame *common.MsgFrame) error {
+	request := frame.Message.GetWithdrawRequest()
 	cid := ctype.Bytes2Cid(request.WithdrawInfo.ChannelId)
+	frame.LogEntry.FromCid = ctype.Cid2Hex(cid)
 	return p.sendResponse(cid, request)
 }
 
@@ -21,19 +24,22 @@ func (p *Processor) sendResponse(
 	cid ctype.CidType, request *rpc.CooperativeWithdrawRequest) error {
 	withdrawInfo := request.WithdrawInfo
 
-	peer, err := p.dal.GetPeer(cid)
+	peer, found, err := p.dal.GetChanPeer(cid)
 	if err != nil {
 		return err
+	}
+	if !found {
+		return common.ErrChannelNotFound
 	}
 	serializedInfo, err := proto.Marshal(withdrawInfo)
 	if err != nil {
 		return err
 	}
-	if !p.signer.SigIsValid(peer, serializedInfo, request.RequesterSig) {
+	if !utils.SigIsValid(peer, serializedInfo, request.RequesterSig) {
 		return errors.New("Invalid CooperativeWithdrawRequest signature")
 	}
 
-	approverSig, err := p.signer.Sign(serializedInfo)
+	approverSig, err := p.signer.SignEthMessage(serializedInfo)
 	if err != nil {
 		return err
 	}
@@ -53,7 +59,8 @@ func (p *Processor) sendResponse(
 			WithdrawResponse: response,
 		},
 	}
-	log.Infoln("Sending withdraw response of seq", withdrawInfo.SeqNum, "to", peer)
+	log.Infof("Sending cooperative withdraw response to %s. %s",
+		ctype.Addr2Hex(peer), utils.PrintCooperativeWithdrawInfo(withdrawInfo))
 	err = p.streamWriter.WriteCelerMsg(peer, msg)
 	if err != nil {
 		return err

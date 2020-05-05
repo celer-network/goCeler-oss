@@ -4,25 +4,24 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"math/big"
 	"regexp"
 	"strings"
 	"time"
 
-	"github.com/celer-network/goCeler-oss/chain/channel-eth-go/balancelimit"
-	"github.com/celer-network/goCeler-oss/chain/channel-eth-go/channel"
-	"github.com/celer-network/goCeler-oss/chain/channel-eth-go/ethpool"
-	"github.com/celer-network/goCeler-oss/chain/channel-eth-go/ledger"
-	"github.com/celer-network/goCeler-oss/chain/channel-eth-go/ledgerstruct"
-	"github.com/celer-network/goCeler-oss/chain/channel-eth-go/migrate"
-	"github.com/celer-network/goCeler-oss/chain/channel-eth-go/operation"
-	"github.com/celer-network/goCeler-oss/chain/channel-eth-go/payregistry"
-	"github.com/celer-network/goCeler-oss/chain/channel-eth-go/payresolver"
-	"github.com/celer-network/goCeler-oss/chain/channel-eth-go/routerregistry"
-	"github.com/celer-network/goCeler-oss/chain/channel-eth-go/virtresolver"
-	"github.com/celer-network/goCeler-oss/chain/channel-eth-go/wallet"
-
+	"github.com/celer-network/goCeler/chain/channel-eth-go/balancelimit"
+	"github.com/celer-network/goCeler/chain/channel-eth-go/channel"
+	"github.com/celer-network/goCeler/chain/channel-eth-go/ethpool"
+	"github.com/celer-network/goCeler/chain/channel-eth-go/ledger"
+	"github.com/celer-network/goCeler/chain/channel-eth-go/ledgerstruct"
+	"github.com/celer-network/goCeler/chain/channel-eth-go/migrate"
+	"github.com/celer-network/goCeler/chain/channel-eth-go/operation"
+	"github.com/celer-network/goCeler/chain/channel-eth-go/payregistry"
+	"github.com/celer-network/goCeler/chain/channel-eth-go/payresolver"
+	"github.com/celer-network/goCeler/chain/channel-eth-go/routerregistry"
+	"github.com/celer-network/goCeler/chain/channel-eth-go/virtresolver"
+	"github.com/celer-network/goCeler/chain/channel-eth-go/wallet"
+	"github.com/celer-network/goutils/log"
 	ethereum "github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -51,7 +50,7 @@ func DeployRouterRegistry(
 	auth *bind.TransactOpts,
 	conn *ethclient.Client,
 	blockDelay uint64) common.Address {
-	log.Println("Deploying RouterRegistry contract...")
+	log.Infoln("Deploying RouterRegistry contract...")
 	routerRegistryAddr, tx, _, err := routerregistry.DeployRouterRegistry(auth, conn)
 	if err != nil {
 		log.Fatalf("Failed to deploy RouterRegistry contract: %v", err)
@@ -60,8 +59,8 @@ func DeployRouterRegistry(
 	if err != nil {
 		log.Fatalf("Failed to WaitMined RouterRegistry: %v", err)
 	}
-	log.Printf("Transaction status: %x", receipt.Status)
-	log.Printf("Deployed RouterRegistry contract at 0x%x\n", routerRegistryAddr)
+	log.Infof("Transaction status: %x", receipt.Status)
+	log.Infof("Deployed RouterRegistry contract at 0x%x\n", routerRegistryAddr)
 	return routerRegistryAddr
 }
 
@@ -73,7 +72,7 @@ func DeployAll(
 	blockDelay uint64) CelerChannelAddrBundle {
 	/********** contracts without need of linking **********/
 	// Deploy VirtContractResolver contract
-	log.Println("Deploying VirtContractResolver contract...")
+	log.Infoln("Deploying VirtContractResolver contract...")
 	virtresolverAddr, tx, _, err := virtresolver.DeployVirtContractResolver(auth, conn)
 	if err != nil {
 		log.Fatalf("Failed to deploy VirtContractResolver contract: %v", err)
@@ -82,11 +81,11 @@ func DeployAll(
 	if err != nil {
 		log.Fatalf("Failed to WaitMined VirtContractResolver: %v", err)
 	}
-	log.Printf("Transaction status: %x", receipt.Status)
-	log.Printf("Deployed VirtContractResolver contract at 0x%x\n", virtresolverAddr)
+	log.Infof("Transaction status: %x", receipt.Status)
+	log.Infof("Deployed VirtContractResolver contract at 0x%x\n", virtresolverAddr)
 
 	// Deploy EthPool contract
-	log.Println("Deploying EthPool contract...")
+	log.Infoln("Deploying EthPool contract...")
 	ethPoolAddr, tx, _, err := ethpool.DeployEthPool(auth, conn)
 	if err != nil {
 		log.Fatalf("Failed to deploy EthPool contract: %v", err)
@@ -95,11 +94,11 @@ func DeployAll(
 	if err != nil {
 		log.Fatalf("Failed to WaitMined EthPool: %v", err)
 	}
-	log.Printf("Transaction status: %x", receipt.Status)
-	log.Printf("Deployed EthPool contract at 0x%x\n", ethPoolAddr)
+	log.Infof("Transaction status: %x", receipt.Status)
+	log.Infof("Deployed EthPool contract at 0x%x\n", ethPoolAddr)
 
 	// Deploy PayRegistry contract
-	log.Println("Deploying PayRegistry contract...")
+	log.Infoln("Deploying PayRegistry contract...")
 	payRegistryAddr, tx, _, err := payregistry.DeployPayRegistry(auth, conn)
 	if err != nil {
 		log.Fatalf("Failed to deploy PayRegistry contract: %v", err)
@@ -108,11 +107,11 @@ func DeployAll(
 	if err != nil {
 		log.Fatalf("Failed to WaitMined PayRegistry: %v", err)
 	}
-	log.Printf("Transaction status: %x", receipt.Status)
-	log.Printf("Deployed PayRegistry contract at 0x%x\n", payRegistryAddr)
+	log.Infof("Transaction status: %x", receipt.Status)
+	log.Infof("Deployed PayRegistry contract at 0x%x\n", payRegistryAddr)
 
 	// Deploy PayResolver contract
-	log.Println("Deploying PayResolver contract...")
+	log.Infoln("Deploying PayResolver contract...")
 	payResolverAddr, tx, _, err := payresolver.DeployPayResolver(auth, conn, payRegistryAddr, virtresolverAddr)
 	if err != nil {
 		log.Fatalf("Failed to deploy PayResolver contract: %v", err)
@@ -121,11 +120,11 @@ func DeployAll(
 	if err != nil {
 		log.Fatalf("Failed to WaitMined PayResolver: %v", err)
 	}
-	log.Printf("Transaction status: %x", receipt.Status)
-	log.Printf("Deployed PayResolver contract at 0x%x\n", payResolverAddr)
+	log.Infof("Transaction status: %x", receipt.Status)
+	log.Infof("Deployed PayResolver contract at 0x%x\n", payResolverAddr)
 
 	// Deploy CelerWallet contract
-	log.Println("Deploying CelerWallet contract...")
+	log.Infoln("Deploying CelerWallet contract...")
 	walletAddr, tx, _, err := wallet.DeployCelerWallet(auth, conn)
 	if err != nil {
 		log.Fatalf("Failed to deploy CelerWallet contract: %v", err)
@@ -134,11 +133,11 @@ func DeployAll(
 	if err != nil {
 		log.Fatalf("Failed to WaitMined CelerWallet: %v", err)
 	}
-	log.Printf("Transaction status: %x", receipt.Status)
-	log.Printf("Deployed CelerWallet contract at 0x%x\n", walletAddr)
+	log.Infof("Transaction status: %x", receipt.Status)
+	log.Infof("Deployed CelerWallet contract at 0x%x\n", walletAddr)
 
 	// Deploy LedgerStruct contract
-	log.Println("Deploying LedgerStruct contract...")
+	log.Infoln("Deploying LedgerStruct contract...")
 	ledgerstructAddr, tx, _, err := ledgerstruct.DeployLedgerStruct(auth, conn)
 	if err != nil {
 		log.Fatalf("Failed to deploy LedgerStruct contract: %v", err)
@@ -147,12 +146,12 @@ func DeployAll(
 	if err != nil {
 		log.Fatalf("Failed to WaitMined LedgerStruct: %v", err)
 	}
-	log.Printf("Transaction status: %x", receipt.Status)
-	log.Printf("Deployed LedgerStruct contract at 0x%x\n", ledgerstructAddr)
+	log.Infof("Transaction status: %x", receipt.Status)
+	log.Infof("Deployed LedgerStruct contract at 0x%x\n", ledgerstructAddr)
 
 	/********** contracts with need of linking **********/
 	// Deploy LedgerChannel contract
-	log.Println("Deploying LedgerChannel contract...")
+	log.Infoln("Deploying LedgerChannel contract...")
 	channelAddr, tx, _, err := DeployContractWithLinks(
 		auth,
 		conn,
@@ -167,11 +166,11 @@ func DeployAll(
 	if err != nil {
 		log.Fatalf("Failed to WaitMined LedgerChannel: %v", err)
 	}
-	log.Printf("Transaction status: %x", receipt.Status)
-	log.Printf("Deployed LedgerChannel contract at 0x%x\n", channelAddr)
+	log.Infof("Transaction status: %x", receipt.Status)
+	log.Infof("Deployed LedgerChannel contract at 0x%x\n", channelAddr)
 
 	// Deploy LedgerBalanceLimit contract
-	log.Println("Deploying LedgerBalanceLimit contract...")
+	log.Infoln("Deploying LedgerBalanceLimit contract...")
 	balancelimitAddr, tx, _, err := DeployContractWithLinks(
 		auth,
 		conn,
@@ -186,11 +185,11 @@ func DeployAll(
 	if err != nil {
 		log.Fatalf("Failed to WaitMined LedgerBalanceLimit: %v", err)
 	}
-	log.Printf("Transaction status: %x", receipt.Status)
-	log.Printf("Deployed LedgerBalanceLimit contract at 0x%x\n", balancelimitAddr)
+	log.Infof("Transaction status: %x", receipt.Status)
+	log.Infof("Deployed LedgerBalanceLimit contract at 0x%x\n", balancelimitAddr)
 
 	// Deploy LedgerOperation contract
-	log.Println("Deploying LedgerOperation contract...")
+	log.Infoln("Deploying LedgerOperation contract...")
 	operationAddr, tx, _, err := DeployContractWithLinks(
 		auth,
 		conn,
@@ -205,11 +204,11 @@ func DeployAll(
 	if err != nil {
 		log.Fatalf("Failed to WaitMined LedgerOperation: %v", err)
 	}
-	log.Printf("Transaction status: %x", receipt.Status)
-	log.Printf("Deployed LedgerOperation contract at 0x%x\n", operationAddr)
+	log.Infof("Transaction status: %x", receipt.Status)
+	log.Infof("Deployed LedgerOperation contract at 0x%x\n", operationAddr)
 
 	// Deploy LedgerMigrate contract
-	log.Println("Deploying LedgerMigrate contract...")
+	log.Infoln("Deploying LedgerMigrate contract...")
 	migrateAddr, tx, _, err := DeployContractWithLinks(
 		auth,
 		conn,
@@ -228,11 +227,11 @@ func DeployAll(
 	if err != nil {
 		log.Fatalf("Failed to WaitMined LedgerMigrate: %v", err)
 	}
-	log.Printf("Transaction status: %x", receipt.Status)
-	log.Printf("Deployed LedgerMigrate contract at 0x%x\n", migrateAddr)
+	log.Infof("Transaction status: %x", receipt.Status)
+	log.Infof("Deployed LedgerMigrate contract at 0x%x\n", migrateAddr)
 
 	// Deploy CelerLedger contract
-	log.Println("Deploying CelerLedger contract...")
+	log.Infoln("Deploying CelerLedger contract...")
 	ledgerAddr, tx, _, err := DeployContractWithLinks(
 		auth,
 		conn,
@@ -256,8 +255,8 @@ func DeployAll(
 	if err != nil {
 		log.Fatalf("Failed to WaitMined CelerLedger: %v", err)
 	}
-	log.Printf("Transaction status: %x", receipt.Status)
-	log.Printf("Deployed CelerLedger contract at 0x%x\n", ledgerAddr)
+	log.Infof("Transaction status: %x", receipt.Status)
+	log.Infof("Deployed CelerLedger contract at 0x%x\n", ledgerAddr)
 
 	// return addresses of deployed contracts
 	return CelerChannelAddrBundle{
@@ -333,7 +332,7 @@ func WaitMinedWithTxHash(ctx context.Context, ec *ethclient.Client,
 	for {
 		receipt, rerr := ec.TransactionReceipt(ctx, txHashBytes)
 		if rerr == nil {
-			log.Printf("Transaction mined. Waiting for %d block confirmations", blockDelay)
+			log.Infof("Transaction mined. Waiting for %d block confirmations", blockDelay)
 			if blockDelay == 0 {
 				return receipt, rerr
 			}
@@ -360,7 +359,7 @@ func WaitMinedWithTxHash(ctx context.Context, ec *ethclient.Client,
 		if err == nil && ddl.Cmp(latestBlockHeader.Number) < 0 {
 			receipt, rerr := ec.TransactionReceipt(ctx, txHashBytes)
 			if rerr == nil {
-				log.Println("tx confirmed!")
+				log.Infoln("tx confirmed!")
 				return receipt, rerr
 			} else if rerr == ethereum.NotFound || rerr.Error() == missingFieldErr {
 				return nil, errors.New("tx is dropped due to chain re-org")

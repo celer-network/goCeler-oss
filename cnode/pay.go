@@ -1,25 +1,26 @@
-// Copyright 2019 Celer Network
+// Copyright 2019-2020 Celer Network
 
 package cnode
 
 import (
 	"bytes"
-	"errors"
+	"fmt"
 	"math/big"
 	"math/rand"
 	"time"
 
-	log "github.com/celer-network/goCeler-oss/clog"
-	"github.com/celer-network/goCeler-oss/common"
-	"github.com/celer-network/goCeler-oss/common/event"
-	"github.com/celer-network/goCeler-oss/config"
-	"github.com/celer-network/goCeler-oss/ctype"
-	"github.com/celer-network/goCeler-oss/entity"
-	"github.com/celer-network/goCeler-oss/fsm"
-	"github.com/celer-network/goCeler-oss/ledgerview"
-	"github.com/celer-network/goCeler-oss/pem"
-	"github.com/celer-network/goCeler-oss/rpc"
-	"github.com/celer-network/goCeler-oss/utils"
+	"github.com/celer-network/goCeler/common"
+	"github.com/celer-network/goCeler/common/event"
+	enums "github.com/celer-network/goCeler/common/structs"
+	"github.com/celer-network/goCeler/config"
+	"github.com/celer-network/goCeler/ctype"
+	"github.com/celer-network/goCeler/entity"
+	"github.com/celer-network/goCeler/fsm"
+	"github.com/celer-network/goCeler/ledgerview"
+	"github.com/celer-network/goCeler/pem"
+	"github.com/celer-network/goCeler/rpc"
+	"github.com/celer-network/goCeler/utils"
+	"github.com/celer-network/goutils/log"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/any"
@@ -47,49 +48,46 @@ func (c *CNode) OnSendToken(sendCallback event.OnSendingTokenCallback) {
 
 // Similar to EstablishCondPayOnToken. This will add hash lock condition to pay condition and set time stamp.
 func (c *CNode) AddBooleanPay(newPay *entity.ConditionalPay, note *any.Any) (ctype.PayIDType, error) {
-	tokenAddr := utils.GetTokenAddrStr(newPay.TransferFunc.MaxTransfer.Token)
-	if tokenAddr == "" {
+	if utils.GetTokenAddr(newPay.TransferFunc.MaxTransfer.Token) == ctype.InvalidTokenAddr {
 		return ctype.ZeroPayID, common.ErrUnknownTokenType
 	}
 
 	newPay.PayTimestamp = uint64(time.Now().UnixNano())
-	directPay := c.messager.IsDirectPay(newPay, "")
+	directPay := c.messager.IsDirectPay(newPay, ctype.ZeroAddr)
 
 	// Skip prepending HL if it's already there or for direct-pay.
+	var hashStr, secretStr string
 	skipPrependHL := directPay || (len(newPay.GetConditions()) > 0 && newPay.Conditions[0].GetHashLock() != nil)
 	if !skipPrependHL {
 		// Prepend HL condition if there is none.
 		hlCond, secret, hash := newHashLockCond()
-		err := c.dal.PutSecretRegistry(ctype.Bytes2Hex(hash), ctype.Bytes2Hex(secret))
-		if err != nil {
-			return ctype.ZeroPayID, errors.New("SECRET_EXISTS")
-		}
+		hashStr = ctype.Bytes2Hex(hash)
+		secretStr = ctype.Bytes2Hex(secret)
 		newPay.Conditions = append([]*entity.Condition{hlCond}, newPay.Conditions...)
 	}
 
 	newPay.PayResolver = c.nodeConfig.GetPayResolverContract().GetAddr().Bytes()
 	payID := ctype.Pay2PayID(newPay)
+	if !skipPrependHL {
+		err := c.dal.InsertSecret(hashStr, secretStr, payID)
+		if err != nil {
+			log.Errorln("InsertSecret err", hashStr, secretStr, payID.Hex(), err)
+			return ctype.ZeroPayID, fmt.Errorf("InsertSecret err %w", err)
+		}
+	}
+
+	logEntry := pem.NewPem(c.nodeConfig.GetRPCAddr())
+	logEntry.Type = pem.PayMessageType_SEND_TOKEN_API
+	logEntry.PayId = ctype.PayID2Hex(payID)
+	logEntry.Src = ctype.Addr2Hex(c.nodeConfig.GetOnChainAddr())
+	logEntry.Dst = ctype.Bytes2Hex(newPay.GetDest())
+	logEntry.DirectPay = directPay
 
 	newPayBytes, err := proto.Marshal(newPay)
 	if err != nil {
 		return ctype.ZeroPayID, err
 	}
-	err = c.dal.PutConditionalPay(newPayBytes)
-	if err != nil {
-		return ctype.ZeroPayID, err
-	}
-	if note != nil {
-		err = c.dal.PutPayNote(newPay, note)
-		if err != nil {
-			return ctype.ZeroPayID, err
-		}
-	}
-	logEntry := pem.NewPem(c.nodeConfig.GetRPCAddr())
-	logEntry.Type = pem.PayMessageType_SEND_TOKEN_API
-	logEntry.PayId = ctype.PayID2Hex(ctype.Pay2PayID(newPay))
-	logEntry.Dst = ctype.Bytes2Hex(newPay.GetDest())
-	logEntry.DirectPay = directPay
-	err = c.messager.SendCondPayRequest(newPay, note, logEntry)
+	err = c.messager.SendCondPayRequest(newPayBytes, note, logEntry)
 	if err != nil {
 		logEntry.Error = append(logEntry.Error, err.Error())
 		payID = ctype.ZeroPayID
@@ -99,27 +97,40 @@ func (c *CNode) AddBooleanPay(newPay *entity.ConditionalPay, note *any.Any) (cty
 }
 
 func (c *CNode) ConfirmBooleanPay(payID ctype.PayIDType) error {
-	pay, _, err := c.dal.GetConditionalPay(payID)
+	pay, _, found, err := c.dal.GetPayment(payID)
 	if err != nil {
 		return err
+	}
+	if !found {
+		return common.ErrPayNotFound
 	}
 	amt := new(big.Int).SetBytes(pay.TransferFunc.MaxTransfer.Receiver.Amt)
 	logEntry := pem.NewPem(c.nodeConfig.GetRPCAddr())
+	logEntry.Type = pem.PayMessageType_CONFIRM_BOOLEAN_PAY_API
 	logEntry.PayId = ctype.PayID2Hex(payID)
-	return c.messager.SendOnePaySettleRequest(pay, amt, rpc.PaymentSettleReason_PAY_PAID_MAX, logEntry)
+	err = c.messager.SendOnePaySettleRequest(pay, amt, rpc.PaymentSettleReason_PAY_PAID_MAX, logEntry)
+	if err != nil {
+		logEntry.Error = append(logEntry.Error, err.Error())
+	}
+	pem.CommitPem(logEntry)
+	return err
 }
 
 func (c *CNode) RejectBooleanPay(payID ctype.PayIDType) error {
-	pay, _, err := c.dal.GetConditionalPay(payID)
+	pay, _, found, err := c.dal.GetPayment(payID)
 	if err != nil {
 		return err
 	}
-	if !bytes.Equal(pay.Dest, ctype.Hex2Bytes(c.EthAddress)) {
+	if !found {
+		return common.ErrPayNotFound
+	}
+	if !bytes.Equal(pay.Dest, c.EthAddress.Bytes()) {
 		// only destination can cancel pay
 		return common.ErrPayDestMismatch
 	}
 	logEntry := pem.NewPem(c.nodeConfig.GetRPCAddr())
 	logEntry.Type = pem.PayMessageType_REJECT_BOOLEAN_PAY_API
+	logEntry.PayId = ctype.PayID2Hex(payID)
 	err = c.messager.SendOnePaySettleProof(payID, rpc.PaymentSettleReason_PAY_REJECTED, logEntry)
 	if err != nil {
 		logEntry.Error = append(logEntry.Error, err.Error())
@@ -129,11 +140,14 @@ func (c *CNode) RejectBooleanPay(payID ctype.PayIDType) error {
 }
 
 func (c *CNode) SettleOnChainResolvedPay(payID ctype.PayIDType) error {
-	pay, _, err := c.dal.GetConditionalPay(payID)
+	pay, _, found, err := c.dal.GetPayment(payID)
 	if err != nil {
 		return err
 	}
-	if !bytes.Equal(pay.Dest, ctype.Hex2Bytes(c.EthAddress)) {
+	if !found {
+		return common.ErrPayNotFound
+	}
+	if !bytes.Equal(pay.Dest, c.EthAddress.Bytes()) {
 		// only destination can send onchain resolved pay settle proof
 		return common.ErrPayDestMismatch
 	}
@@ -148,72 +162,50 @@ func (c *CNode) SettleOnChainResolvedPay(payID ctype.PayIDType) error {
 }
 
 func (c *CNode) SettleExpiredPays(cid ctype.CidType) error {
-	channelSelf, _, err := c.dal.GetSimplexPaymentChannel(cid, c.nodeConfig.GetOnChainAddr())
+	selfSimplex, _, peerSimplex, _, found, err := c.dal.GetDuplexChannel(cid)
 	if err != nil {
 		return err
 	}
-	expiredPays, _, err := c.getExpiredPays(channelSelf)
+	if !found {
+		return common.ErrChannelNotFound
+	}
+	expiredPays, _, err := c.getExpiredPays(selfSimplex)
 	if err != nil {
 		return err
 	}
 
 	if len(expiredPays) > 0 {
-		amts := make([]*big.Int, len(expiredPays))
-		for i := range amts {
-			amts[i] = new(big.Int).SetUint64(0)
-		}
-
-		logEntry := pem.NewPem(c.nodeConfig.GetRPCAddr())
-		logEntry.Type = pem.PayMessageType_SRC_SETTLE_EXPIRED_PAY_API
-		_, err = c.messager.SendPaysSettleRequest(expiredPays, amts, rpc.PaymentSettleReason_PAY_EXPIRED, logEntry)
-		if err != nil {
-			logEntry.Error = append(logEntry.Error, err.Error())
-		}
-		pem.CommitPem(logEntry)
+		err = c.sendSettleRequestForExpiredPays(expiredPays)
 		if err != nil {
 			return err
 		}
 	}
 
-	peer, err := c.dal.GetPeer(cid)
-	if err != nil {
-		log.Error(err)
-		return err
-	}
-	channelPeer, _, err := c.dal.GetSimplexPaymentChannel(cid, peer)
-	if err != nil {
-		return err
-	}
-	_, expiredPayIDs, err := c.getExpiredPays(channelPeer)
+	_, expiredPayIDs, err := c.getExpiredPays(peerSimplex)
 	if err != nil {
 		return err
 	}
 	if len(expiredPayIDs) > 0 {
-		logEntry := pem.NewPem(c.nodeConfig.GetRPCAddr())
-		logEntry.Type = pem.PayMessageType_DST_SETTLE_EXPIRED_PAY_API
-		err := c.messager.SendPaysSettleProof(expiredPayIDs, rpc.PaymentSettleReason_PAY_EXPIRED, logEntry)
-		if err != nil {
-			logEntry.Error = append(logEntry.Error, err.Error())
-		}
-		pem.CommitPem(logEntry)
-		if err != nil {
-			return err
-		}
+		err = c.sendSettleProofForExpiredPays(expiredPayIDs)
 	}
 
-	return nil
+	return err
 }
 
-func (c *CNode) getExpiredPays(
-	simplex *entity.SimplexPaymentChannel) ([]*entity.ConditionalPay, []ctype.PayIDType, error) {
+func (c *CNode) getExpiredPays(simplex *entity.SimplexPaymentChannel) (
+	[]*entity.ConditionalPay, []ctype.PayIDType, error) {
+
 	currBlock := c.GetCurrentBlockNumber().Uint64()
 	var expiredPays []*entity.ConditionalPay
 	var payIDs []ctype.PayIDType
 	for _, payID := range simplex.PendingPayIds.PayIds {
 		payID := ctype.Bytes2PayID(payID)
-		pay, _, err2 := c.dal.GetConditionalPay(payID)
-		if err2 != nil {
-			return nil, nil, err2
+		pay, _, found, err := c.dal.GetPayment(payID)
+		if err != nil {
+			return nil, nil, err
+		}
+		if !found {
+			return nil, nil, fmt.Errorf("%w: %x", common.ErrPayNotFound, payID)
 		}
 		if currBlock > pay.ResolveDeadline+config.PaySendTimeoutSafeMargin {
 			expiredPays = append(expiredPays, pay)
@@ -224,18 +216,24 @@ func (c *CNode) getExpiredPays(
 }
 
 func (c *CNode) ConfirmOnChainResolvedPays(cid ctype.CidType) error {
-	simplex, _, err := c.dal.GetSimplexPaymentChannel(cid, c.nodeConfig.GetOnChainAddr())
+	simplex, _, found, err := c.dal.GetSelfSimplex(cid)
 	if err != nil {
 		return err
+	}
+	if !found {
+		return common.ErrChannelNotFound
 	}
 
 	var resolvedPays []*entity.ConditionalPay
 	var payAmts []*big.Int
 	for _, payID := range simplex.PendingPayIds.PayIds {
 		payID := ctype.Bytes2PayID(payID)
-		pay, _, err2 := c.dal.GetConditionalPay(payID)
+		pay, _, found, err2 := c.dal.GetPayment(payID)
 		if err2 != nil {
 			return err2
+		}
+		if !found {
+			return fmt.Errorf("%w: %x", common.ErrPayNotFound, payID)
 		}
 		amt, _, err2 := c.Disputer.GetCondPayInfoFromRegistry(payID)
 		if err2 != nil {
@@ -249,48 +247,185 @@ func (c *CNode) ConfirmOnChainResolvedPays(cid ctype.CidType) error {
 	}
 
 	if len(resolvedPays) > 0 {
-		logEntry := pem.NewPem(c.nodeConfig.GetRPCAddr())
-		logEntry.Type = pem.PayMessageType_CONFIRM_ON_CHAIN_PAY_API
-		_, err2 := c.messager.SendPaysSettleRequest(
-			resolvedPays, payAmts, rpc.PaymentSettleReason_PAY_RESOLVED_ONCHAIN, logEntry)
+		err = c.sendSettleRequestForOnChainResolvedPays(resolvedPays, payAmts)
+	}
+
+	return err
+}
+
+func (c *CNode) sendSettleRequestForExpiredPays(expiredPays []*entity.ConditionalPay) error {
+	amts := make([]*big.Int, len(expiredPays))
+	for i := range amts {
+		amts[i] = new(big.Int).SetUint64(0)
+	}
+
+	logEntry := pem.NewPem(c.nodeConfig.GetRPCAddr())
+	logEntry.Type = pem.PayMessageType_SRC_SETTLE_EXPIRED_PAY_API
+	_, err := c.messager.SendPaysSettleRequest(expiredPays, amts, rpc.PaymentSettleReason_PAY_EXPIRED, logEntry)
+	if err != nil {
+		logEntry.Error = append(logEntry.Error, err.Error())
+	}
+	pem.CommitPem(logEntry)
+	return err
+}
+
+func (c *CNode) sendSettleProofForExpiredPays(expiredPayIDs []ctype.PayIDType) error {
+	logEntry := pem.NewPem(c.nodeConfig.GetRPCAddr())
+	logEntry.Type = pem.PayMessageType_DST_SETTLE_EXPIRED_PAY_API
+	err := c.messager.SendPaysSettleProof(expiredPayIDs, rpc.PaymentSettleReason_PAY_EXPIRED, logEntry)
+	if err != nil {
+		logEntry.Error = append(logEntry.Error, err.Error())
+	}
+	pem.CommitPem(logEntry)
+	return err
+}
+
+func (c *CNode) sendSettleRequestForOnChainResolvedPays(
+	resolvedPays []*entity.ConditionalPay, resolvedAmts []*big.Int) error {
+	logEntry := pem.NewPem(c.nodeConfig.GetRPCAddr())
+	logEntry.Type = pem.PayMessageType_CONFIRM_ON_CHAIN_PAY_API
+	_, err := c.messager.SendPaysSettleRequest(
+		resolvedPays, resolvedAmts, rpc.PaymentSettleReason_PAY_RESOLVED_ONCHAIN, logEntry)
+	pem.CommitPem(logEntry)
+	return err
+}
+
+// ClearPaymentsInChannel confirm onchain resolved pays and clear expired pays in the channel.
+// For efficieny, only expired pays are checked for possible on-chain resolvement.
+// This function will replace SettleExpiredPays and ConfirmOnChainResolvedPays in the future.
+func (c *CNode) ClearPaymentsInChannel(cid ctype.CidType) error {
+	selfSimplex, _, peerSimplex, _, found, err := c.dal.GetDuplexChannel(cid)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return common.ErrChannelNotFound
+	}
+
+	var expiredPays []*entity.ConditionalPay
+	var resolvedPays []*entity.ConditionalPay
+	var resolvedAmts []*big.Int
+
+	// get all expired pays from self
+	pays, payIDs, err := c.getExpiredPays(selfSimplex)
+	if err != nil {
+		return err
+	}
+
+	for i, pay := range pays {
+		payID := payIDs[i]
+		// first check if any expired pay is resolved on chain
+		amt, _, err2 := c.Disputer.GetCondPayInfoFromRegistry(payID)
 		if err2 != nil {
-			return err2
+			log.Error(err2)
+			continue
+		}
+		maxAmt := utils.BytesToBigInt(pay.TransferFunc.MaxTransfer.Receiver.Amt)
+		if amt.Cmp(maxAmt) == 0 {
+			resolvedPays = append(resolvedPays, pay)
+			resolvedAmts = append(resolvedAmts, amt)
+		} else {
+			expiredPays = append(expiredPays, pay)
 		}
 	}
 
+	if len(resolvedPays) > 0 {
+		err = c.sendSettleRequestForOnChainResolvedPays(resolvedPays, resolvedAmts)
+		if err != nil {
+			log.Error(err)
+		}
+	}
+
+	if len(expiredPays) > 0 {
+		err = c.sendSettleRequestForExpiredPays(expiredPays)
+		if err != nil {
+			log.Error(err)
+		}
+	}
+
+	// get all expired pays from peer
+	_, expiredPayIDs, err := c.getExpiredPays(peerSimplex)
+	if err != nil {
+		return err
+	}
+	if len(expiredPayIDs) > 0 {
+		err = c.sendSettleProofForExpiredPays(expiredPayIDs)
+	}
+
+	return err
+}
+
+func (c *CNode) ClearPaymentsWithPeerOsps() error {
+	cids, err := c.getConnectedOspCids()
+	if err != nil {
+		return err
+	}
+	errs := make(map[string]error)
+	for _, cid := range cids {
+		err := c.ClearPaymentsInChannel(cid)
+		if err != nil {
+			errs[ctype.Cid2Hex(cid)] = err
+		}
+	}
+	if len(errs) != 0 {
+		return fmt.Errorf(fmt.Sprint(errs))
+	}
 	return nil
 }
 
-func (c *CNode) SyncOnChainChannelStates(cid ctype.CidType) (string, error) {
-	localStatus, _, err := c.dal.GetChannelState(cid)
+func (c *CNode) SyncOnChainChannelStates(cid ctype.CidType) (int, error) {
+	localState, found, err := c.dal.GetChanState(cid)
 	if err != nil {
-		return localStatus, err
+		return 0, err
+	}
+	if !found {
+		return 0, common.ErrChannelNotFound
 	}
 	onchainUnitialized := uint8(0)
 	onchainSettling := uint8(2)
 	onchainClosed := uint8(3)
+	onchainMigrated := uint8(4)
 	onchainStatus, err := ledgerview.GetOnChainChannelStatus(cid, c.nodeConfig)
 	if err != nil {
-		return localStatus, err
+		return localState, err
 	}
-	if onchainStatus == onchainSettling && localStatus == fsm.PscOpen {
-		err2 := c.dal.Transactional(fsm.OnPscIntendSettle, cid)
-		if err2 != nil {
-			return localStatus, err2
+
+	if onchainStatus == onchainMigrated {
+		ledger, err := ledgerview.GetMigratedTo(c.dal, cid, c.nodeConfig)
+		if err != nil {
+			return localState, err
 		}
-	} else if onchainStatus == onchainClosed && localStatus != fsm.PscClosed {
+		err = c.dal.UpdateChanLedger(cid, ledger)
+		if err != nil {
+			return localState, err
+		}
+
+		// get channel status from new ledger and then sync with new ledger status
+		onchainStatus, err = ledgerview.GetOnChainChannelStatus(cid, c.nodeConfig)
+		if err != nil {
+			return localState, err
+		}
+	}
+
+	if onchainStatus == onchainSettling &&
+		(localState == enums.ChanState_TRUST_OPENED || localState == enums.ChanState_OPENED) {
+		err2 := c.dal.Transactional(fsm.OnChannelIntendSettle, cid)
+		if err2 != nil {
+			return localState, err2
+		}
+	} else if onchainStatus == onchainClosed && localState != enums.ChanState_CLOSED {
 		err2 := c.dal.Transactional(c.Disputer.HandleConfirmSettleEventTx, cid)
 		if err2 != nil {
-			return localStatus, err2
+			return localState, err2
 		}
 	}
 	if onchainStatus != onchainClosed && onchainStatus != onchainUnitialized {
 		err2 := ledgerview.SyncOnChainBalance(c.dal, cid, c.nodeConfig)
 		if err2 != nil {
-			return localStatus, err2
+			return localState, err2
 		}
 	}
-	return localStatus, nil
+	return localState, nil
 }
 
 func (c *CNode) IntendWithdraw(cidFrom ctype.CidType, amount *big.Int, cidTo ctype.CidType) error {
@@ -305,8 +440,8 @@ func (c *CNode) VetoWithdraw(cid ctype.CidType) error {
 	return c.Disputer.VetoWithdraw(cid)
 }
 
-// SignState signs the data using cnode crypto and return result
-func (c *CNode) SignState(in []byte) []byte {
-	ret, _ := c.crypto.Sign(in)
-	return ret
+// GetPaymentState returns the ingress and egress state of a payment
+func (c *CNode) GetPaymentState(payID ctype.PayIDType) (int, int) {
+	inState, outState, _, _ := c.dal.GetPayStates(payID)
+	return inState, outState
 }

@@ -1,6 +1,10 @@
-// Copyright 2019 Celer Network
+// Copyright 2019-2020 Celer Network
 
 package storage
+
+import (
+	"database/sql"
+)
 
 const (
 	NoTxID = uint32(0) // reserved for non-transactional operations
@@ -16,6 +20,9 @@ type KVStore interface {
 	Delete(table, key string) error
 	Has(table, key string) (bool, error)
 	GetKeysByPrefix(table, prefix string) ([]string, error)
+	Exec(query string, args ...interface{}) (sql.Result, error)
+	Query(query string, args ...interface{}) (*sql.Rows, error)
+	QueryRow(query string, args ...interface{}) *sql.Row
 }
 
 // Transaction is the interface implemented by the local and remote stores.
@@ -28,4 +35,7 @@ type Transaction interface {
 	Delete(table, key string) error
 	Has(table, key string) (bool, error)
 	GetKeysByPrefix(table, prefix string) ([]string, error)
+	Exec(query string, args ...interface{}) (sql.Result, error)
+	Query(query string, args ...interface{}) (*sql.Rows, error)
+	QueryRow(query string, args ...interface{}) *sql.Row
 }

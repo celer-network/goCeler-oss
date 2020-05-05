@@ -1,38 +1,44 @@
-// Copyright 2018 Celer Network
+// Copyright 2018-2020 Celer Network
 
 package utils
 
 import (
-	"bytes"
-	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
-	"fmt"
-	"io/ioutil"
 	"math/big"
-	"net/http"
 	"sync"
 	"sync/atomic"
 	"time"
 	"unsafe"
 
-	log "github.com/celer-network/goCeler-oss/clog"
-	"github.com/celer-network/goCeler-oss/common"
-	"github.com/celer-network/goCeler-oss/ctype"
-	"github.com/celer-network/goCeler-oss/entity"
-	"github.com/celer-network/goCeler-oss/rpc"
-	"github.com/ethereum/go-ethereum"
+	"github.com/celer-network/goCeler/ctype"
+	"github.com/celer-network/goCeler/entity"
+	"github.com/celer-network/goCeler/rpc"
+	"github.com/celer-network/goCeler/utils/bar"
+	"github.com/celer-network/goutils/jsonpbhex"
 	ethcommon "github.com/ethereum/go-ethereum/common"
-	ethtypes "github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/golang/protobuf/jsonpb"
 	proto "github.com/golang/protobuf/proto"
 	"github.com/shopspring/decimal"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 )
+
+// set EmitDefaults so json has complete schema
+// use our own AnyResolver so unknown Any can be properly
+// marshaled to base64 string
+var jsonpbMarshaler = jsonpb.Marshaler{
+	EmitDefaults: true,
+	AnyResolver:  bar.BetterAnyResolver,
+}
+
+var jsonpbHex = jsonpbhex.Marshaler{
+	HexBytes:    true,
+	AnyResolver: bar.BetterAnyResolver,
+}
 
 // Dec2HexStr decimal string to hex
 func Dec2HexStr(dec string) string {
@@ -122,29 +128,48 @@ func GetClientTlsConfig() *tls.Config {
 	}
 }
 
-func ValidateAndFormatAddress(address string) (string, error) {
+func ValidateAndFormatAddress(address string) (ctype.Addr, error) {
 	if !ethcommon.IsHexAddress(address) {
-		return "", errors.New("Invalid address")
+		return ctype.ZeroAddr, errors.New("INVALID_ADDRESS")
 	}
-	return ctype.Bytes2Hex(ctype.Hex2Bytes(address)), nil
+	return ctype.Hex2Addr(address), nil
+}
+
+// GetTokenAddr returns token address
+func GetTokenAddr(tokenInfo *entity.TokenInfo) ctype.Addr {
+	switch tktype := tokenInfo.TokenType; tktype {
+	case entity.TokenType_ETH:
+		return ctype.EthTokenAddr
+	case entity.TokenType_ERC20:
+		return ctype.Bytes2Addr(tokenInfo.TokenAddress)
+	}
+	return ctype.InvalidTokenAddr
 }
 
 // GetTokenAddrStr returns string for tokenInfo
 func GetTokenAddrStr(tokenInfo *entity.TokenInfo) string {
-	switch tktype := tokenInfo.TokenType; tktype {
-	case entity.TokenType_ETH:
-		return common.EthContractAddr
-	case entity.TokenType_ERC20:
-		return ctype.Bytes2Hex(tokenInfo.TokenAddress)
+	return ctype.Addr2Hex(GetTokenAddr(tokenInfo))
+}
+
+func PrintToken(tokenInfo *entity.TokenInfo) string {
+	if tokenInfo.GetTokenType() == entity.TokenType_ETH {
+		return "ETH"
 	}
-	return ""
+	return GetTokenAddrStr(tokenInfo)
+}
+
+func PrintTokenAddr(tkaddr ctype.Addr) string {
+	if tkaddr == ctype.EthTokenAddr {
+		return "ETH"
+	}
+	return ctype.Addr2Hex(tkaddr)
 }
 
 // GetTokenInfoFromAddress returns TokenInfo from tkaddr
 // only support ERC20 for now
-func GetTokenInfoFromAddress(tkaddr ethcommon.Address) *entity.TokenInfo {
+func GetTokenInfoFromAddress(tkaddr ctype.Addr) *entity.TokenInfo {
 	tkInfo := new(entity.TokenInfo)
-	if tkaddr == ctype.ZeroAddr {
+	if tkaddr == ctype.EthTokenAddr {
 		tkInfo.TokenType = entity.TokenType_ETH
 	} else {
 		tkInfo.TokenType = entity.TokenType_ERC20
@@ -153,80 +178,35 @@ func GetTokenInfoFromAddress(tkaddr ethcommon.Address) *entity.TokenInfo {
 	return tkInfo
 }
 
-func WaitMined(ctx context.Context, ec *ethclient.Client,
-	tx *ethtypes.Transaction, blockDelay uint64) (*ethtypes.Receipt, error) {
-	return WaitMinedWithTxHash(ctx, ec, tx.Hash().Hex(), blockDelay)
-}
-
-// WaitMined waits for tx to be mined on the blockchain
-// It returns tx receipt when the tx has been mined and enough block confirmations have passed
-func WaitMinedWithTxHash(ctx context.Context, ec *ethclient.Client,
-	txHash string, blockDelay uint64) (*ethtypes.Receipt, error) {
-	// an error possibly returned when a transaction is pending
-	const missingFieldErr = "missing required field 'transactionHash' for Log"
-
-	if ec == nil {
-		return nil, errors.New("nil ethclient")
-	}
-	queryTicker := time.NewTicker(time.Second)
-	defer queryTicker.Stop()
-	// wait tx to be mined
-	txHashBytes := ethcommon.HexToHash(txHash)
-	for {
-		receipt, rerr := ec.TransactionReceipt(ctx, txHashBytes)
-		if rerr == nil {
-			log.Debugf("Transaction mined. Waiting for %d block confirmations", blockDelay)
-			if blockDelay == 0 {
-				return receipt, rerr
-			}
-			break
-		} else if rerr == ethereum.NotFound || rerr.Error() == missingFieldErr {
-			// Wait for the next round
-			select {
-			case <-ctx.Done():
-				return nil, ctx.Err()
-			case <-queryTicker.C:
-			}
-		} else {
-			return receipt, rerr
-		}
-	}
-	// wait for enough block confirmations
-	ddl := big.NewInt(0)
-	latestBlockHeader, err := ec.HeaderByNumber(ctx, nil)
-	if err == nil {
-		ddl.Add(new(big.Int).SetUint64(blockDelay), latestBlockHeader.Number)
-	}
-	for {
-		latestBlockHeader, err := ec.HeaderByNumber(ctx, nil)
-		if err == nil && ddl.Cmp(latestBlockHeader.Number) < 0 {
-			receipt, rerr := ec.TransactionReceipt(ctx, txHashBytes)
-			if rerr == nil {
-				log.Debugln("tx confirmed!")
-				return receipt, rerr
-			} else if rerr == ethereum.NotFound || rerr.Error() == missingFieldErr {
-				return nil, errors.New("tx is dropped due to chain re-org")
-			} else {
-				return receipt, rerr
-			}
-		}
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-queryTicker.C:
-		}
-	}
-}
-
-// Serialize a protobuf to json string
-func PbToJSONString(pb proto.Message) string {
-	m := jsonpb.Marshaler{}
-	ret, err := m.MarshalToString(pb)
-	if err != nil {
-		log.Errorln("pb2json err: ", err, pb)
-		return ""
-	}
+// Uint64ToBytes converts uint to bytes in big-endian order.
+func Uint64ToBytes(i uint64) []byte {
+	ret := make([]byte, 8) // 8 bytes for uint64
+	binary.BigEndian.PutUint64(ret, i)
 	return ret
+}
+
+// GetTsAndSig returns current time and signature of current time using sign param passed in.
+func GetTsAndSig(sign func([]byte) []byte) (ts uint64, sig []byte) {
+	ts = uint64(time.Now().Unix())
+	sig = sign(Uint64ToBytes(ts))
+	return ts, sig
+}
+
+// PbToJSONString marshals a protobuf msg to json string
+// Note we set EmitDefaults so json is always complete.
+// If you think you have a use case for omit default in json,
+// check w/ junda first before adding another func.
+// The marshaler also uses our own BetterAnyResolver which handles unknown Any
+// msg instead of throw error
+func PbToJSONString(pb proto.Message) (string, error) {
+	return jsonpbMarshaler.MarshalToString(pb)
+}
+
+// PbToJSONHexBytes output hex for bytes field instead of default base64
+// WARNING: result json not compatible for unmarshal
+// only use this for logging purpose
+func PbToJSONHexBytes(pb proto.Message) (string, error) {
+	return jsonpbHex.MarshalToString(pb)
 }
 
 func GetAddressFromKeystore(ksBytes []byte) (string, error) {
@@ -239,26 +219,18 @@ func GetAddressFromKeystore(ksBytes []byte) (string, error) {
 	}
 	return ks.Address, nil
 }
-func RequestBuildRoutingTable(adminHTTPAddr string) error {
-	url := fmt.Sprintf("http://%s/admin/route/build", adminHTTPAddr)
-	log.Debugln("URL:>", url)
-	reqJSONByte, err := json.Marshal(&rpc.BuildRoutingTableRequest{})
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer(reqJSONByte))
-	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{
-		Timeout: 10 * time.Second,
+func UnmarshalDelegationDescription(proof *rpc.DelegationProof) (*rpc.DelegationDescription, error) {
+	if proof == nil {
+		return nil, errors.New("nil delegation proof")
 	}
-	resp, err := client.Do(req)
+
+	var desc rpc.DelegationDescription
+	err := proto.Unmarshal(proof.GetDelegationDescriptionBytes(), &desc)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	defer resp.Body.Close()
-	ioutil.ReadAll(resp.Body)
-	if resp.StatusCode != 200 {
-		return errors.New("Status is " + resp.Status)
-	}
-	return nil
+	return &desc, nil
 }
 
 // CelerCA root CA file, generated via certstrap

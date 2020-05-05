@@ -1,8 +1,7 @@
 // Copyright 2018 Celer Network
 
 syntax = "proto3";
-option go_package = "github.com/celer-network/goCeler-oss/rpc";
-
+option go_package = "github.com/celer-network/goCeler/rpc";
 package rpc;
 
 // For Proto V2
@@ -58,7 +57,9 @@ message CelerMsg {
     CooperativeWithdrawRequest withdraw_request = 14;
     // withdraw response
     CooperativeWithdrawResponse withdraw_response = 15;
-    // skip 16-30 for future msgs
+    // send routing information (broadcast through OSP network)
+    RoutingRequest routing_request = 16;
+    // skip 17-30 for future msgs
 
     // ====== end-to-end =====
     // sent by pay dest to notify pay src
@@ -111,7 +112,10 @@ message AuthReq {
   bytes expect_peer = 4;
   // whether to require peer proving it owns expect_peer
   bool mutual_auth = 5;
-  // add protocol version field when we have incompatible design
+  // v0.16 has 1 to support sync in auth
+  uint64 protocol_version = 6;
+  // client's view of channels. empty if never openchan or recover case
+  repeated ChannelSummary opened_channels = 7;
 }
 
 message AuthAck {
@@ -121,6 +125,8 @@ message AuthAck {
   // if req set mutual_auth, return acker's sig of authreq.timestamp
   // we assume requester has context to verify against expect_peer
   bytes my_sig = 2;
+  // channels to be syned w/ auth requester
+  repeated ChannelInAuth sync_channels = 3;
 }
 
 message RevealSecret {
@@ -159,14 +165,15 @@ message CondPayResponse {
   Error error = 2;
 }
 
-// Next Tag: 6
+// Next Tag: 7
 enum PaymentSettleReason {
-  PAY_VOUCHED = 0;
+  NONE = 0;
   PAY_EXPIRED = 1;
   PAY_REJECTED = 2;
   PAY_RESOLVED_ONCHAIN = 3;
   PAY_PAID_MAX = 4;
   PAY_DEST_UNREACHABLE = 5;
+  PAY_VOUCHED = 6;
 }
 
 // Next Tag: 3
@@ -255,11 +262,14 @@ message CooperativeWithdrawResponse {
   bytes approver_sig = 3;
 }
 
-// Next Tag: 3
+// Next Tag: 5
 message CondPayReceipt {
   // refer to pay by its id is enough
   bytes pay_id = 1;
+  // either pay_dest signs payid or pay delegator signs pay id
   bytes pay_dest_sig = 2;
+  bytes pay_delegator_sig = 3;
+  DelegationProof delegation_proof = 4;
 }
 
 // Next Tag: 4
@@ -274,4 +284,199 @@ message SignedSimplexState {
 message SignedDuplexState {
   // only expect two messages for duplex
   repeated SignedSimplexState simplex_states = 1;
+}
+
+message PeerAddress {
+  string address = 1;
+  string token_addr = 2;
+}
+
+// JoinCelerStatus describes the status of a endpoint in Celer network
+// Next Tag: 3
+enum JoinCelerStatus {
+  // Endpoint has not joined in Celer Network yet,
+  // does not have any celer channel with any Osp in Celer Network
+  NOT_JOIN = 0;
+  // Endpoint has a celer channel with the Osp responding this msg
+  LOCAL = 1;
+  // Endpoint does not have a celer channel with the Osp responding this msg,
+  // but has a celer channel with another remote Osp
+  REMOTE = 2;
+}
+
+// Next Tag: 3
+message PeerStatus {
+  string free_balance = 1;
+  JoinCelerStatus join_status = 2;
+}
+
+// For Auth handshake and auto recovery
+// note with only seq num we lost the ability to sync if client side has higher value.
+// but it's ok because after authreq/ack, osp msg queue will re-send un-acked msgs
+// Next tag: 5
+message ChannelSummary {
+  bytes channel_id = 1;
+  uint64 my_seq_num = 2;
+  uint64 peer_seq_num = 3;
+  bytes ledger_addr = 4;
+}
+
+// In AuthAck if need to sync channels
+// Next tag: 9
+message ChannelInAuth {
+  bytes cid = 1;
+  // Channel state defined in goCeler channel-fsm.go.
+  int64 channel_state = 2;
+  // open channel response for case of TCB.
+  OpenChannelResponse open_channel_response = 3;
+  // cosigned simplex belong to auth ack node
+  SignedSimplexState authack_simplex = 4;
+  // pending pays in authack_simplex
+  repeated PayInAuthAck authack_pays = 5;
+  // cosigned simplex belong to auth requester
+  SignedSimplexState authreq_simplex = 6;
+  // pending pays in authreq_simplex
+  repeated PayInAuthAck authreq_pays = 7;
+  // ledger address that the channel is operating on.
+  bytes ledger_addr = 8;
+}
+
+message PayInAuthAck {
+  bytes pay = 1; // pay bytes
+  google.protobuf.Any note = 2;  // pay note
+  // pay state, from instate or outstate depending on which simplex
+  int64 state = 3;
+}
+
+// Next tag: 5
+message DelegationDescription {
+  // address of delegator
+  bytes delegator = 1;
+  // address of delegatee
+  bytes delegatee = 2;
+  int64 expires_after_block = 3;
+  // token addresses to be delegated
+  repeated bytes token_to_delegate = 4;
+}
+
+// Next tag: 4
+message DelegationProof {
+  // Serialized DelegationDescription.
+  bytes delegation_description_bytes = 1;
+  // signature of delegation_description_bytes signed by signer.
+  bytes signature = 2;
+  // addresses of signer. Should be same to "delegator" in DelegationDescription.
+  bytes signer = 3;
+}
+
+// Next tag: 2
+message DelegationRequest {
+  DelegationProof proof = 1;
+}
+
+// Next tag: 2
+message DelegationResponse {
+  string error = 1;
+}
+
+// Next tag: 2
+message QueryDelegationRequest {
+  // delegatee to query delegation.
+  bytes delegatee = 1;
+}
+
+// Next tag: 2
+message QueryDelegationResponse {
+  // DelegationProof stored by celer node.
+  DelegationProof proof = 1;
+}
+
+// Next tag: 3
+message MigrateChannelRequest {
+  // Serialized entity.ChannelMigrationInfo
+  bytes channel_migration_info = 1;
+  // Signature of channel_migration_info signed by request sender
+  bytes requester_sig = 2;
+}
+
+// Next tag: 2
+message MigrateChannelResponse {
+  // Signature of channel_migration_info signed by request approver
+  bytes approver_sig = 1;
+}
+
+// Next tag: 7
+message GetPayHistoryRequest {
+  // request pay history of peer.
+  string peer = 1;
+  // request pay history before certain timestamp.
+  int64 before_ts = 2;
+  // max result in the response.
+  int32 items_per_page = 3;
+  // signature to verify peer.
+  bytes ts_sig = 4;
+  uint64 ts = 5;
+  // if result has pays that have payIDs equal to before_ts, only return those that have higher pay ids than smallesest_pay_id.
+  string smallest_pay_id = 6;
+}
+
+// Next tag: 8
+message OneHistoricalPay {
+  // pay destination
+  string dst = 1;
+  // token address used by the pay.
+  string token = 2;
+  // amount of the payment
+  string amt = 3;
+  // pay status
+  int64 state = 4;
+  // pay id
+  string pay_id = 5;
+  // pay creation timestamp
+  int64 create_ts = 6;
+  // pay source
+  string src = 7;
+}
+
+// Next tag: 2
+message GetPayHistoryResponse {
+  repeated OneHistoricalPay pays = 1;
+}
+
+// Next tag: 3
+message ChannelRoutingInfo {
+  // channel identifier
+  string cid = 1;
+  // channel liquidity amount
+  string balance = 2;
+}
+
+// Next tag: 5
+message RoutingUpdate {
+  // origin source OSP for this information.
+  string origin = 1;
+  // timestamp of this information at the origin.
+  uint64 ts = 2;
+  // channel information
+  repeated ChannelRoutingInfo channels = 3;
+  // routing protocol version number
+  uint64 proto_version = 4;
+}
+
+// Next tag: 4
+message SignedRoutingUpdate {
+  // serialized RoutingUpdate
+  bytes update = 1;
+  // sig of serialized RoutingUpdate by origin
+  bytes sig = 2;
+  // time to live: decreasing hop count to stop the broadcast.
+  uint64 ttl = 3;
+}
+
+// Next tag: 3
+message RoutingRequest {
+  // list of routing updates
+  repeated SignedRoutingUpdate updates = 1;
+  // OSP that sent (propagated) this information.
+  string sender = 2;
 }

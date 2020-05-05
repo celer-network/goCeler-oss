@@ -1,16 +1,17 @@
-// Copyright 2018-2019 Celer Network
+// Copyright 2018-2020 Celer Network
 
 package msghdl
 
 import (
 	"errors"
+	"fmt"
 	"math/big"
 
-	log "github.com/celer-network/goCeler-oss/clog"
-	"github.com/celer-network/goCeler-oss/common"
-	"github.com/celer-network/goCeler-oss/ctype"
-	"github.com/celer-network/goCeler-oss/entity"
-	"github.com/celer-network/goCeler-oss/rpc"
+	"github.com/celer-network/goCeler/common"
+	"github.com/celer-network/goCeler/ctype"
+	"github.com/celer-network/goCeler/entity"
+	"github.com/celer-network/goCeler/rpc"
+	"github.com/celer-network/goutils/log"
 )
 
 func (h *CelerMsgHandler) HandlePaySettleProof(frame *common.MsgFrame) error {
@@ -47,9 +48,14 @@ func (h *CelerMsgHandler) HandlePaySettleProof(frame *common.MsgFrame) error {
 			payID := ctype.Bytes2PayID(sp.SettledPayId)
 			logEntry.PayId = ctype.PayID2Hex(payID)
 			logEntry.PayIds = append(logEntry.PayIds, ctype.PayID2Hex(payID))
-			pay, _, err = h.dal.GetConditionalPay(payID)
+			var found bool
+			pay, _, found, err = h.dal.GetPayment(payID)
 			if err != nil {
-				log.Errorln("Cannot find pay", payID.Hex(), err)
+				log.Errorln(err, payID.Hex())
+				continue
+			}
+			if !found {
+				log.Errorln(common.ErrPayNotFound, payID.Hex())
 				continue
 			}
 			expiredPays = append(expiredPays, pay)
@@ -57,22 +63,28 @@ func (h *CelerMsgHandler) HandlePaySettleProof(frame *common.MsgFrame) error {
 		}
 		_, err = h.messager.SendPaysSettleRequest(expiredPays, payAmts, reason, logEntry)
 		if err != nil {
-			log.Error(err)
-			err = errors.New(err.Error() + " SendPaysSettleRequest")
+			err = fmt.Errorf("SendPaysSettleRequest err: %w", err)
 		}
 		// do not foward settle proof for expired pays.
 		// Currently, we only consider single-account (multi-server) OSP.  Clients will actively call
 		// SettleExpiredPays() on demand (e.g., periodically or when start)
+		// TODO: handle multi-account OSP cases
 		return err
 	}
+
 	if len(payProof.SettledPays) > 1 {
 		return errors.New("Batched pay settle proof for unexpired pays not supported")
 	}
+
 	payID := ctype.Bytes2PayID(settledPay.GetSettledPayId())
-	pay, _, err = h.dal.GetConditionalPay(payID)
+	logEntry.PayId = ctype.PayID2Hex(payID)
+	var found bool
+	pay, _, found, err = h.dal.GetPayment(payID)
 	if err != nil {
-		log.Errorln("Cannot find pay", payID.Hex(), err)
-		return errors.New(err.Error() + " GetCondPayId " + payID.Hex())
+		return fmt.Errorf("GetPayment err %w", err)
+	}
+	if !found {
+		return common.ErrPayNotFound
 	}
 	payAmt := new(big.Int).SetUint64(0)
 	switch reason {
@@ -80,8 +92,7 @@ func (h *CelerMsgHandler) HandlePaySettleProof(frame *common.MsgFrame) error {
 	case rpc.PaymentSettleReason_PAY_RESOLVED_ONCHAIN:
 		payAmt, _, err = h.disputer.GetCondPayInfoFromRegistry(payID)
 		if err != nil {
-			log.Errorln("Get info from PayRegistry error", payID.Hex(), err)
-			return errors.New(err.Error() + " GetCondPayInfoFromRegistry")
+			return fmt.Errorf("GetCondPayInfoFromRegistry err: %w", err)
 		}
 	case rpc.PaymentSettleReason_PAY_DEST_UNREACHABLE:
 		h.notifyUnreachablility(payID, pay)
@@ -91,31 +102,15 @@ func (h *CelerMsgHandler) HandlePaySettleProof(frame *common.MsgFrame) error {
 
 	err = h.messager.SendOnePaySettleRequest(pay, payAmt, reason, logEntry)
 	if err != nil {
-		logEntry.Error = append(logEntry.Error, err.Error()+" SendOnePaySettleRequest"+payID.Hex())
-		log.Error(err)
-		return errors.New(err.Error() + " SendOnePaySettleRequest")
-	}
-	if h.nodeConfig.GetOnChainAddr() != ctype.Bytes2Hex(pay.Src) {
-		if reason == rpc.PaymentSettleReason_PAY_RESOLVED_ONCHAIN {
-			_, peer, err2 := h.channelRouter.LookupIngressChannelOnPay(ctype.Pay2PayID(pay))
-			if err2 != nil {
-				log.Error(err2)
-				return errors.New(err2.Error() + " LookupIngressChannelOnPay")
-			}
-			err2 = h.messager.ForwardCelerMsg(peer, frame.Message)
-			if err2 != nil {
-				logEntry.Error = append(logEntry.Error, err2.Error()+" ForwardCelerMsg"+peer)
-				log.Errorln("Foward pay settle proof error", err2, "peer", peer, "reason", reason)
-			}
-		}
+		return fmt.Errorf("SendOnePaySettleRequest err: %w", err)
 	}
 	return nil
 }
 
 func (h *CelerMsgHandler) notifyUnreachablility(payID ctype.PayIDType, pay *entity.ConditionalPay) {
-	note, err := h.dal.GetPayNote(payID)
+	note, _, err := h.dal.GetPayNote(payID)
 	if err != nil {
-		log.Traceln(err)
+		log.Error(err)
 	}
 	h.sendingCallbackLock.RLock()
 	if h.onSendingToken != nil {

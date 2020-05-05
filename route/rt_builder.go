@@ -1,4 +1,4 @@
-// Copyright 2018-2019 Celer Network
+// Copyright 2018-2020 Celer Network
 
 package route
 
@@ -6,108 +6,100 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
-	"github.com/RyanCarrier/dijkstra"
-	log "github.com/celer-network/goCeler-oss/clog"
-	"github.com/celer-network/goCeler-oss/ctype"
-	"github.com/celer-network/goCeler-oss/route/graph"
-	"github.com/ethereum/go-ethereum/common"
+	"github.com/celer-network/goCeler/common/structs"
+	"github.com/celer-network/goCeler/config"
+	"github.com/celer-network/goCeler/ctype"
+	"github.com/celer-network/goCeler/storage"
+	"github.com/celer-network/goCeler/utils"
+	"github.com/celer-network/goutils/log"
 )
 
-// Edge describes event happenning to a channel.
-type Edge = graph.Edge
+// Edge describes event happening to a channel.
+type Edge = structs.Edge
 
-// RoutingTableBuilderDAL defines DAL layer that to support route calculation.
-type RoutingTableBuilderDAL interface {
-	// PutLocalPeerCid(ctype.Addr /*localPeer*/, ctype.Addr /*tokenAddr*/, ctype.CidType) error
-	// DeleteLocalPeerCid(ctype.Addr /*localPeer*/, ctype.Addr /*tokenAddr*/) error
-	// tokenAddr, clientAddr -> map[ospAddr]bool
-	GetAllServingOsps() (map[ctype.Addr]map[ctype.Addr]servingOspMap, error)
-	PutServingOsp(ctype.Addr /*clientAddr*/, ctype.Addr /*tokenAddr*/, ctype.Addr /*ospAddr*/) error
-	DeleteServingOsp(ctype.Addr /*clientAddr*/, ctype.Addr /*tokenAddr*/, ctype.Addr /*ospAddr*/) error
+type OspInfo struct {
+	// block number of last onchain routerRegistry update
+	RegistryBlock uint64
+	// time of last route message update
+	UpdateTime time.Time
+}
 
-	// tokenAddr, dstOsp -> cid
-	GetAllRoutes() (map[ctype.Addr]map[ctype.Addr]ctype.CidType, error)
-	PutRoute(string, string, ctype.CidType) error
-	DeleteRoute(string, string) error
-	PutEdge(ctype.Addr, ctype.CidType, *Edge) error
-	GetEdges(ctype.Addr) (map[ctype.CidType]*Edge, error)
-	DeleteEdge(ctype.Addr, ctype.CidType) error
-	GetAllEdgeTokens() (map[ctype.Addr]bool, error)
+type NeighborInfo struct {
+	// time of last route message update
+	UpdateTime time.Time
+	// tokens and cids of connected channels
+	TokenCids map[ctype.Addr]ctype.CidType
 }
 
 type edgeMap = map[ctype.CidType]*Edge
-type servingOspMap = map[ctype.Addr]bool
-type routingTable = map[ctype.Addr]common.Hash
+type accessOspSet = map[ctype.Addr]bool
 
-type RoutingTableBuilder struct {
-	// tokenAddr, clientAddr -> set of osps
-	lastServingOsps map[ctype.Addr]map[ctype.Addr]servingOspMap
-	// tokenAddr, dstOspAddr -> cid
-	lastNextHopCidToOsp map[ctype.Addr]map[ctype.Addr]ctype.CidType
-	routeLock           sync.RWMutex
-	dal                 RoutingTableBuilderDAL
-	edges               map[ctype.Addr]edgeMap
-	ospInfo             map[ctype.Addr]uint64
-
-	// My address
-	srcAddr ctype.Addr
+type routingTableBuilder struct {
+	myAddr      ctype.Addr
+	dal         *storage.DAL
+	edges       map[ctype.Addr]edgeMap                      // tokenAddr -> { cid -> edge }
+	osps        map[ctype.Addr]*OspInfo                     // ospAddr -> OspInfo
+	neighbors   map[ctype.Addr]*NeighborInfo                // neighborAddr -> NeighborInfo
+	accessOsps  map[ctype.Addr]map[ctype.Addr]accessOspSet  // tokenAddr, clientAddr -> set of ospAddrs
+	nextHopCids map[ctype.Addr]map[ctype.Addr]ctype.CidType // tokenAddr, dstOspAddr -> cid
+	graphLock   sync.RWMutex                                // protect edges, osps, neighbors
+	routeLock   sync.RWMutex                                // protect accessOsps, nextHopCids
+	buildLock   sync.Mutex                                  // serialize building processes
 }
 
-type addrToCidMap = map[ctype.Addr]ctype.CidType
-
-// NewRoutingTableBuilder creates a routing table builder and init it.
-func NewRoutingTableBuilder(srcAddr ctype.Addr, dal RoutingTableBuilderDAL) *RoutingTableBuilder {
-	b := &RoutingTableBuilder{
-		lastServingOsps:     make(map[ctype.Addr]map[ctype.Addr]servingOspMap),
-		lastNextHopCidToOsp: make(map[ctype.Addr]map[ctype.Addr]ctype.CidType),
-		srcAddr:             srcAddr,
-		dal:                 dal,
-		edges:               make(map[ctype.Addr]edgeMap),
-		ospInfo:             make(map[ctype.Addr]uint64),
+// newRoutingTableBuilder creates a routing table builder and init it.
+func newRoutingTableBuilder(myAddr ctype.Addr, dal *storage.DAL) *routingTableBuilder {
+	b := &routingTableBuilder{
+		myAddr:      myAddr,
+		dal:         dal,
+		edges:       make(map[ctype.Addr]edgeMap),
+		osps:        make(map[ctype.Addr]*OspInfo),
+		neighbors:   make(map[ctype.Addr]*NeighborInfo),
+		accessOsps:  make(map[ctype.Addr]map[ctype.Addr]accessOspSet),
+		nextHopCids: make(map[ctype.Addr]map[ctype.Addr]ctype.CidType),
 	}
 
 	// init edges.
-	tks, err := dal.GetAllEdgeTokens()
+	edges, err := dal.GetAllEdges()
 	if err != nil {
 		log.Errorln(err)
 		return nil
 	}
-	routes, getRouteErr := dal.GetAllRoutes()
-	if getRouteErr != nil {
-		log.Errorln(getRouteErr)
+
+	for _, e := range edges {
+		token := e.Token
+		if _, ok := b.edges[token]; !ok {
+			b.edges[token] = make(edgeMap)
+		}
+		b.edges[token][e.Cid] = e
+	}
+
+	routes, err := dal.GetAllRoutingCids()
+	if err != nil {
+		log.Errorln(err)
 		return nil
 	}
-	b.lastNextHopCidToOsp = routes
+	b.nextHopCids = routes
 
-	servingOsps, getServingOspErr := dal.GetAllServingOsps()
-	if getServingOspErr != nil {
-		log.Errorln(getServingOspErr)
+	accessOsps, err := dal.GetAllDestTokenOsps()
+	if err != nil {
+		log.Errorln(err)
 		return nil
 	}
-	b.lastServingOsps = servingOsps
-	for token := range tks {
-		tokenEdges, edgeErr := dal.GetEdges(token)
-		if edgeErr != nil {
-			log.Errorln(edgeErr)
-			return nil
-		}
-
-		if tokenEdges != nil {
-			b.edges[token] = tokenEdges
-		}
-	}
+	b.accessOsps = accessOsps
 
 	return b
 }
 
-func (b *RoutingTableBuilder) AddEdge(
+func (b *routingTableBuilder) addEdge(
 	p1 ctype.Addr, p2 ctype.Addr, cid ctype.CidType, tokenAddr ctype.Addr) error {
-	b.routeLock.Lock()
-	defer b.routeLock.Unlock()
-	log.Infof("Adding cid %x", cid.Bytes())
-	e := &Edge{P1: p1, P2: p2, Cid: cid, TokenAddr: tokenAddr}
-	err := b.dal.PutEdge(tokenAddr, cid, e)
+	b.graphLock.Lock()
+	defer b.graphLock.Unlock()
+	log.Infof("Adding edge cid %x", cid.Bytes())
+	token := utils.GetTokenInfoFromAddress(tokenAddr)
+	err := b.dal.InsertEdge(token, cid, p1, p2)
 	if err != nil {
 		log.Errorln(err)
 		return err
@@ -115,22 +107,46 @@ func (b *RoutingTableBuilder) AddEdge(
 	if b.edges[tokenAddr] == nil {
 		b.edges[tokenAddr] = make(edgeMap)
 	}
+	e := &Edge{P1: p1, P2: p2, Cid: cid, Token: tokenAddr}
 	b.edges[tokenAddr][cid] = e
+
+	myEdge, peerAddr := b.isMyEdge(e)
+	// update neigbhbor
+	if myEdge && b.osps[peerAddr] != nil {
+		if b.neighbors[peerAddr] == nil {
+			err = fmt.Errorf("neighbors map for peer %x not intialized", peerAddr)
+			log.Error(err)
+			return err
+		}
+		b.neighbors[peerAddr].UpdateTime = now()
+		b.neighbors[peerAddr].TokenCids[tokenAddr] = cid
+	}
+
 	return nil
 }
-func (b *RoutingTableBuilder) RemoveEdge(cid ctype.CidType) error {
-	b.routeLock.Lock()
-	defer b.routeLock.Unlock()
+
+func (b *routingTableBuilder) removeEdge(cid ctype.CidType) error {
+	b.graphLock.Lock()
+	defer b.graphLock.Unlock()
 	log.Infof("Removing cid %x", cid.Bytes())
 	var token ctype.Addr
 	found := false
-	for token, edges := range b.edges {
-		if _, ok := edges[cid]; ok {
+	for _, edges := range b.edges {
+		if edge, ok := edges[cid]; ok {
 			delete(edges, cid)
-			delErr := b.dal.DeleteEdge(token, cid)
-			if delErr != nil {
-				log.Errorln(delErr)
-				return delErr
+			myEdge, peerAddr := b.isMyEdge(edge)
+			// update neigbhbor
+			if myEdge && b.osps[peerAddr] != nil {
+				if b.neighbors[peerAddr] == nil {
+					log.Errorf("neighbors map for peer %x not intialized", peerAddr)
+				} else if b.neighbors[peerAddr].TokenCids[edge.Token] == cid {
+					delete(b.neighbors[peerAddr].TokenCids, edge.Token)
+				}
+			}
+			err := b.dal.DeleteEdge(cid)
+			if err != nil {
+				log.Errorln(err)
+				return err
 			}
 			found = true
 			break
@@ -147,26 +163,63 @@ func (b *RoutingTableBuilder) RemoveEdge(cid ctype.CidType) error {
 	return nil
 }
 
-// MarkOsp marks an Osp as a router and records its block number
-func (b *RoutingTableBuilder) MarkOsp(osp ctype.Addr, blknum uint64) {
-	b.routeLock.Lock()
-	defer b.routeLock.Unlock()
-	log.Infof("%x joining", osp.Bytes())
-	b.ospInfo[osp] = blknum
+func (b *routingTableBuilder) isMyEdge(e *Edge) (bool, ctype.Addr) {
+	var peerAddr ctype.Addr
+	if e.P1 == b.myAddr {
+		peerAddr = e.P2
+	} else if e.P2 == b.myAddr {
+		peerAddr = e.P1
+	} else {
+		return false, peerAddr
+	}
+	return true, peerAddr
 }
 
-// UnmarkOsp removes an Osp in routers
-func (b *RoutingTableBuilder) UnmarkOsp(osp ctype.Addr) {
-	b.routeLock.Lock()
-	defer b.routeLock.Unlock()
-	log.Infof("%x leaving", osp.Bytes())
-	delete(b.ospInfo, osp)
+// markOsp marks an Osp as a router and records its block number
+func (b *routingTableBuilder) markOsp(ospAddr ctype.Addr, blknum uint64) {
+	b.graphLock.Lock()
+	defer b.graphLock.Unlock()
+	log.Infof("markOsp: %x", ospAddr)
+	if _, ok := b.osps[ospAddr]; ok {
+		b.osps[ospAddr].RegistryBlock = blknum
+	} else {
+		now := now()
+		b.osps[ospAddr] = &OspInfo{
+			RegistryBlock: blknum,
+			UpdateTime:    now,
+		}
+		log.Debugf("add osp %x to neighbor map", ospAddr)
+		cids, tokens, err := b.dal.GetCidTokensByPeer(ospAddr)
+		if err != nil {
+			log.Errorln("GetCidTokensByPeer err:", err)
+			return
+		}
+		tokencids := make(map[ctype.Addr]ctype.CidType)
+		if len(cids) > 0 && len(cids) == len(tokens) {
+			for i, cid := range cids {
+				tokencids[tokens[i]] = cid
+			}
+		}
+		b.neighbors[ospAddr] = &NeighborInfo{
+			UpdateTime: now,
+			TokenCids:  tokencids,
+		}
+	}
 }
 
-// GetAllTokens returns all tokens ever seen by edge series.
-func (b *RoutingTableBuilder) GetAllTokens() map[ctype.Addr]bool {
-	b.routeLock.RLock()
-	defer b.routeLock.RUnlock()
+// unmarkOsp removes an Osp in routers
+func (b *routingTableBuilder) unmarkOsp(ospAddr ctype.Addr) {
+	b.graphLock.Lock()
+	defer b.graphLock.Unlock()
+	log.Infof("unmarkOsp: %x", ctype.Addr2Hex(ospAddr))
+	delete(b.osps, ospAddr)
+	delete(b.neighbors, ospAddr)
+}
+
+// getAllTokens returns all tokens ever seen by edge series.
+func (b *routingTableBuilder) getAllTokens() map[ctype.Addr]bool {
+	b.graphLock.RLock()
+	defer b.graphLock.RUnlock()
 	tks := make(map[ctype.Addr]bool)
 	for k := range b.edges {
 		tks[k] = true
@@ -174,220 +227,313 @@ func (b *RoutingTableBuilder) GetAllTokens() map[ctype.Addr]bool {
 	return tks
 }
 
-// GetOspInfo copies the all osp info and returns them back
-func (b *RoutingTableBuilder) GetOspInfo() map[ctype.Addr]uint64 {
-	allOspInfo := make(map[ctype.Addr]uint64)
+// getAllOsps copies the all osp info and returns them back
+func (b *routingTableBuilder) getAllOsps() map[ctype.Addr]*OspInfo {
+	allOspInfo := make(map[ctype.Addr]*OspInfo)
 
-	b.routeLock.RLock()
-	defer b.routeLock.RUnlock()
+	b.graphLock.RLock()
+	defer b.graphLock.RUnlock()
 
-	for addr := range b.ospInfo {
-		allOspInfo[addr] = b.ospInfo[addr]
+	for addr := range b.osps {
+		allOspInfo[addr] = b.osps[addr]
 	}
 
 	return allOspInfo
 }
 
-// IsOspExisting returns whether an Osp is marked or not
-func (b *RoutingTableBuilder) IsOspExisting(osp ctype.Addr) bool {
-	b.routeLock.RLock()
-	defer b.routeLock.RUnlock()
+// hasOsp returns whether an Osp is marked or not
+func (b *routingTableBuilder) hasOsp(ospAddr ctype.Addr) bool {
+	b.graphLock.RLock()
+	defer b.graphLock.RUnlock()
 
-	_, ok := b.ospInfo[osp]
+	_, ok := b.osps[ospAddr]
 
 	return ok
 }
 
-func (b *RoutingTableBuilder) Build(tokenAddr ctype.Addr) (addrToCidMap, error) {
-	log.Infof("building routing table for %x", tokenAddr)
-
-	// client->serving osps
-	servingOsps := make(map[ctype.Addr]servingOspMap)
-	b.routeLock.RLock()
-	defer b.routeLock.RUnlock()
-	allMarkedOsps := make(map[ctype.Addr]bool)
-	for osp := range b.ospInfo {
-		allMarkedOsps[osp] = true
-	}
-	allMarkedOsps[b.srcAddr] = true
-
-	graph, peerToCid := b.buildOspGraph(tokenAddr, servingOsps, allMarkedOsps)
-
-	nextHopCidToOsp, err := b.calcRoutesAmongOsps(graph, allMarkedOsps, peerToCid)
-	if err != nil {
-		return nil, err
-	}
-
-	// optimization here: only update DB if there is a change. Applied to both servingOsps table and routing table.
-	for client, osps := range servingOsps {
-		for osp := range osps {
-			lastServingOspOnToken, ok := b.lastServingOsps[tokenAddr]
-			if ok {
-				servingOspSet, ok := lastServingOspOnToken[client]
-				if ok && servingOspSet[osp] {
-					// osp is already in client's serving osp set. No need to update db.
-					continue
-				}
-			}
-			log.Debugln("puting serving osps", ctype.Addr2Hex(client), ctype.Addr2Hex(osp))
-			putErr := b.dal.PutServingOsp(client, tokenAddr, osp)
-			if putErr != nil {
-				log.Errorln(putErr)
-				// delete osp from map in case of db update failure so that it has chance to be updated next time.
-				delete(osps, osp)
-			}
+func (b *routingTableBuilder) keepOspAlive(ospAddr ctype.Addr, timestamp uint64) {
+	b.graphLock.Lock()
+	defer b.graphLock.Unlock()
+	if _, ok := b.osps[ospAddr]; ok {
+		ts := time.Unix(int64(timestamp), 0).UTC()
+		now := now()
+		if ts.After(now) {
+			ts = now
+		}
+		if ts.After(b.osps[ospAddr].UpdateTime) {
+			b.osps[ospAddr].UpdateTime = ts
 		}
 	}
-	for client, osps := range b.lastServingOsps[tokenAddr] {
-		for osp := range osps {
-			if servingOsps[client] != nil && servingOsps[client][osp] {
-				// osp is still in client's serving osp set. No need to update db.
-				continue
-			} else {
-				// osp is no longer serving client.
-				log.Debugln("deleting serving osps", ctype.Addr2Hex(client), ctype.Addr2Hex(osp))
-				delErr := b.dal.DeleteServingOsp(client, tokenAddr, osp)
-				if delErr != nil {
-					log.Errorln(delErr)
-					// add back osp in case of db delete failure so that it has chance to be deleted next time.
-					servingOsps[client][osp] = true
-				}
-			}
-		}
-	}
-	b.lastServingOsps[tokenAddr] = servingOsps
-	for dst, cid := range nextHopCidToOsp {
-		lastNextHopCidToOspOnToken, ok := b.lastNextHopCidToOsp[tokenAddr]
-		if ok && lastNextHopCidToOspOnToken[dst] == cid {
-			continue
-		}
-		log.Debugf("adding route to %x on token %x", dst.Bytes(), tokenAddr.Bytes())
-		putErr := b.dal.PutRoute(ctype.Addr2Hex(dst), ctype.Addr2Hex(tokenAddr), cid)
-		if putErr != nil {
-			log.Errorln(putErr)
-			// Remove the route entry in memory to be sync with database so that build next time will update db again.
-			delete(nextHopCidToOsp, dst)
-		}
-	}
-	for dst, cid := range b.lastNextHopCidToOsp[tokenAddr] {
-		log.Debugf("old table has route to %x", dst.Bytes())
-		if _, ok := nextHopCidToOsp[dst]; !ok {
-			log.Debugf("Deleting route to %x on token %x", dst.Bytes(), tokenAddr.Bytes())
-			delErr := b.dal.DeleteRoute(ctype.Addr2Hex(dst), ctype.Addr2Hex(tokenAddr))
-			if delErr != nil {
-				log.Errorln(delErr)
-				// Add back route entry in memory to be sync with database so that build next time will delete db again.
-				nextHopCidToOsp[dst] = cid
-			}
-		}
-	}
-	b.lastNextHopCidToOsp[tokenAddr] = nextHopCidToOsp
-	ret := make(addrToCidMap)
-	// copy result to return in case of someone modifying the returned value.
-	for k, v := range nextHopCidToOsp {
-		ret[k] = v
-	}
-	return ret, nil
 }
 
-type ospClientMap = map[ctype.Addr]map[ctype.Addr]bool
-
-func (b *RoutingTableBuilder) calcRoutesAmongOsps(
-	graph *dijkstra.Graph, allMarkedOsps map[ctype.Addr]bool, peerToCid addrToCidMap) (addrToCidMap, error) {
-	srcAddrStr := ctype.Addr2Hex(b.srcAddr)
-	srcAddrMapping, srcErr := graph.GetMapping(srcAddrStr)
-	if srcErr != nil {
-		log.Errorln(srcErr)
-		return nil, srcErr
+func (b *routingTableBuilder) keepNeighborAlive(neighborAddr ctype.Addr) {
+	b.graphLock.Lock()
+	defer b.graphLock.Unlock()
+	if _, ok := b.neighbors[neighborAddr]; ok {
+		b.neighbors[neighborAddr].UpdateTime = now()
 	}
-	// dest osp -> next hop osp cid
-	nextHopCidToOsp := make(addrToCidMap)
-	// Calculate routes from src to all osps
-	for osp := range allMarkedOsps {
-		if osp == b.srcAddr {
-			// skip myself
-			continue
-		}
-
-		destAddrStr := ctype.Addr2Hex(osp)
-		destAddrMapping, destErr := graph.GetMapping(destAddrStr)
-		if destErr != nil {
-			log.Errorln(destErr)
-			return nil, destErr
-		}
-		log.Debugln("calc", destAddrStr)
-		// The graph library doesn't provide API to run dijkstra once for all nodes.
-		best, shortErr := graph.Shortest(srcAddrMapping, destAddrMapping)
-		if shortErr != nil {
-			log.Errorln(shortErr, "- could be a natural result of network partition")
-			continue
-		}
-		nextHop, shortErr := graph.GetMapped(best.Path[1])
-		if shortErr != nil {
-			log.Errorln(shortErr)
-			return nil, shortErr
-		}
-		nextHopCidToOsp[osp] = peerToCid[ctype.Hex2Addr(nextHop)]
-	}
-	return nextHopCidToOsp, nil
 }
 
-func (b *RoutingTableBuilder) buildOspGraph(tokenAddr ctype.Addr,
-	servingOsps map[ctype.Addr]servingOspMap, allMarkedOsps map[ctype.Addr]bool) (*dijkstra.Graph, addrToCidMap) {
-	peerToCid := make(addrToCidMap)
-	graph := dijkstra.NewGraph()
-	// graph.AddMappedVertex(ctype.Addr2Hex(b.srcAddr))
+func (b *routingTableBuilder) getNeighborAddrs() []ctype.Addr {
+	b.graphLock.RLock()
+	defer b.graphLock.RUnlock()
+	var addrs []ctype.Addr
+	for addr, neighbor := range b.neighbors {
+		// neighbor needs to have opened channel
+		if len(neighbor.TokenCids) > 0 {
+			addrs = append(addrs, addr)
+		}
+	}
+	return addrs
+}
 
-	// Read each event one by one and look for event related to tokenAddr.
-	// Set up osp topology.
+func (b *routingTableBuilder) getAliveNeighbors() map[ctype.Addr]*NeighborInfo {
+	aliveNeighbors := make(map[ctype.Addr]*NeighborInfo)
+	b.graphLock.RLock()
+	defer b.graphLock.RUnlock()
+	now := now()
+	for addr, neighbor := range b.neighbors {
+		// neighbor needs to be alive
+		if neighbor.UpdateTime.Add(config.RouterAliveTimeout).After(now) {
+			if len(neighbor.TokenCids) > 0 {
+				aliveNeighbors[addr] = neighbor
+			}
+		}
+	}
+	return aliveNeighbors
+}
+
+// getAllOsps copies the all osp info and returns them back
+func (b *routingTableBuilder) getAllNeighbors() map[ctype.Addr]*NeighborInfo {
+	allNeighbors := make(map[ctype.Addr]*NeighborInfo)
+	b.graphLock.RLock()
+	defer b.graphLock.RUnlock()
+	for addr, neighbor := range b.neighbors {
+		// neighbor needs to have opened channel
+		if len(neighbor.TokenCids) > 0 {
+			allNeighbors[addr] = neighbor
+		}
+	}
+	return allNeighbors
+}
+
+func (b *routingTableBuilder) buildTable(tokenAddr ctype.Addr) (map[ctype.Addr]ctype.CidType, error) {
+	b.buildLock.Lock()
+	defer b.buildLock.Unlock()
+	// check if build is needed
+	if !b.needCompute(tokenAddr) {
+		return nil, nil
+	}
+	log.Infof("building routing table for token %x", tokenAddr)
+	// compute routes
+	accessOsps, nextHopCids := b.computeRoutes(tokenAddr)
+	// update routes in database
+	b.updateRouteDB(tokenAddr, accessOsps, nextHopCids)
+
+	log.Debugf("built routing table for token %x", tokenAddr)
+	return nextHopCids, nil
+}
+
+func (b *routingTableBuilder) needCompute(tokenAddr ctype.Addr) bool {
+	b.graphLock.RLock()
+	defer b.graphLock.RUnlock()
+	if len(b.edges[tokenAddr]) == 0 {
+		log.Debugln("skip compute due to no edges for token", ctype.Addr2Hex(tokenAddr))
+		return false
+	}
+	connected := false
+	for _, neighbor := range b.neighbors {
+		for tk, _ := range neighbor.TokenCids {
+			if tk == tokenAddr {
+				connected = true
+				break
+			}
+		}
+	}
+	if !connected {
+		log.Debugln("skip compute due to no direct neighbors for token", ctype.Addr2Hex(tokenAddr))
+		return false
+	}
+	return true
+}
+
+func (b *routingTableBuilder) computeRoutes(tokenAddr ctype.Addr) (
+	map[ctype.Addr]accessOspSet, map[ctype.Addr]ctype.CidType) {
+	b.graphLock.RLock()
+	defer b.graphLock.RUnlock()
+	// set of active osps
+	ospSet := make(map[ctype.Addr]bool)
+	now := now()
+	for ospAddr, osp := range b.osps {
+		// osp needs to be alive
+		if osp.UpdateTime.Add(config.RouterAliveTimeout).After(now) {
+			ospSet[ospAddr] = true
+		}
+	}
+	ospSet[b.myAddr] = true
+
+	// client addr -> access osps
+	accessOsps := make(map[ctype.Addr]accessOspSet)
+	// peer addr -> channel ID
+	peerToCid := make(map[ctype.Addr]ctype.CidType)
+
+	// build osp graph
+	graph := NewGraph()
 	for _, edge := range b.edges[tokenAddr] {
-		// Record cid that I connect straight as value in routing table is next hop cid, not addr.
-		// This needs to be done before non-osp check.
-		if b.srcAddr == edge.P1 {
+		// record direct connected cid as value in routing table is next hop cid instead of addr.
+		if b.myAddr == edge.P1 {
 			peerToCid[edge.P2] = edge.Cid
-		} else if b.srcAddr == edge.P2 {
+		} else if b.myAddr == edge.P2 {
 			peerToCid[edge.P1] = edge.Cid
 		}
-		_, p1IsOsp := allMarkedOsps[edge.P1]
-		_, p2IsOsp := allMarkedOsps[edge.P2]
+		_, p1IsOsp := ospSet[edge.P1]
+		_, p2IsOsp := ospSet[edge.P2]
 
 		if !p1IsOsp && !p2IsOsp {
-			// skip routing calc if none of them is osp.
+			// skip if neither is osp.
 			continue
 		}
 
 		p1Str := ctype.Addr2Hex(edge.P1)
 		p2Str := ctype.Addr2Hex(edge.P2)
-		// Only add edge to graph when both are osps.
+		// only add edge to graph when both are active osps.
 		if p1IsOsp && p2IsOsp {
-			log.Debugln("adding", p1Str, p2Str)
-			graph.AddMappedVertex(p1Str)
-			graph.AddMappedVertex(p2Str)
-			graph.AddMappedArc(p1Str, p2Str, 1)
-			graph.AddMappedArc(p2Str, p1Str, 1)
+			log.Debugln("adding edge", p1Str, p2Str)
+			graph.addEdge(p1Str, p2Str, 1)
+			graph.addEdge(p2Str, p1Str, 1)
 			continue
 		}
 
-		// One is osp, the other is client, save client for final routing table setup.
-		// The edge and client is not in routing calculation though. We only calculate
-		// OSP1-OSP2 and use same next hop for client connecting to OSP1 or OSP2.
+		// One is osp, the other is client, save client for last hop route.
+		// The edge and client is not in routing calculation though.
 		if p1IsOsp {
-			if servingOsps[edge.P2] == nil {
-				servingOsps[edge.P2] = make(map[ctype.Addr]bool)
-			}
 			// p1 is osp, p2 is client
-			servingOsps[edge.P2][edge.P1] = true
-			log.Debugln("adding", p1Str)
-			graph.AddMappedVertex(p1Str)
-		} else if p2IsOsp {
-			if servingOsps[edge.P1] == nil {
-				servingOsps[edge.P1] = make(map[ctype.Addr]bool)
+			if accessOsps[edge.P2] == nil {
+				accessOsps[edge.P2] = make(map[ctype.Addr]bool)
 			}
+			accessOsps[edge.P2][edge.P1] = true
+		} else if p2IsOsp {
 			// p2 is osp, p1 is client
-			servingOsps[edge.P1][edge.P2] = true
-			log.Debugln("adding", p2Str)
-			graph.AddMappedVertex(p2Str)
+			if accessOsps[edge.P1] == nil {
+				accessOsps[edge.P1] = make(map[ctype.Addr]bool)
+			}
+			accessOsps[edge.P1][edge.P2] = true
 		}
 	}
-	return graph, peerToCid
+
+	// compute shortest paths
+	_, paths := graph.dijkstra(ctype.Addr2Hex(b.myAddr))
+	// dest osp -> next hop cid
+	nextHopCids := make(map[ctype.Addr]ctype.CidType)
+	// Calculate routes from src to all ospAddrs
+	for ospAddr := range ospSet {
+		dest := ctype.Addr2Hex(ospAddr)
+		if ospAddr == b.myAddr {
+			// skip myself
+			continue
+		}
+		path := paths[dest]
+		if len(path) < 2 {
+			log.Debugln("no path to destination", dest)
+			continue
+		}
+		log.Debugln("shortest path:", printPath(path))
+		nextHop := path[1]
+		nextHopCids[ospAddr] = peerToCid[ctype.Hex2Addr(nextHop)]
+	}
+	return accessOsps, nextHopCids
+}
+
+func (b *routingTableBuilder) updateRouteDB(
+	tokenAddr ctype.Addr, accessOsps map[ctype.Addr]accessOspSet, nextHopCids map[ctype.Addr]ctype.CidType) {
+	b.routeLock.Lock()
+	defer b.routeLock.Unlock()
+	// only update DB if there is a change. Applied to both accessOsps table and routing table.
+	updatedClients := make(map[ctype.Addr]bool)
+	prevAccessOsps := b.accessOsps[tokenAddr]
+	if prevAccessOsps == nil {
+		prevAccessOsps = make(map[ctype.Addr]accessOspSet)
+	}
+
+	for client, ospAddrs := range accessOsps {
+		for ospAddr := range ospAddrs {
+			if prevAccessOsps[client] != nil && prevAccessOsps[client][ospAddr] {
+				// osp is already in client's access osp set. No need to update db.
+				continue
+			}
+			log.Debugln("client", ctype.Addr2Hex(client), "has new access OSP", ctype.Addr2Hex(ospAddr))
+			updatedClients[client] = true
+		}
+	}
+	for client, ospAddrs := range prevAccessOsps {
+		for ospAddr := range ospAddrs {
+			if accessOsps[client] != nil && accessOsps[client][ospAddr] {
+				// osp is still in client's access osp set. No need to update db.
+				continue
+			}
+			// osp is no longer serving client.
+			log.Debugln("client", ctype.Addr2Hex(client), "lost access OSP", ctype.Addr2Hex(ospAddr))
+			updatedClients[client] = true
+		}
+	}
+
+	var err error
+	tokenInfo := utils.GetTokenInfoFromAddress(tokenAddr)
+	// update DB client access osp entries.
+	for client := range updatedClients {
+		num := len(accessOsps[client])
+		if num > 0 {
+			ospAddrs := make([]ctype.Addr, 0, num)
+			for ospAddr := range accessOsps[client] {
+				ospAddrs = append(ospAddrs, ospAddr)
+			}
+			if len(prevAccessOsps[client]) == 0 {
+				err = b.dal.InsertDestToken(client, tokenInfo, ospAddrs, 0)
+			} else {
+				err = b.dal.UpdateDestTokenOsps(client, tokenInfo, ospAddrs)
+			}
+		} else {
+			err = b.dal.DeleteDestToken(client, tokenInfo)
+		}
+		if err != nil {
+			log.Errorln(err)
+			// Could not update the DB, keep using the previous OSP set.
+			accessOsps[client] = prevAccessOsps[client]
+		}
+	}
+	b.accessOsps[tokenAddr] = accessOsps
+
+	// update DB routing entries
+	prevNextHopCids := b.nextHopCids[tokenAddr]
+	if prevNextHopCids == nil {
+		prevNextHopCids = make(map[ctype.Addr]ctype.CidType)
+	}
+	for dst, cid := range nextHopCids {
+		if prevNextHopCids[dst] == cid {
+			continue
+		}
+		action := "adding"
+		if prevNextHopCids[dst] != ctype.ZeroCid {
+			action = "updating"
+		}
+		log.Debugf("%s route to %x on token %x", action, dst, tokenAddr.Bytes())
+		err = b.dal.UpsertRouting(dst, tokenInfo, cid)
+		if err != nil {
+			log.Errorln(err)
+			// Remove the route entry in memory to be sync with database so that build next time will update db again.
+			delete(nextHopCids, dst)
+		}
+	}
+	for dst, cid := range prevNextHopCids {
+		if _, ok := nextHopCids[dst]; !ok {
+			log.Debugf("Deleting route to %x on token %x", dst, tokenAddr.Bytes())
+			err = b.dal.DeleteRouting(dst, tokenInfo)
+			if err != nil {
+				log.Errorln(err)
+				// Add back route entry in memory to be sync with database so that build next time will delete db again.
+				nextHopCids[dst] = cid
+			}
+		}
+	}
+	b.nextHopCids[tokenAddr] = nextHopCids
 }

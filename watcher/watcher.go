@@ -1,4 +1,4 @@
-// Copyright 2018 Celer Network
+// Copyright 2018-2020 Celer Network
 //
 // This is a wrapper on top of Go-Ethereum's client API (ethclient)
 // for fetching log events via filtered query requests.  It handles
@@ -19,8 +19,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/celer-network/goCeler-oss/clog"
-	"github.com/celer-network/goCeler-oss/common/structs"
+	"github.com/celer-network/goCeler/common/structs"
+	"github.com/celer-network/goCeler/ctype"
+	"github.com/celer-network/goutils/log"
 	ethereum "github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	ethcommon "github.com/ethereum/go-ethereum/common"
@@ -28,7 +29,7 @@ import (
 )
 
 const (
-	notBlockIndex = ^uint(0) // 0xFFFFFFFF not-a-block-index value
+	notBlockIndex = ^int64(0) // 0xFFFFFFFF not-a-block-index value
 )
 
 var (
@@ -83,11 +84,10 @@ type WatchClient interface {
 // WatchDAL is an interface for the watch-specific API of the KVStore
 // data access layer.
 type WatchDAL interface {
-	GetLogEventWatch(name string) (*structs.LogEventID, error)
-	PutLogEventWatch(name string, id *structs.LogEventID) error
-	DeleteLogEventWatch(name string) error
-	HasLogEventWatch(name string) (bool, error)
-	GetAllLogEventWatchKeys() ([]string, error)
+	InsertMonitor(event string, blockNum uint64, blockIdx int64, restart bool) error
+	GetMonitorBlock(event string) (uint64, int64, bool, error)
+	UpdateMonitorBlock(event string, blockNum uint64, blockIdx int64) error
+	UpsertMonitorBlock(event string, blockNum uint64, blockIdx int64, restart bool) error
 }
 
 // Create a watch service.
@@ -130,7 +130,7 @@ func (ws *WatchService) watchBlkNum() {
 	for {
 		select {
 		case <-ws.quit:
-			clog.Debugln("watchBlkNum: quit")
+			log.Debugln("watchBlkNum: quit")
 			return
 
 		case <-ticker.C:
@@ -143,7 +143,7 @@ func (ws *WatchService) watchBlkNum() {
 func (ws *WatchService) updateBlockNumber() {
 	head, err := ws.client.HeaderByNumber(context.Background(), nil)
 	if err != nil {
-		clog.Traceln("cannot fetch on-chain block number:", err)
+		log.Traceln("cannot fetch on-chain block number:", err)
 		return
 	}
 
@@ -155,7 +155,7 @@ func (ws *WatchService) updateBlockNumber() {
 	}
 	topBlkNum = ws.blkNum
 	ws.mu.Unlock()
-	clog.Tracef("top block #: %d, on-chain #: %d", topBlkNum, blkNum)
+	log.Tracef("top block #: %d, on-chain #: %d", topBlkNum, blkNum)
 }
 
 // Return the most recent on-chain block number.
@@ -214,7 +214,7 @@ func (ws *WatchService) unregister(name string) {
 // MakeFilterQuery constructs an Ethereum FilterQuery structure from these
 // event and contract parameters: address, raw ABI string, event name, and
 // the optional start block number.
-func (ws *WatchService) MakeFilterQuery(addr ethcommon.Address, rawABI string, eventName string, startBlock *big.Int) (ethereum.FilterQuery, error) {
+func (ws *WatchService) MakeFilterQuery(addr ctype.Addr, rawABI string, eventName string, startBlock *big.Int) (ethereum.FilterQuery, error) {
 	var q ethereum.FilterQuery
 
 	parsedABI, err := abi.JSON(strings.NewReader((rawABI)))
@@ -228,8 +228,8 @@ func (ws *WatchService) MakeFilterQuery(addr ethcommon.Address, rawABI string, e
 	}
 
 	q.FromBlock = startBlock
-	q.Addresses = []ethcommon.Address{addr}
-	q.Topics = [][]ethcommon.Hash{{ev.Id()}}
+	q.Addresses = []ctype.Addr{addr}
+	q.Topics = [][]ethcommon.Hash{{ev.ID()}}
 	return q, nil
 }
 
@@ -272,7 +272,7 @@ func (w *Watch) watchLogEvents(reset bool) {
 	// Set the ID of the last log event acknowledged by the app (if any).
 	// It is used to resume the watch from where the application left off.
 	w.setWatchLastID(reset)
-	clog.Debugf("watchLogEvents: start %s from %d", w.name, w.fromBlock)
+	log.Debugf("watchLogEvents: start %s from %d", w.name, w.fromBlock)
 
 	// The polling interval is computed in relation to block polling.
 	polling := w.blkInterval * w.service.polling
@@ -284,7 +284,7 @@ func (w *Watch) watchLogEvents(reset bool) {
 
 		select {
 		case <-w.service.quit:
-			clog.Debugln("watchLogEvents: quit:", w.name)
+			log.Debugln("watchLogEvents: quit:", w.name)
 			return
 
 		case <-ticker.C:
@@ -292,7 +292,7 @@ func (w *Watch) watchLogEvents(reset bool) {
 		}
 	}
 
-	clog.Debugln("watchLogEvents: closed:", w.name)
+	log.Debugln("watchLogEvents: closed:", w.name)
 }
 
 // Set the ID of the last log event acknowledged by the app (if any).
@@ -315,32 +315,40 @@ func (w *Watch) setWatchLastID(reset bool) {
 	w.lastID = nil
 	w.fromBlock = 0
 
-	exist, err := w.service.dal.HasLogEventWatch(w.name)
-	if err == nil && exist && !reset {
-		if id, err2 := w.service.dal.GetLogEventWatch(w.name); err2 == nil {
-			if id.Index != notBlockIndex {
-				// This is a real ACK ID from the app.
-				w.lastID = id
+	blockNum, blockIdx, found, err := w.service.dal.GetMonitorBlock(w.name)
+	if err == nil && found && !reset {
+		if blockIdx != notBlockIndex {
+			// This is a real ACK ID from the app.
+			w.lastID = &structs.LogEventID{
+				BlockNumber: blockNum,
+				Index:       blockIdx,
 			}
-
-			// Ignore the query's "FromBlock" and start from this block.
-			w.fromBlock = id.BlockNumber
 		}
+
+		// Ignore the query's "FromBlock" and start from this block.
+		w.fromBlock = blockNum
 		return
 	}
 
-	// No previously persisted resume pointer.  Remember this first-time
-	// starting block number to resume from in case of a crash.
+	// No previously persisted resume pointer (or "reset", or some DB error).
+	// Remember this starting block number to resume from in case of a crash.
 	if w.query.FromBlock != nil {
 		w.fromBlock = w.query.FromBlock.Uint64()
 	}
-	lastID := structs.LogEventID{
-		BlockNumber: w.fromBlock,
-		Index:       notBlockIndex,
-	}
-	err = w.service.dal.PutLogEventWatch(w.name, &lastID)
+
 	if err != nil {
-		clog.Warnln("cannot persist 1st time resume pointer:", w.name, err)
+		log.Warnln("resume pointer overwritten:", w.name, err)
+		err = w.service.dal.UpsertMonitorBlock(w.name,
+			w.fromBlock, notBlockIndex, false)
+	} else if found {
+		err = w.service.dal.UpdateMonitorBlock(w.name,
+			w.fromBlock, notBlockIndex)
+	} else {
+		err = w.service.dal.InsertMonitor(w.name,
+			w.fromBlock, notBlockIndex, false)
+	}
+	if err != nil {
+		log.Warnln("cannot persist resume pointer:", w.name, err)
 	}
 }
 
@@ -351,7 +359,7 @@ func (w *Watch) fetchLogEvents() {
 	// beyond the desired block delay (to protect from on-chain reorg).
 	blkNum := w.service.GetBlockNumber()
 	if w.fromBlock+w.blkDelay > blkNum {
-		clog.Tracef("skip log fetching: %s: want %d, delay %d, blk %d", w.name, w.fromBlock, w.blkDelay, blkNum)
+		log.Tracef("skip log fetching: %s: want %d, delay %d, blk %d", w.name, w.fromBlock, w.blkDelay, blkNum)
 		return
 	}
 
@@ -365,11 +373,11 @@ func (w *Watch) fetchLogEvents() {
 	w.query.FromBlock = new(big.Int).SetUint64(w.fromBlock)
 	w.query.ToBlock = new(big.Int).SetUint64(toBlock)
 
-	clog.Tracef("fetch logs: %s: [%d-%d]", w.name, w.fromBlock, toBlock)
+	log.Tracef("fetch logs: %s: [%d-%d]", w.name, w.fromBlock, toBlock)
 
 	logs, err := w.service.client.FilterLogs(ctx, w.query)
 	if err != nil {
-		clog.Tracef("cannot fetch logs: %s: [%d-%d]: %s", w.name, w.fromBlock, toBlock, err)
+		log.Tracef("cannot fetch logs: %s: [%d-%d]: %s", w.name, w.fromBlock, toBlock, err)
 		return
 	}
 
@@ -403,7 +411,7 @@ func (w *Watch) fetchLogEvents() {
 		w.fromBlock = maxBlock + 1
 	}
 
-	clog.Tracef("added %d logs to queue: %s: next from %d", count, w.name, w.fromBlock)
+	log.Tracef("added %d logs to queue: %s: next from %d", count, w.name, w.fromBlock)
 }
 
 // Return true if the log event ID is strictly greater than the last ID.
@@ -412,7 +420,7 @@ func greaterThanLastID(log *types.Log, lastID *structs.LogEventID) bool {
 		return true
 	} else if log.BlockNumber < lastID.BlockNumber {
 		return false
-	} else if log.Index > lastID.Index {
+	} else if int64(log.Index) > lastID.Index {
 		return true
 	}
 	return false
@@ -467,7 +475,7 @@ func (w *Watch) Next() (types.Log, error) {
 	}
 
 	w.ackID.BlockNumber = nextLog.BlockNumber
-	w.ackID.Index = nextLog.Index
+	w.ackID.Index = int64(nextLog.Index)
 	w.ackWait = true
 	return *nextLog, nil
 }
@@ -489,7 +497,7 @@ func (w *Watch) Ack() error {
 		return fmt.Errorf("last event log received already ACKed")
 	}
 
-	if err := w.service.dal.PutLogEventWatch(w.name, &w.ackID); err != nil {
+	if err := w.service.dal.UpdateMonitorBlock(w.name, w.ackID.BlockNumber, w.ackID.Index); err != nil {
 		return err
 	}
 	w.ackWait = false

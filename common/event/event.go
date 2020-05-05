@@ -1,12 +1,12 @@
-// Copyright 2018-2019 Celer Network
+// Copyright 2018-2020 Celer Network
 
 package event
 
 import (
-	"github.com/celer-network/goCeler-oss/common"
-	"github.com/celer-network/goCeler-oss/ctype"
-	"github.com/celer-network/goCeler-oss/entity"
-	"github.com/celer-network/goCeler-oss/rpc"
+	"github.com/celer-network/goCeler/common"
+	"github.com/celer-network/goCeler/ctype"
+	"github.com/celer-network/goCeler/entity"
+	"github.com/celer-network/goCeler/rpc"
 	"github.com/golang/protobuf/ptypes/any"
 )
 
@@ -21,6 +21,7 @@ const (
 	ConfirmWithdraw     = "ConfirmWithdraw"
 	VetoWithdraw        = "VetoWithdraw"
 	RouterUpdated       = "RouterUpdated"
+	MigrateChannelTo    = "MigrateChannelTo"
 )
 
 type OpenChannelCallback interface {
@@ -28,7 +29,7 @@ type OpenChannelCallback interface {
 	HandleOpenChannelErr(e *common.E)
 }
 type OnNewStreamCallback interface {
-	HandleNewCelerStream(addr []byte)
+	HandleNewCelerStream(addr ctype.Addr)
 }
 type OnReceivingTokenCallback interface {
 	HandleReceivingStart(payID ctype.PayIDType, pay *entity.ConditionalPay, note *any.Any)

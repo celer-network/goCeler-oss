@@ -1,0 +1,22 @@
+{
+  "version": "0.1",
+  "ethereum": {
+    "gateway": "URL for ethereum RPC",
+    "chainId": 3,
+    "blockIntervalSec": 15,
+    "blockDelayNum": 5,
+    "contracts": {
+      "ledger": "4b7a6ee1128ff88b21cc4c6359164b21d671fa31",
+      "wallet": "f78260599ad3225f8c33f665cac1c60501c6b934",
+      "virtResolver": "ff57cc84acf5301f5d35c6b14ac1697b550fb9f0",
+      "ethPool": "2e5cf98ea44961615969fb74c9a9f622a34fad6c",
+      "payRegistry": "a12063ab2136abbab09e036a260694fbd5e57982",
+      "payResolver": "605703f2c26aa67c4e63a27e5ace6ad2862bb53a",
+      "routerRegistry": "ee56cb265b17969aa7aba5db77a0982473b5fd29"
+    }
+  },
+  "osp": {
+    "host": "HOST:PORT to accept RPC connection",
+    "address": "OSP ETH address"
+  }
+}

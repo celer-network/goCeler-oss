@@ -1,4 +1,4 @@
-// Copyright 2018-2019 Celer Network
+// Copyright 2018-2020 Celer Network
 
 package common
 
@@ -11,13 +11,14 @@ var (
 	ErrInvalidArg                  = errors.New("invalid arguments")
 	ErrUnknownTokenType            = errors.New("unknown token type")
 	ErrDeadlinePassed              = errors.New("deadline already passed")
-	ErrZeroConditions              = errors.New("condpay has 0 conds")
+	ErrZeroConditions              = errors.New("condpay has no conditions")
 	ErrNoChannel                   = errors.New("no available channel")
 	ErrPayNotFound                 = errors.New("payment not found")
-	ErrPayStateNotFound            = errors.New("payment state not found")
+	ErrPayNoIngress                = errors.New("payment does not have ingress state")
+	ErrPayNoEgress                 = errors.New("payment does not have egress state")
 	ErrPayDestMismatch             = errors.New("pay dest and self mismatch")
 	ErrPaySrcMismatch              = errors.New("pay src and self mismatch")
-	ErrSimplexParse                = errors.New("cannot parse simplex from storage")
+	ErrSimplexParse                = errors.New("cannot parse simplex state")
 	ErrRateLimited                 = errors.New("rate limited, please try again later")
 	ErrInvalidSig                  = errors.New("invalid signature")
 	ErrInvalidSeqNum               = errors.New("invalid sequence number")
@@ -43,13 +44,25 @@ var (
 	ErrEgressPayNotCanceled        = errors.New("egress payment not canceled")
 	ErrEgressPayPaid               = errors.New("egress payment already paid")
 	ErrPayOnChainResolved          = errors.New("pay already onchain resolved")
+	ErrPayOffChainResolved         = errors.New("pay already offchain resolved")
 	ErrPayAlreadyPending           = errors.New("pay already exists in pending pay list")
 	ErrPayRouteLoop                = errors.New("pay route loop")
 	ErrInvalidPaySrc               = errors.New("invalid pay source")
 	ErrInvalidPayDst               = errors.New("invalid pay destination")
 	ErrRouteNotFound               = errors.New("no route to destination")
-	ErrPeerNotFound                = errors.New("no peer found for the given cid")
+	ErrPeerNotOnline               = errors.New("peer not online")
+	ErrPeerNotFound                = errors.New("no peer found")
 	ErrSimplexStateNotFound        = errors.New("channel simplex state not found")
+	ErrChannelNotFound             = errors.New("channel not found")
+	ErrInvalidChannelState         = errors.New("invalid channel state")
+	ErrNoCelerStream               = errors.New("no celer stream")
+	ErrCelerMsgTimeout             = errors.New("celer message send timeout")
+	ErrDelegateProofNotFound       = errors.New("delegate proof not found")
+	ErrTcbNotFound                 = errors.New("tcb entry not found")
+	ErrRecvCelerMsgTimeout         = errors.New("timeout waiting to recv celer msg")
+	ErrLeaseAcquired               = errors.New("lease acquired by others")
+	ErrPendingRefill               = errors.New("pending channel refill job")
+	ErrDepositNotFound             = errors.New("deposit job not found")
 )
 
 type E struct {

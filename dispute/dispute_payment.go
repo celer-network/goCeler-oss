@@ -1,18 +1,18 @@
-// Copyright 2018-2019 Celer Network
+// Copyright 2018-2020 Celer Network
 
 package dispute
 
 import (
 	"math/big"
 
-	"github.com/celer-network/goCeler-oss/chain/channel-eth-go/payregistry"
-	"github.com/celer-network/goCeler-oss/chain/channel-eth-go/payresolver"
-	"github.com/celer-network/goCeler-oss/chain"
-	log "github.com/celer-network/goCeler-oss/clog"
-	"github.com/celer-network/goCeler-oss/common"
-	"github.com/celer-network/goCeler-oss/ctype"
-	"github.com/celer-network/goCeler-oss/entity"
-	"github.com/celer-network/goCeler-oss/utils"
+	"github.com/celer-network/goCeler/chain"
+	"github.com/celer-network/goCeler/chain/channel-eth-go/payregistry"
+	"github.com/celer-network/goCeler/chain/channel-eth-go/payresolver"
+	"github.com/celer-network/goCeler/common"
+	"github.com/celer-network/goCeler/ctype"
+	"github.com/celer-network/goCeler/entity"
+	"github.com/celer-network/goCeler/utils"
+	"github.com/celer-network/goutils/log"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/golang/protobuf/proto"
@@ -20,6 +20,7 @@ import (
 
 // SettleConditionalPay resolves a conditonal payment on chain in the PayRegistry
 func (p *Processor) SettleConditionalPay(payID ctype.PayIDType) error {
+	// TODO: resolvePaymentByVouchedResult first
 	return p.resolvePaymentByConditions(payID)
 }
 
@@ -35,8 +36,12 @@ func (p *Processor) resolvePaymentByVouchedResult(payID ctype.PayIDType) error {
 
 func (p *Processor) resolvePaymentByConditions(payID ctype.PayIDType) error {
 	log.Infoln("resolve payment by conditions, payID:", payID.Hex())
-	pay, payBytes, err := p.dal.GetConditionalPay(payID)
+	pay, payBytes, found, err := p.dal.GetPayment(payID)
 	if err != nil {
+		log.Error(err)
+		return err
+	}
+	if !found {
 		log.Errorln(common.ErrPayNotFound, err, payID.Hex())
 		return common.ErrPayNotFound
 	}
@@ -61,8 +66,11 @@ func (p *Processor) resolvePaymentByConditions(payID ctype.PayIDType) error {
 	for _, cond := range pay.GetConditions() {
 		if cond.ConditionType == entity.ConditionType_HASH_LOCK {
 			lock := ctype.Bytes2Hex(cond.HashLock)
-			secret, err2 := p.dal.GetSecretRegistry(lock)
+			secret, found, err2 := p.dal.GetSecret(lock)
 			if err2 != nil {
+				return err2
+			}
+			if !found {
 				log.Errorln("secret not revealed for hash lock", lock)
 				return common.ErrSecretNotRevealed
 			}
@@ -85,6 +93,7 @@ func (p *Processor) resolvePaymentByConditions(payID ctype.PayIDType) error {
 		})
 	if err != nil {
 		// check onchain again to handle cases when client call it multiple time
+		// TODO: change later for support numeric conditions
 		amt, _, _ := p.GetCondPayInfoFromRegistry(payID)
 		if amt.Cmp(maxAmt) == 0 {
 			return nil

@@ -1,12 +1,13 @@
-// Copyright 2018-2019 Celer Network
+// Copyright 2018-2020 Celer Network
 
 package handlers
 
 import (
-	"github.com/celer-network/goCeler-oss/common"
+	"github.com/celer-network/goCeler/common"
+	"github.com/celer-network/goCeler/ctype"
 )
 
-type ForwardToServerCallback func(dest string, msg interface{}) (bool, error)
+type ForwardToServerCallback func(dest ctype.Addr, retry bool, msg interface{}) (bool, error)
 
 type CelerMsgHandler interface {
 	GetMsgName() string

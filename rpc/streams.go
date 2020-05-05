@@ -1,4 +1,4 @@
-// Copyright 2018 Celer Network
+// Copyright 2018-2020 Celer Network
 //
 // The connection manager keeps track of the open hop and flow streams
 // per destination address and their receiving goroutines.  It detects
@@ -12,9 +12,8 @@ import (
 	"fmt"
 	"sync"
 
-	log "github.com/celer-network/goCeler-oss/clog"
-	"github.com/celer-network/goCeler-oss/ctype"
-	ethcommon "github.com/ethereum/go-ethereum/common"
+	"github.com/celer-network/goCeler/ctype"
+	"github.com/celer-network/goutils/log"
 	grpc "google.golang.org/grpc"
 )
 
@@ -23,9 +22,9 @@ type CelerStream interface {
 	Recv() (*CelerMsg, error)
 }
 
-type ErrCallbackFunc func(addr string, err error)
-type RegisterClientCallbackFunc func(clientAddr string)
-type MsgQueueCallbackFunc func(peer string) error
+type ErrCallbackFunc func(addr ctype.Addr, err error)
+type RegisterClientCallbackFunc func(clientAddr ctype.Addr)
+type MsgQueueCallbackFunc func(peer ctype.Addr) error
 
 // syncInfo holds data used to synchronize between the goroutines of
 // an address and coordinate the handling of teardown and cleanup
@@ -48,11 +47,11 @@ func (s *SafeSendCelerStream) SafeSend(msg *CelerMsg) error {
 
 type ConnectionManager struct {
 	// Eth->CelerStream
-	celerStreams map[string]*SafeSendCelerStream
+	celerStreams map[ctype.Addr]*SafeSendCelerStream
 	// Eth->Connection
-	conns        map[string]*grpc.ClientConn
-	syncInfos    map[string]*syncInfo
-	errCallbacks map[string]ErrCallbackFunc
+	conns        map[ctype.Addr]*grpc.ClientConn
+	syncInfos    map[ctype.Addr]*syncInfo
+	errCallbacks map[ctype.Addr]ErrCallbackFunc
 	lock         *sync.RWMutex
 	// Callback used in the multi-server setup to register that
 	// the client connected to this OSP.
@@ -65,10 +64,10 @@ type ConnectionManager struct {
 
 func NewConnectionManager(regClient RegisterClientCallbackFunc) *ConnectionManager {
 	return &ConnectionManager{
-		celerStreams: make(map[string]*SafeSendCelerStream),
-		conns:        make(map[string]*grpc.ClientConn),
-		syncInfos:    make(map[string]*syncInfo),
-		errCallbacks: make(map[string]ErrCallbackFunc),
+		celerStreams: make(map[ctype.Addr]*SafeSendCelerStream),
+		conns:        make(map[ctype.Addr]*grpc.ClientConn),
+		syncInfos:    make(map[ctype.Addr]*syncInfo),
+		errCallbacks: make(map[ctype.Addr]ErrCallbackFunc),
 		lock:         &sync.RWMutex{},
 		regClient:    regClient,
 	}
@@ -79,42 +78,54 @@ func (m *ConnectionManager) SetMsgQueueCallback(enable, disable MsgQueueCallback
 	m.disableMsgQueue = disable
 }
 
-func (m *ConnectionManager) AddConnection(onchainAddr string, cc *grpc.ClientConn) {
+func (m *ConnectionManager) AddConnection(peerAddr ctype.Addr, cc *grpc.ClientConn) {
 	if cc == nil {
-		log.Panicln("error: nil conn given is invalid", onchainAddr)
+		log.Panicln("error: nil conn given is invalid", peerAddr.Hex())
 	}
 
 	//log.Debug("waiting for addConnection lock")
 	m.lock.Lock()
 	//log.Debug("grab addConnection lock")
 	defer m.lock.Unlock()
-	m.conns[onchainAddr] = cc
+	m.conns[peerAddr] = cc
 }
 
-func (m *ConnectionManager) GetClient(onchainAddr string) (RpcClient, error) {
+func (m *ConnectionManager) GetClient(peerAddr ctype.Addr) (RpcClient, error) {
 	//log.Debug("waiting for GetClient lock")
 	m.lock.RLock()
 	//log.Debug("grab GetClient lock")
 	defer m.lock.RUnlock()
 
-	cc := m.conns[onchainAddr]
+	cc := m.conns[peerAddr]
 	if cc == nil {
-		log.Errorln("error: nil rpc connection for", onchainAddr)
-		return nil, fmt.Errorf("no RPC connection for %s", onchainAddr)
+		log.Errorln("error: nil rpc connection for", peerAddr.Hex())
+		return nil, fmt.Errorf("no RPC connection for %x", peerAddr)
 	}
 	return NewRpcClient(cc), nil
 }
 
-func (m *ConnectionManager) GetClientByAddr(peerAddr ethcommon.Address) (RpcClient, error) {
-	return m.GetClient(ctype.Addr2Hex(peerAddr))
+func (m *ConnectionManager) GetClientByAddr(peerAddr ctype.Addr) (RpcClient, error) {
+	return m.GetClient(peerAddr)
 }
 
-func (m *ConnectionManager) CloseConnection(onchainAddr string) {
+// CloseNoRetry remove errCallbacks so no more retry, then close the underlying grpc conn
+// expect to be only called in cNode.Close
+func (m *ConnectionManager) CloseNoRetry(onchainAddr ctype.Addr) {
+	// we delete callback first because conn.Close will cause .Recv to err and exit
+	// loop then it calls CloseConnection again and tries to trigger callback
+	// delete first avoid race condition
+	m.lock.Lock()
+	delete(m.errCallbacks, onchainAddr)
+	m.lock.Unlock()
+	m.CloseConnection(onchainAddr)
+}
+
+func (m *ConnectionManager) CloseConnection(peerAddr ctype.Addr) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
-	if cc, exist := m.conns[onchainAddr]; exist {
+	if cc, exist := m.conns[peerAddr]; exist {
 		cc.Close()
-		delete(m.conns, onchainAddr)
+		delete(m.conns, peerAddr)
 	}
 }
 
@@ -123,25 +134,25 @@ type Rpc_CelerOneServer interface {
 	Recv() (*CelerMsg, error)
 }
 
-func (m *ConnectionManager) AddCelerStream(onchainAddr string, stream CelerStream, msgProcessor chan *CelerMsg) context.Context {
+func (m *ConnectionManager) AddCelerStream(peerAddr ctype.Addr, stream CelerStream, msgProcessor chan *CelerMsg) context.Context {
 	m.lock.Lock()
 	defer m.lock.Unlock()
-	if oldSafeSend, exist := m.celerStreams[onchainAddr]; exist {
-		delete(m.celerStreams, onchainAddr)
+	if oldSafeSend, exist := m.celerStreams[peerAddr]; exist {
+		delete(m.celerStreams, peerAddr)
 		close(oldSafeSend.done)
 	}
 	safeSend := &SafeSendCelerStream{
 		celerStream: stream,
 		done:        make(chan bool),
 	}
-	m.celerStreams[onchainAddr] = safeSend
+	m.celerStreams[peerAddr] = safeSend
 	if m.regClient != nil {
-		m.regClient(onchainAddr)
+		m.regClient(peerAddr)
 	}
 	if m.enableMsgQueue != nil {
-		err := m.enableMsgQueue(onchainAddr)
+		err := m.enableMsgQueue(peerAddr)
 		if err != nil {
-			log.Warnln("CelerStream: enable peer message queue error:", onchainAddr, ":", err)
+			log.Warnln("CelerStream: enable peer message queue error:", peerAddr.Hex(), ":", err)
 		}
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -162,7 +173,7 @@ func (m *ConnectionManager) AddCelerStream(onchainAddr string, stream CelerStrea
 			var msg *CelerMsg
 			msg, err = stream.Recv()
 			if err != nil {
-				log.Infoln("CelerStream error for", onchainAddr, ":", err)
+				log.Infoln("CelerStream error for", peerAddr.Hex(), ":", err)
 				break
 			}
 
@@ -184,43 +195,43 @@ func (m *ConnectionManager) AddCelerStream(onchainAddr string, stream CelerStrea
 		}
 
 		if m.disableMsgQueue != nil {
-			err = m.disableMsgQueue(onchainAddr)
+			err = m.disableMsgQueue(peerAddr)
 			if err != nil {
-				log.Warnln("CelerStream: disable peer message queue error:", onchainAddr, ":", err)
+				log.Warnln("CelerStream: disable peer message queue error:", peerAddr.Hex(), ":", err)
 			}
 		}
-		m.CloseConnection(onchainAddr)
+		m.CloseConnection(peerAddr)
 		m.lock.Lock()
-		delete(m.celerStreams, onchainAddr)
-		cb, hasCb := m.errCallbacks[onchainAddr]
+		delete(m.celerStreams, peerAddr)
+		cb, hasCb := m.errCallbacks[peerAddr]
 		m.lock.Unlock()
 
 		cancel()
 		if hasCb {
-			log.Debugln("CelerStream app callback", onchainAddr)
-			cb(onchainAddr, err)
+			log.Debugln("CelerStream app callback", peerAddr.Hex())
+			cb(peerAddr, err)
 		}
 	}()
 	return ctx
 }
 
-func (m *ConnectionManager) AddErrorCallback(onchainAddr string, cb ErrCallbackFunc) {
+func (m *ConnectionManager) AddErrorCallback(peerAddr ctype.Addr, cb ErrCallbackFunc) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
-	m.errCallbacks[onchainAddr] = cb
+	m.errCallbacks[peerAddr] = cb
 }
 
 // Helper to return the syncInfo entry for an address, and create one if
 // it does yet exist.  Note: must be called with the "lock" held.
-func (m *ConnectionManager) getSyncInfo(onchainAddr string) *syncInfo {
-	si, ok := m.syncInfos[onchainAddr]
+func (m *ConnectionManager) getSyncInfo(peerAddr ctype.Addr) *syncInfo {
+	si, ok := m.syncInfos[peerAddr]
 	if !ok {
-		log.Debugln("getSyncInfo: created", onchainAddr)
+		log.Debugln("getSyncInfo: created", peerAddr.Hex())
 		si = &syncInfo{
 			stop: make(chan bool),
 		}
 		si.wg.Add(2) // will later start 2 goroutines (hop & flow)
-		m.syncInfos[onchainAddr] = si
+		m.syncInfos[peerAddr] = si
 	}
 	return si
 }
@@ -228,17 +239,17 @@ func (m *ConnectionManager) getSyncInfo(onchainAddr string) *syncInfo {
 // CleanupStreams terminate and cleanup the existing (old) hop & flow stream goroutines to
 // allow for new streams & goroutines to be registered for the same address.
 // It helps call from external to aquire lock.
-func (m *ConnectionManager) CleanupStreams(addr string) {
+func (m *ConnectionManager) CleanupStreams(peerAddr ctype.Addr) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
-	m.cleanupStreams(addr)
+	m.cleanupStreams(peerAddr)
 }
 
 // Terminate and cleanup the existing (old) hop & flow stream goroutines to
 // allow for new streams & goroutines to be registered for the same address.
 // Note: this function must be called with the "lock" held.
-func (m *ConnectionManager) cleanupStreams(addr string) {
-	si := m.syncInfos[addr]
+func (m *ConnectionManager) cleanupStreams(peerAddr ctype.Addr) {
+	si := m.syncInfos[peerAddr]
 	if si == nil {
 		return // no goroutines are setup
 	}
@@ -248,11 +259,11 @@ func (m *ConnectionManager) cleanupStreams(addr string) {
 	// the disconnect happened.  This means the 2 goroutines (hop & flow)
 	// have not yet received an error and are still running.  Tell them to
 	// stop at the next opportunity (effectively they become useless).
-	log.Debugln("cleanupStreams for", addr)
+	log.Debugln("cleanupStreams for", peerAddr.Hex())
 	close(si.stop)
 
-	delete(m.celerStreams, addr)
-	delete(m.syncInfos, addr)
+	delete(m.celerStreams, peerAddr)
+	delete(m.syncInfos, peerAddr)
 }
 
 func mustStop(si *syncInfo) bool {
@@ -264,10 +275,10 @@ func mustStop(si *syncInfo) bool {
 	}
 }
 
-func (m *ConnectionManager) GetCelerStream(onchainAddr string) *SafeSendCelerStream {
+func (m *ConnectionManager) GetCelerStream(peerAddr ctype.Addr) *SafeSendCelerStream {
 	m.lock.RLock()
 	defer m.lock.RUnlock()
-	return m.celerStreams[onchainAddr]
+	return m.celerStreams[peerAddr]
 }
 
 func (m *ConnectionManager) GetNumCelerStreams() int {

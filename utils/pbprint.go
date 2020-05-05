@@ -1,12 +1,15 @@
-// Copyright 2018-2019 Celer Network
+// Copyright 2018-2020 Celer Network
 
 package utils
 
 import (
 	"fmt"
 	"math/big"
+	"time"
 
-	"github.com/celer-network/goCeler-oss/entity"
+	"github.com/celer-network/goCeler/ctype"
+	"github.com/celer-network/goCeler/entity"
+	"github.com/celer-network/goCeler/rpc"
 )
 
 func PrintByteArrays(array [][]byte) string {
@@ -81,11 +84,11 @@ func PrintCondition(cond *entity.Condition) string {
 	if cond.GetConditionType() == entity.ConditionType_HASH_LOCK {
 		return fmt.Sprintf("<hashlock: %x>", cond.GetHashLock())
 	} else if cond.GetConditionType() == entity.ConditionType_DEPLOYED_CONTRACT {
-		return fmt.Sprintf("<deployed_addr: %x, args: %x %x>",
+		return fmt.Sprintf("<deployed_addr: %x, args: f:%x o:%x>",
 			cond.GetDeployedContractAddress(), cond.GetArgsQueryFinalization(), cond.GetArgsQueryOutcome())
 	} else if cond.GetConditionType() == entity.ConditionType_VIRTUAL_CONTRACT {
-		return fmt.Sprintf("<virtual_addr: %x, args: %x %x>",
-			cond.GetDeployedContractAddress(), cond.GetArgsQueryFinalization(), cond.GetArgsQueryOutcome())
+		return fmt.Sprintf("<virtual_addr: %x, args: f:%x o:%x>",
+			cond.GetVirtualContractAddress(), cond.GetArgsQueryFinalization(), cond.GetArgsQueryOutcome())
 	}
 	return "invalid_condition_type"
 }
@@ -118,4 +121,27 @@ func PrintConditionalPay(pay *entity.ConditionalPay) string {
 		pay.GetResolveDeadline(),
 		pay.GetResolveTimeout(),
 		pay.GetPayResolver())
+}
+
+func PrintCooperativeWithdrawInfo(withdrawal *entity.CooperativeWithdrawInfo) string {
+	info := fmt.Sprintf("cid: %s, seq: %d, receiver: %s, deadline: %d",
+		ctype.Bytes2Hex(withdrawal.GetChannelId()),
+		withdrawal.GetSeqNum(),
+		PrintAccountAmtPair(withdrawal.GetWithdraw()),
+		withdrawal.GetWithdrawDeadline())
+	if ctype.Bytes2Cid(withdrawal.GetRecipientChannelId()) != ctype.ZeroCid {
+		info += fmt.Sprintf(", recipient cid: %s", ctype.Bytes2Hex(withdrawal.GetRecipientChannelId()))
+	}
+	return info
+}
+
+func PrintRoutingUpdate(update *rpc.RoutingUpdate) string {
+	channels := ""
+	for _, ch := range update.GetChannels() {
+		channels += ch.Cid + ":" + ch.Balance + ","
+	}
+	return fmt.Sprintf("origin:%s, ts:%s, chs:%d:%s",
+		update.GetOrigin(),
+		time.Unix(int64(update.GetTs()), 0).UTC().Format("2006-01-02 15:04:05"),
+		len(update.GetChannels()), channels)
 }

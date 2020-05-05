@@ -1,0 +1,21 @@
+{
+	"open_chan_wait_s": 5,
+	"min_gas_gwei": 2,
+	"max_gas_gwei": 10,
+	"standard_configs": {
+		"config": {
+			"0000000000000000000000000000000000000000": {
+				"min_deposit": "50000000000000000",
+				"max_deposit": "200000000000000000",
+				"min_deadline_delta": 1,
+				"max_deadline_delta": 600
+			},
+			"4f9254c83eb525f9fcf346490bbb3ed28a81c667": {
+				"min_deposit": "500000000000000000000",
+				"max_deposit": "10000000000000000000000",
+				"min_deadline_delta": 1,
+				"max_deadline_delta": 600
+			}
+		}
+	}
+}

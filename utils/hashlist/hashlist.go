@@ -1,4 +1,4 @@
-// Copyright 2018-2019 Celer Network
+// Copyright 2018-2020 Celer Network
 
 package hashlist
 
@@ -6,8 +6,8 @@ import (
 	"bytes"
 	"errors"
 
-	"github.com/celer-network/goCeler-oss/common"
-	"github.com/celer-network/goCeler-oss/ctype"
+	"github.com/celer-network/goCeler/common"
+	"github.com/celer-network/goCeler/ctype"
 )
 
 // DeleteHash deletes hash from list

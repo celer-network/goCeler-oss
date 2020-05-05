@@ -1,4 +1,4 @@
-// Copyright 2018-2019 Celer Network
+// Copyright 2018-2020 Celer Network
 
 package msghdl
 
@@ -8,36 +8,43 @@ import (
 	"fmt"
 	"math/big"
 
-	log "github.com/celer-network/goCeler-oss/clog"
-	"github.com/celer-network/goCeler-oss/common"
-	"github.com/celer-network/goCeler-oss/config"
-	"github.com/celer-network/goCeler-oss/ctype"
-	"github.com/celer-network/goCeler-oss/entity"
-	"github.com/celer-network/goCeler-oss/fsm"
-	"github.com/celer-network/goCeler-oss/pem"
-	"github.com/celer-network/goCeler-oss/rpc"
-	"github.com/celer-network/goCeler-oss/storage"
-	"github.com/celer-network/goCeler-oss/utils"
-	"github.com/celer-network/goCeler-oss/utils/hashlist"
+	"github.com/celer-network/goCeler/common"
+	"github.com/celer-network/goCeler/common/structs"
+	enums "github.com/celer-network/goCeler/common/structs"
+	"github.com/celer-network/goCeler/config"
+	"github.com/celer-network/goCeler/ctype"
+	"github.com/celer-network/goCeler/entity"
+	"github.com/celer-network/goCeler/fsm"
+	"github.com/celer-network/goCeler/pem"
+	"github.com/celer-network/goCeler/rpc"
+	"github.com/celer-network/goCeler/storage"
+	"github.com/celer-network/goCeler/utils"
+	"github.com/celer-network/goCeler/utils/hashlist"
+	"github.com/celer-network/goutils/log"
 	"github.com/golang/protobuf/proto"
+	"github.com/golang/protobuf/ptypes/any"
 )
 
 type settledPayInfo struct {
 	req       *rpc.SettledPayment
 	pay       *entity.ConditionalPay
+	note      *any.Any
+	igcid     ctype.CidType
+	igstate   int
+	egstate   int
 	routeLoop bool
+	delegated bool
 }
 
 func (h *CelerMsgHandler) HandlePaySettleRequest(frame *common.MsgFrame) error {
-	peerFrom := ctype.Addr2Hex(frame.PeerAddr)
-	log.Debugln("Received payment settle request from", peerFrom)
+	log.Debugln("Received payment settle request from", frame.PeerAddr.Hex())
 	request := frame.Message.GetPaymentSettleRequest()
 
 	if len(request.GetSettledPays()) == 0 {
 		return errors.New("empty SettledPays list")
 	}
 
-	payInfos, err := h.paySettleRequestInbound(request, peerFrom, frame.LogEntry)
+	payInfos, err := h.paySettleRequestInbound(request, frame.PeerAddr, frame.LogEntry)
 	if err != nil {
 		return err
 	}
@@ -51,19 +58,21 @@ func (h *CelerMsgHandler) HandlePaySettleRequest(frame *common.MsgFrame) error {
 }
 
 func (h *CelerMsgHandler) paySettleRequestInbound(
-	request *rpc.PaymentSettleRequest, peerFrom string, logEntry *pem.PayEventMessage) ([]*settledPayInfo, error) {
+	request *rpc.PaymentSettleRequest, peerFrom ctype.Addr, logEntry *pem.PayEventMessage) ([]*settledPayInfo, error) {
 
 	// Sign the state in advance, verify request later
-	mySig, _ := h.crypto.Sign(request.GetStateOnlyPeerFromSig().GetSimplexState())
+	mySig, err := h.signer.SignEthMessage(request.GetStateOnlyPeerFromSig().GetSimplexState())
+	if err != nil {
+		return nil, fmt.Errorf("failed to sign: %w", err)
+	}
 	// Copy signed simplex state to avoid modifying request.
 	recvdState := *request.GetStateOnlyPeerFromSig()
 	recvdState.SigOfPeerTo = mySig
 
 	var recvdSimplex entity.SimplexPaymentChannel
-	err := proto.Unmarshal(recvdState.SimplexState, &recvdSimplex)
+	err = proto.Unmarshal(recvdState.SimplexState, &recvdSimplex)
 	if err != nil {
-		log.Error(err)
-		return nil, err // corrupted peer
+		return nil, fmt.Errorf("Unmarshal simplex err %w", err) // corrupted peer
 	}
 	cid := ctype.Bytes2Cid(recvdSimplex.GetChannelId())
 	logEntry.FromCid = ctype.Cid2Hex(cid)
@@ -79,13 +88,12 @@ func (h *CelerMsgHandler) paySettleRequestInbound(
 			Seq:    recvdSimplex.GetSeqNum(),
 			Reason: requestErr.Error(),
 		}
-		if requestErr == common.ErrInvalidSeqNum {
-			invalidSeqNum.Add(1)
+		if errors.Is(requestErr, common.ErrInvalidSeqNum) {
 			errMsg.Code = rpc.ErrCode_INVALID_SEQ_NUM
 		}
-		_, stateCosigned, err2 := h.dal.GetSimplexPaymentChannel(cid, peerFrom)
+		_, stateCosigned, _, err2 := h.dal.GetPeerSimplex(cid)
 		if err2 != nil {
-			log.Error(err2)
+			logEntry.Error = append(logEntry.Error, fmt.Sprintf("GetPeerSimplex on requestErr err %s", err2))
 		}
 		response = &rpc.PaymentSettleResponse{
 			StateCosigned: stateCosigned,
@@ -95,22 +103,16 @@ func (h *CelerMsgHandler) paySettleRequestInbound(
 		response = &rpc.PaymentSettleResponse{
 			StateCosigned: &recvdState,
 		}
-		myAddr := ctype.Hex2Bytes(h.nodeConfig.GetOnChainAddr())
 		reason := payInfos[0].req.GetReason()
-		for _, payInfo := range payInfos {
-			payID := ctype.Bytes2PayID(payInfo.req.GetSettledPayId())
+		for _, pi := range payInfos {
+			payID := ctype.Bytes2PayID(pi.req.GetSettledPayId())
 			logEntry.PayId = ctype.PayID2Hex(payID)
 			logEntry.PayIds = append(logEntry.PayIds, ctype.PayID2Hex(payID))
-			pay := payInfo.pay
-			note, err2 := h.dal.GetPayNote(payID)
-			if err2 != nil {
-				log.Traceln(err2)
-			}
-			if bytes.Compare(pay.GetDest(), myAddr) == 0 {
+			if bytes.Compare(pi.pay.GetDest(), h.nodeConfig.GetOnChainAddr().Bytes()) == 0 {
 				// only trigger receiving done callback if I'm recipient of the pay.
 				h.tokenCallbackLock.RLock()
 				if h.onReceivingToken != nil {
-					go h.onReceivingToken.HandleReceivingDone(payID, pay, note, reason)
+					go h.onReceivingToken.HandleReceivingDone(payID, pi.pay, pi.note, reason)
 				}
 				h.tokenCallbackLock.RUnlock()
 			}
@@ -133,28 +135,27 @@ func (h *CelerMsgHandler) paySettleRequestInbound(
 func (h *CelerMsgHandler) processPaySettleRequest(
 	request *rpc.PaymentSettleRequest,
 	cid ctype.CidType,
-	peerFrom string,
+	peerFrom ctype.Addr,
 	recvdState *rpc.SignedSimplexState,
 	recvdSimplex *entity.SimplexPaymentChannel,
 	logEntry *pem.PayEventMessage) ([]*settledPayInfo, error) {
 
 	// Check if settle reason is valid
+	logEntry.SettleReason = request.GetSettledPays()[0].GetReason()
 	err := checkPaySettleReason(request)
 	if err != nil {
-		log.Error(err)
 		return nil, err
 	}
 
 	// Verify signature
 	sig := recvdState.SigOfPeerFrom
-	if !h.crypto.SigIsValid(peerFrom, recvdState.SimplexState, sig) {
-		log.Errorln(common.ErrInvalidSig, peerFrom)
+	if !utils.SigIsValid(peerFrom, recvdState.SimplexState, sig) {
 		return nil, common.ErrInvalidSig // corrupted peer
 	}
 
 	var payInfos []*settledPayInfo
 	err = h.dal.Transactional(
-		h.processPaySettleRequestTx, request, cid, peerFrom, recvdState, recvdSimplex, &payInfos, logEntry)
+		h.processPaySettleRequestTx, request, cid, recvdState, recvdSimplex, &payInfos, logEntry)
 	if err != nil {
 		return nil, err
 	}
@@ -186,55 +187,42 @@ func checkPaySettleReason(request *rpc.PaymentSettleRequest) error {
 func (h *CelerMsgHandler) processPaySettleRequestTx(tx *storage.DALTx, args ...interface{}) error {
 	request := args[0].(*rpc.PaymentSettleRequest)
 	cid := args[1].(ctype.CidType)
-	peerFrom := args[2].(string)
-	recvdState := args[3].(*rpc.SignedSimplexState)
-	recvdSimplex := args[4].(*entity.SimplexPaymentChannel)
-	retPayInfos := args[5].(*[]*settledPayInfo)
-	logEntry := args[6].(*pem.PayEventMessage)
+	recvdState := args[2].(*rpc.SignedSimplexState)
+	recvdSimplex := args[3].(*entity.SimplexPaymentChannel)
+	retPayInfos := args[4].(*[]*settledPayInfo)
+	logEntry := args[5].(*pem.PayEventMessage)
 	*retPayInfos = nil
 
-	// channel state machine
-	err := fsm.OnPscUpdateSimplex(tx, cid)
+	chanState, storedSimplex, found, err := tx.GetChanStateAndPeerSimplex(cid)
 	if err != nil {
-		log.Error(err)
-		return err // channel closed or in dispute
+		return fmt.Errorf("GetChanForRecvPayRequest err %w", err)
 	}
-
-	storedSimplex, _, err := tx.GetSimplexPaymentChannel(cid, peerFrom)
-	if err != nil {
-		log.Error(err)
-		return err // db error
+	if !found {
+		return common.ErrChannelNotFound
 	}
 	logEntry.SeqNums.Stored = storedSimplex.GetSeqNum()
+	err = fsm.OnChannelUpdate(cid, chanState)
+	if err != nil {
+		return fmt.Errorf("OnChannelUpdate err %w", err)
+	}
 
 	// verify peerFrom
-	if !bytes.Equal(storedSimplex.GetPeerFrom(), recvdSimplex.GetPeerFrom()) {
-		log.Errorln(common.ErrInvalidChannelPeerFrom,
-			ctype.Bytes2Hex(storedSimplex.GetPeerFrom()),
-			ctype.Bytes2Hex(recvdSimplex.GetPeerFrom()))
-		return common.ErrInvalidChannelPeerFrom // corrupted peer
+	sPeer, rPeer := storedSimplex.GetPeerFrom(), recvdSimplex.GetPeerFrom()
+	if !bytes.Equal(sPeer, rPeer) {
+		// corrupted peer
+		return fmt.Errorf("%w stored %x recvd %x", common.ErrInvalidChannelPeerFrom, sPeer, rPeer)
 	}
 
 	// verify sequence number
 	if !validRecvdSeqNum(storedSimplex.SeqNum, recvdSimplex.SeqNum, request.GetBaseSeq()) {
-		log.Errorln(common.ErrInvalidSeqNum,
-			"current", storedSimplex.SeqNum,
-			"received", recvdSimplex.SeqNum,
-			"base", request.GetBaseSeq())
 		return common.ErrInvalidSeqNum // packet loss
 	}
 
 	// verify pending pay list
 	newPayIDs, removedPayIDs, err := hashlist.SymmetricDifference(
 		recvdSimplex.PendingPayIds.PayIds, storedSimplex.PendingPayIds.PayIds)
-	if err != nil {
+	if err != nil || len(newPayIDs) > 0 || len(removedPayIDs) == 0 {
 		log.Errorln("sym diff (pending):", err,
-			utils.PrintPayIdList(recvdSimplex.PendingPayIds),
-			utils.PrintPayIdList(storedSimplex.PendingPayIds))
-		return common.ErrInvalidPendingPays // corrupted peer
-	}
-	if len(newPayIDs) > 0 || len(removedPayIDs) == 0 {
-		log.Errorln(common.ErrInvalidPendingPays,
 			utils.PrintPayIdList(recvdSimplex.PendingPayIds),
 			utils.PrintPayIdList(storedSimplex.PendingPayIds))
 		return common.ErrInvalidPendingPays // corrupted peer
@@ -244,33 +232,36 @@ func (h *CelerMsgHandler) processPaySettleRequestTx(tx *storage.DALTx, args ...i
 	var payInfos []*settledPayInfo
 	for _, settledPay := range request.GetSettledPays() {
 		requestedPayIDs = append(requestedPayIDs, settledPay.GetSettledPayId())
-		payInfo := &settledPayInfo{
+		pi := &settledPayInfo{
 			req: settledPay,
 		}
-		payInfos = append(payInfos, payInfo)
+		payInfos = append(payInfos, pi)
 	}
 	diffAB, diffBA, err := hashlist.SymmetricDifference(requestedPayIDs, removedPayIDs)
-	if err != nil {
+	if err != nil || len(diffAB) > 0 || len(diffBA) > 0 {
 		log.Errorln("sym diff (req):", err,
-			utils.PrintByteArrays(requestedPayIDs), utils.PrintByteArrays(removedPayIDs))
-		return common.ErrInvalidPendingPays // corrupted peer
-	}
-	if len(diffAB) > 0 || len(diffBA) > 0 {
-		log.Errorln(common.ErrInvalidPendingPays,
 			utils.PrintByteArrays(requestedPayIDs), utils.PrintByteArrays(removedPayIDs))
 		return common.ErrInvalidPendingPays // corrupted peer
 	}
 
 	// get resolved pays
 	resolvedAmt := new(big.Int).SetUint64(0)
-	for _, payInfo := range payInfos {
-		payInfo.pay, _, err = tx.GetConditionalPay(ctype.Bytes2PayID(payInfo.req.GetSettledPayId()))
+	for _, pi := range payInfos {
+		payID := ctype.Bytes2PayID(pi.req.GetSettledPayId())
+		pi.pay, pi.note, pi.igcid, pi.igstate, pi.egstate, found, err = tx.GetPayForRecvSettle(payID)
 		if err != nil {
-			log.Errorf("Can't find pay %x to resolve: %s", payInfo.req.GetSettledPayId(), err)
-			return common.ErrPayNotFound // db error
+			return fmt.Errorf("GetPayForRecvSettle %x err %w", payID, err)
 		}
-		amt := new(big.Int).SetBytes(payInfo.pay.GetTransferFunc().GetMaxTransfer().GetReceiver().GetAmt())
+		if !found {
+			return fmt.Errorf("GetPayForRecvSettle %x %w", payID, common.ErrPayNotFound) // db error
+		}
+		amt := new(big.Int).SetBytes(pi.pay.GetTransferFunc().GetMaxTransfer().GetReceiver().GetAmt())
 		resolvedAmt = resolvedAmt.Add(resolvedAmt, amt)
+
+		err = tx.DeleteSecretByPayID(payID)
+		if err != nil {
+			log.Errorln("DeleteSecretByPayID err", err, payID.Hex())
+		}
 	}
 
 	// verify unconditional transfer
@@ -284,6 +275,29 @@ func (h *CelerMsgHandler) processPaySettleRequestTx(tx *storage.DALTx, args ...i
 		return common.ErrInvalidTransferAmt // should not happen if peer follows the same protocol
 	}
 
+	// check pay delegation
+	for _, pi := range payInfos {
+		payID := ctype.Bytes2PayID(pi.req.GetSettledPayId())
+		status, found, err2 := tx.GetDelegatedPayStatus(payID)
+		if err2 != nil {
+			return fmt.Errorf("GetDelegatedPayStatus %x err %w", payID, err)
+		}
+		if found && status == structs.DelegatedPayStatus_RECVING {
+			if paid {
+				err = tx.UpdateDelegatedPayStatus(payID, structs.DelegatedPayStatus_RECVD)
+				if err != nil {
+					return fmt.Errorf("UpdateDelegatedPayStatus %x err %w", payID, err)
+				}
+				pi.delegated = true
+			} else {
+				err = tx.DeleteDelegatedPay(payID)
+				if err != nil {
+					return fmt.Errorf("DeleteDelegatedPay %x err %w", payID, err)
+				}
+			}
+		}
+	}
+
 	// verify total pending amount
 	storedPendingAmt := new(big.Int).SetBytes(storedSimplex.TotalPendingAmount)
 	recvdPendingAmt := new(big.Int).SetBytes(recvdSimplex.TotalPendingAmount)
@@ -293,10 +307,10 @@ func (h *CelerMsgHandler) processPaySettleRequestTx(tx *storage.DALTx, args ...i
 	}
 
 	// verify last pay resolve deadline
-	if storedSimplex.LastPayResolveDeadline != recvdSimplex.LastPayResolveDeadline {
-		log.Errorln(common.ErrInvalidLastPayDeadline,
-			recvdSimplex.LastPayResolveDeadline,
-			storedSimplex.LastPayResolveDeadline)
+	sDeadline := storedSimplex.GetLastPayResolveDeadline()
+	rDeadline := recvdSimplex.GetLastPayResolveDeadline()
+	if sDeadline != rDeadline {
+		log.Errorln(common.ErrInvalidLastPayDeadline, rDeadline, sDeadline)
 		return common.ErrInvalidLastPayDeadline // corrupted peer
 	}
 
@@ -311,108 +325,74 @@ func (h *CelerMsgHandler) processPaySettleRequestTx(tx *storage.DALTx, args ...i
 
 	case rpc.PaymentSettleReason_PAY_EXPIRED:
 		curblkNum := h.monitorService.GetCurrentBlockNumber().Uint64()
-		for _, payInfo := range payInfos {
-			h.checkPayRouteLoop(tx, cid, payInfo)
-			if payInfo.routeLoop {
+		for _, pi := range payInfos {
+			h.checkPayRouteLoop(cid, pi)
+			if pi.routeLoop {
 				continue
 			}
-			payID := ctype.Bytes2PayID(payInfo.req.GetSettledPayId())
-			pay := payInfo.pay
-
-			// check pay status first. If payment status is already INGRESS_REJECTED, continue
-			// If it is not, go on other checks
-			_, status, _, err2 := tx.GetPayIngressState(payID)
-			if err2 != nil {
-				log.Error(err2)
-				return err2
-			}
-			if status == fsm.PayIngressRejected {
+			if pi.igstate == enums.PayState_INGRESS_REJECTED {
 				continue
 			}
-
 			// reject settle expired requests on one of the following cases:
 			// 1. pay not expired
 			// 2. pay already paid to downstream, i.e., has egress PayCoSignedPaid state
 			// 3. pay has no egress state and has resolved onchain with non-zero amount
 			// 4. pay has egress state other than CoSignedCanceled, and has resolved onchain with non-zero amount
 
+			payID := ctype.Bytes2PayID(pi.req.GetSettledPayId())
 			// verify pay already expired
-			if curblkNum < pay.GetResolveDeadline()+config.PayRecvTimeoutSafeMargin {
+			if curblkNum < pi.pay.GetResolveDeadline()+config.PayRecvTimeoutSafeMargin {
 				log.Errorln(common.ErrInvalidSettleReason,
-					"deadline", pay.GetResolveDeadline(), curblkNum)
+					"deadline", pi.pay.GetResolveDeadline(), curblkNum)
 				return common.ErrInvalidSettleReason // should not happen if peer follows the same protocol
 			}
-			hasEgressState, err2 := tx.HasPayEgressState(payID)
-			if err2 != nil {
-				log.Error(err2)
-				return err2 // db error
+
+			if pi.egstate == enums.PayState_COSIGNED_PAID {
+				return fmt.Errorf("%w %x", common.ErrEgressPayPaid, payID) // corrupted peer
 			}
-			var egressState string
-			if hasEgressState {
-				_, egressState, _, err2 = tx.GetPayEgressState(payID)
-				if err2 != nil {
-					log.Error(err2)
-					return err2 // db error
-				}
-				// verify pay not already paid to downstream
-				if egressState == fsm.PayCoSignedPaid {
-					log.Errorln(common.ErrEgressPayPaid, payID.Hex())
-					return common.ErrEgressPayPaid // corrupted peer
-				}
-			}
+
 			// verify pay canceled downstream or not resolved on chain
-			if !hasEgressState || egressState != fsm.PayCoSignedCanceled {
+			// TODO: pay dest can query db about the onchain resolve history instead of onchain view
+			if pi.egstate != enums.PayState_COSIGNED_CANCELED {
 				amt, _, err2 := h.disputer.GetCondPayInfoFromRegistry(payID)
 				if err2 != nil {
-					log.Errorln("Get info from PayRegistry error", payID.Hex(), err2)
-					return err2
+					return fmt.Errorf("GetCondPayInfoFromRegistry %x err %w", payID, err2)
 				}
 				if amt.Cmp(ctype.ZeroBigInt) == 1 { // pay is onchain resolved
-					log.Errorln(common.ErrPayOnChainResolved, payID.Hex(), amt)
-					return common.ErrPayOnChainResolved
+					return fmt.Errorf("%w %x %s", common.ErrPayOnChainResolved, payID, amt)
 				}
 			}
 		}
 
 	case rpc.PaymentSettleReason_PAY_REJECTED, rpc.PaymentSettleReason_PAY_DEST_UNREACHABLE:
-		payInfo := payInfos[0]
-		h.checkPayRouteLoop(tx, cid, payInfo)
-		if !payInfo.routeLoop {
-			payID := ctype.Bytes2PayID(payInfos[0].req.GetSettledPayId())
-			// first check ingress state, it should be on INGRESS_REJECTED
-			_, status, _, err2 := tx.GetPayIngressState(payID)
-			if err2 != nil {
-				log.Error(err2)
-				return err2
-			}
-			if status != fsm.PayIngressRejected {
-				err2 = fmt.Errorf("wrong payment status when receiving pay settle reason of rejected or dest unreachable: %s", payID.Hex())
-				log.Error(err2)
-				return err2
+		pi := payInfos[0]
+		payID := ctype.Bytes2PayID(pi.req.GetSettledPayId())
+		h.checkPayRouteLoop(cid, pi)
+		if !pi.routeLoop {
+			if pi.igstate != enums.PayState_INGRESS_REJECTED {
+				return fmt.Errorf("invalid status for rejected or unreachable pay %x", payID)
 			}
 		}
 	}
 
 	// payment state machine
-	for _, payInfo := range payInfos {
-		if !payInfo.routeLoop {
-			payID := ctype.Bytes2PayID(payInfo.req.GetSettledPayId())
+	for _, pi := range payInfos {
+		if !pi.routeLoop {
+			payID := ctype.Bytes2PayID(pi.req.GetSettledPayId())
 			if paid {
-				_, _, err = fsm.OnPayIngressCoSignedPaid(tx, payID)
+				err = fsm.OnPayIngressCoSignedPaid(tx, payID, pi.igstate)
 			} else {
-				_, _, err = fsm.OnPayIngressCoSignedCanceled(tx, payID)
+				err = fsm.OnPayIngressCoSignedCanceled(tx, payID, pi.igstate)
 			}
 			if err != nil {
-				log.Error(err)
-				return err
+				return fmt.Errorf("pay %x fsm err %w, paid %t", payID, err, paid)
 			}
 		}
 	}
 
-	err = tx.PutSimplexState(cid, peerFrom, recvdState)
+	err = tx.UpdateChanForRecvRequest(cid, recvdState)
 	if err != nil {
-		log.Error(err)
-		return err // db error
+		return fmt.Errorf("UpdateChanForRecvRequest err %w", err) // rare db error
 	}
 
 	*retPayInfos = payInfos
@@ -420,12 +400,10 @@ func (h *CelerMsgHandler) processPaySettleRequestTx(tx *storage.DALTx, args ...i
 	return nil
 }
 
-func (h *CelerMsgHandler) checkPayRouteLoop(tx *storage.DALTx, cid ctype.CidType, payInfo *settledPayInfo) {
-	payID := ctype.Bytes2PayID(payInfo.req.GetSettledPayId())
-	igCid, _, _, err := tx.GetPayIngressState(payID)
-	if err == nil && igCid != cid {
+func (h *CelerMsgHandler) checkPayRouteLoop(cid ctype.CidType, payInfo *settledPayInfo) {
+	if payInfo.igcid != cid {
 		payInfo.routeLoop = true
-	} else if ctype.Bytes2Addr(payInfo.pay.GetSrc()) == ctype.Hex2Addr(h.nodeConfig.GetOnChainAddr()) {
+	} else if ctype.Bytes2Addr(payInfo.pay.GetSrc()) == h.nodeConfig.GetOnChainAddr() {
 		payInfo.routeLoop = true
 	}
 }
@@ -437,10 +415,10 @@ func (h *CelerMsgHandler) paySettleRequestOutbound(payInfos []*settledPayInfo, l
 	reason := payInfos[0].req.GetReason()
 	if reason == rpc.PaymentSettleReason_PAY_PAID_MAX {
 		pay := payInfos[0].pay
-		myAddr := ctype.Hex2Bytes(h.nodeConfig.GetOnChainAddr())
-		if bytes.Compare(pay.GetDest(), myAddr) != 0 {
-			// foward PaidMax settle request to downstream
-			payID := ctype.Bytes2PayID(payInfos[0].req.GetSettledPayId())
+		payID := ctype.Bytes2PayID(payInfos[0].req.GetSettledPayId())
+		delegated := payInfos[0].delegated
+		if bytes.Compare(pay.GetDest(), h.nodeConfig.GetOnChainAddr().Bytes()) != 0 && !delegated {
+			// forward PaidMax settle request to downstream
 			settledPay := &rpc.SettledPayment{
 				SettledPayId: payID[:],
 				Reason:       rpc.PaymentSettleReason_PAY_PAID_MAX,
@@ -452,12 +430,12 @@ func (h *CelerMsgHandler) paySettleRequestOutbound(payInfos []*settledPayInfo, l
 					PaymentSettleRequest: request,
 				},
 			}
-			_, peer, err := h.channelRouter.LookupEgressChannelOnPay(payID)
+			_, peer, err := h.routeForwarder.LookupEgressChannelOnPay(payID)
 			if err != nil {
-				return err
+				return fmt.Errorf("LookupEgressChannelOnPay err %w", err)
 			}
 
-			isLocalPeer, err := h.serverForwarder(peer, celerMsg)
+			isLocalPeer, err := h.serverForwarder(peer, true, celerMsg)
 			// Only when the peer is connecting to other OSPs and the msg is sent successfully from other OSPs,
 			// the msg will not be sent from local. All other situations would triger the msg to be sent from local.
 			// This ensures that PAID_MAX settle request would be eventually forwarded.

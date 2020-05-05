@@ -1,17 +1,18 @@
-// Copyright 2018-2019 Celer Network
+// Copyright 2018-2020 Celer Network
 
 package messager
 
 import (
 	"errors"
+	"fmt"
 
-	log "github.com/celer-network/goCeler-oss/clog"
-	"github.com/celer-network/goCeler-oss/common"
-	"github.com/celer-network/goCeler-oss/ctype"
-	"github.com/celer-network/goCeler-oss/fsm"
-	"github.com/celer-network/goCeler-oss/pem"
-	"github.com/celer-network/goCeler-oss/rpc"
-	"github.com/celer-network/goCeler-oss/storage"
+	"github.com/celer-network/goCeler/common"
+	"github.com/celer-network/goCeler/ctype"
+	"github.com/celer-network/goCeler/fsm"
+	"github.com/celer-network/goCeler/pem"
+	"github.com/celer-network/goCeler/rpc"
+	"github.com/celer-network/goCeler/storage"
+	"github.com/celer-network/goutils/log"
 )
 
 func (m *Messager) SendOnePaySettleProof(
@@ -25,51 +26,16 @@ func (m *Messager) SendPaysSettleProof(
 	payIDs []ctype.PayIDType,
 	reason rpc.PaymentSettleReason,
 	logEntry *pem.PayEventMessage) error {
+	logEntry.SettleReason = reason
 	if len(payIDs) == 0 {
 		return errors.New("Empty pay ID list")
 	}
-
-	cid, peer, err := m.channelRouter.LookupIngressChannelOnPay(payIDs[0])
+	var peer ctype.Addr
+	request := &rpc.PaymentSettleProof{}
+	err := m.dal.Transactional(m.runPaySettleProofTx, payIDs, reason, logEntry, &peer, &request)
 	if err != nil {
-		log.Errorln(err, payIDs[0].Hex())
 		return err
 	}
-	logEntry.MsgTo = peer
-	logEntry.ToCid = ctype.Cid2Hex(cid)
-
-	for i := 1; i < len(payIDs); i++ {
-		cid2, _, _, err2 := m.dal.GetPayIngressState(payIDs[i])
-		if err2 != nil {
-			log.Error(err2)
-			return err2
-		}
-		if cid != cid2 {
-			return errors.New("cannot batch settle proof requests for pays with different ingress cids")
-		}
-	}
-	logEntry.SettleReason = reason
-
-	request := &rpc.PaymentSettleProof{}
-	for _, payID := range payIDs {
-		settledPay := &rpc.SettledPayment{
-			SettledPayId: payID.Bytes(),
-			Reason:       reason,
-		}
-		request.SettledPays = append(request.SettledPays, settledPay)
-		logEntry.PayIds = append(logEntry.PayIds, ctype.PayID2Hex(payID))
-
-		// if reason is pay rejected or dest unreachable, set pay ingress to rejected to record this status
-		if reason == rpc.PaymentSettleReason_PAY_REJECTED ||
-			reason == rpc.PaymentSettleReason_PAY_DEST_UNREACHABLE ||
-			reason == rpc.PaymentSettleReason_PAY_EXPIRED {
-			err := m.dal.Transactional(m.runPaySettleProofTx, payID)
-			if err != nil {
-				log.Error(err)
-				return err
-			}
-		}
-	}
-
 	celerMsg := &rpc.CelerMsg{
 		Message: &rpc.CelerMsg_PaymentSettleProof{
 			PaymentSettleProof: request,
@@ -79,14 +45,71 @@ func (m *Messager) SendPaysSettleProof(
 }
 
 func (m *Messager) runPaySettleProofTx(tx *storage.DALTx, args ...interface{}) error {
-	payID := args[0].(ctype.PayIDType)
+	payIDs := args[0].([]ctype.PayIDType)
+	reason := args[1].(rpc.PaymentSettleReason)
+	logEntry := args[2].(*pem.PayEventMessage)
+	retPeer := args[3].(*ctype.Addr)
+	retRequest := args[4].(**rpc.PaymentSettleProof)
 
-	_, _, err := fsm.OnPayIngressRejected(tx, payID)
-	if err != nil {
-		log.Error(err)
-		return err
+	var rejecting bool
+	if reason == rpc.PaymentSettleReason_PAY_REJECTED ||
+		reason == rpc.PaymentSettleReason_PAY_DEST_UNREACHABLE ||
+		reason == rpc.PaymentSettleReason_PAY_EXPIRED {
+		rejecting = true
 	}
 
+	request := &rpc.PaymentSettleProof{}
+	var igcid ctype.CidType
+	for _, payID := range payIDs {
+		logEntry.PayIds = append(logEntry.PayIds, ctype.PayID2Hex(payID))
+
+		var cid ctype.CidType
+		var state int
+		var found bool
+		var err error
+		if rejecting {
+			cid, state, found, err = tx.GetPayIngress(payID)
+		} else {
+			cid, found, err = tx.GetPayIngressChannel(payID)
+		}
+		if err != nil {
+			return fmt.Errorf("GetPayIngress err: %x, %w", payID, err)
+		}
+		if !found {
+			return fmt.Errorf("%w, %x", common.ErrPayNotFound, payID)
+		}
+		if rejecting {
+			err = fsm.OnPayIngressRejected(tx, payID, state)
+			if err != nil {
+				return fmt.Errorf("OnPayIngressRejected err: %x, %w", payID, err)
+			}
+		}
+		if igcid == ctype.ZeroCid {
+			igcid = cid
+		} else if igcid != cid {
+			return fmt.Errorf("cannot batch pay settle proof for multiple ingress cids")
+		}
+
+		settledPay := &rpc.SettledPayment{
+			SettledPayId: payID.Bytes(),
+			Reason:       reason,
+		}
+		request.SettledPays = append(request.SettledPays, settledPay)
+	}
+
+	peer, found, err := tx.GetChanPeer(igcid)
+	if err != nil {
+		return fmt.Errorf("GetChanPeer err: %x, %w", igcid, err)
+	}
+	if !found {
+		return fmt.Errorf("%x %w", igcid, common.ErrChannelNotFound)
+	}
+
+	logEntry.MsgTo = ctype.Addr2Hex(peer)
+	logEntry.ToCid = ctype.Cid2Hex(igcid)
+
+	*retPeer = peer
+	*retRequest = request
 	return nil
 }
 
@@ -105,12 +128,12 @@ func (m *Messager) ForwardPaySettleProofMsg(frame *common.MsgFrame) error {
 		return errors.New("empty settled pays in paymentSettleProof")
 	}
 
-	cid, peer, err := m.channelRouter.LookupIngressChannelOnPay(payID)
+	cid, peer, err := m.routeForwarder.LookupIngressChannelOnPay(payID)
 	if err != nil {
 		log.Errorln(err, payID)
 		return err
 	}
 	logEntry.ToCid = ctype.Cid2Hex(cid)
-	logEntry.MsgTo = peer
+	logEntry.MsgTo = ctype.Addr2Hex(peer)
 	return m.streamWriter.WriteCelerMsg(peer, msg)
 }

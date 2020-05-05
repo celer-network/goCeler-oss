@@ -1,22 +1,25 @@
-// Copyright 2018-2019 Celer Network
+// Copyright 2018-2020 Celer Network
 
 package cooperativewithdraw
 
 import (
-	"errors"
+	"bytes"
 	"fmt"
 	"math/big"
-	"strings"
 
-	"github.com/celer-network/goCeler-oss/chain/channel-eth-go/ledger"
-	"github.com/celer-network/goCeler-oss/chain"
-	log "github.com/celer-network/goCeler-oss/clog"
-	"github.com/celer-network/goCeler-oss/cnode/jobs"
-	"github.com/celer-network/goCeler-oss/config"
-	"github.com/celer-network/goCeler-oss/ctype"
-	"github.com/celer-network/goCeler-oss/entity"
-	"github.com/celer-network/goCeler-oss/rpc"
-	"github.com/celer-network/goCeler-oss/storage"
+	"github.com/celer-network/goCeler/chain"
+	"github.com/celer-network/goCeler/chain/channel-eth-go/ledger"
+	"github.com/celer-network/goCeler/common"
+	"github.com/celer-network/goCeler/common/event"
+	"github.com/celer-network/goCeler/common/structs"
+	"github.com/celer-network/goCeler/config"
+	"github.com/celer-network/goCeler/ctype"
+	"github.com/celer-network/goCeler/entity"
+	"github.com/celer-network/goCeler/monitor"
+	"github.com/celer-network/goCeler/rpc"
+	"github.com/celer-network/goCeler/storage"
+	"github.com/celer-network/goCeler/utils"
+	"github.com/celer-network/goutils/log"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/golang/protobuf/proto"
@@ -27,16 +30,23 @@ type Callback interface {
 	OnError(withdrawHash string, err string)
 }
 
-func (p *Processor) ProcessResponse(response *rpc.CooperativeWithdrawResponse) error {
+func (p *Processor) ProcessResponse(frame *common.MsgFrame) error {
+	response := frame.Message.GetWithdrawResponse()
+	cid := ctype.Bytes2Cid(response.WithdrawInfo.ChannelId)
+	frame.LogEntry.FromCid = ctype.Cid2Hex(cid)
 	withdrawInfo := response.WithdrawInfo
-	withdrawHash := p.generateWithdrawHash(ctype.Bytes2Cid(withdrawInfo.ChannelId), withdrawInfo.SeqNum)
+	chanLedger := p.nodeConfig.GetLedgerContractOf(cid)
+	if chanLedger == nil {
+		return fmt.Errorf("Fail to get ledger for channel: %x", cid)
+	}
+	withdrawHash := p.generateWithdrawHash(cid, chanLedger.GetAddr(), withdrawInfo.SeqNum)
 	p.initLock.Lock()
 	hasJob, err := p.dal.HasCooperativeWithdrawJob(withdrawHash)
 	p.initLock.Unlock()
 	if err != nil {
 		log.Error(err)
 	}
-	errNoRequest := errors.New("Received CooperativeWithdrawResponse without request")
+	errNoRequest := fmt.Errorf("Received CooperativeWithdrawResponse without request")
 	if err != nil || !hasJob {
 		return errNoRequest
 	}
@@ -44,7 +54,7 @@ func (p *Processor) ProcessResponse(response *rpc.CooperativeWithdrawResponse) e
 	if err != nil {
 		log.Error(err)
 	}
-	if err != nil || job.State != jobs.CooperativeWithdrawWaitResponse {
+	if err != nil || job.State != structs.CooperativeWithdrawWaitResponse {
 		return errNoRequest
 	}
 
@@ -58,70 +68,67 @@ func (p *Processor) ProcessResponse(response *rpc.CooperativeWithdrawResponse) e
 	return nil
 }
 
-func (p *Processor) prepareJob(
-	cid ctype.CidType,
-	tokenType entity.TokenType,
-	tokenAddress string,
-	amount string) (*jobs.CooperativeWithdrawJob, error) {
+func (p *Processor) prepareJob(cid ctype.CidType, amount *big.Int) (*structs.CooperativeWithdrawJob, error) {
 
+	chanLedger := p.nodeConfig.GetLedgerContractOf(cid)
+	if chanLedger == nil {
+		return nil, fmt.Errorf("Fail to get ledger for channel: %x", cid)
+	}
 	contract, err :=
-		ledger.NewCelerLedgerCaller(p.ledger.GetAddr(), p.transactorPool.ContractCaller())
+		ledger.NewCelerLedgerCaller(chanLedger.GetAddr(), p.transactorPool.ContractCaller())
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("NewCelerLedgerCaller err: %w", err)
 	}
 	seqNum, err := contract.GetCooperativeWithdrawSeqNum(&bind.CallOpts{}, cid)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("GetCooperativeWithdrawSeqNum err: %w", err)
 	}
 	newSeqNum := big.NewInt(0)
 	newSeqNum.Add(seqNum, big.NewInt(1))
 	newSeqNumUint64 := newSeqNum.Uint64()
 
-	withdrawHash := p.generateWithdrawHash(cid, newSeqNumUint64)
+	withdrawHash := p.generateWithdrawHash(cid, chanLedger.GetAddr(), newSeqNumUint64)
 	hasJob, err := p.dal.HasCooperativeWithdrawJob(withdrawHash)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("HasCooperativeWithdrawJob err: %w", err)
 	} else if hasJob {
-		return nil, errors.New("Previous withdraw request still pending")
-	}
-
-	log.Infof("Withdrawing %s from cid %s", amount, ctype.Cid2Hex(cid))
-	_, success := big.NewInt(0).SetString(amount, 16)
-	if !success {
-		return nil, fmt.Errorf("Invalid withdraw amount %s", amount)
+		return nil, fmt.Errorf("Previous withdraw request still pending")
 	}
 
 	withdraw := &entity.AccountAmtPair{
-		Account: ctype.Hex2Bytes(p.selfAddress),
-		Amt:     ctype.Hex2Bytes(amount),
+		Account: p.selfAddress.Bytes(),
+		Amt:     amount.Bytes(),
 	}
 	withdrawInfo := &entity.CooperativeWithdrawInfo{
 		ChannelId: cid[:],
 		SeqNum:    newSeqNumUint64,
 		Withdraw:  withdraw,
-		WithdrawDeadline: p.utils.GetCurrentBlockNumber().Uint64() +
+		WithdrawDeadline: p.monitorService.GetCurrentBlockNumber().Uint64() +
 			config.CooperativeWithdrawTimeout,
 	}
 	serializedInfo, err := proto.Marshal(withdrawInfo)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("proto Marshal err: %w", err)
 	}
-	requesterSig, err := p.signer.Sign(serializedInfo)
+	requesterSig, err := p.signer.SignEthMessage(serializedInfo)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Sign err: %w", err)
 	}
 	request := &rpc.CooperativeWithdrawRequest{
 		WithdrawInfo: withdrawInfo,
 		RequesterSig: requesterSig,
 	}
-	peer, err := p.dal.GetPeer(cid)
+	peer, found, err := p.dal.GetChanPeer(cid)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("GetChanPeer err: %w", err)
+	}
+	if !found {
+		return nil, common.ErrChannelNotFound
 	}
 
 	err = p.dal.Transactional(p.checkWithdrawBalanceTx, cid, withdrawInfo)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("checkWithdrawBalanceTx err: %w", err)
 	}
 
 	msg := &rpc.CelerMsg{
@@ -129,14 +136,35 @@ func (p *Processor) prepareJob(
 			WithdrawRequest: request,
 		},
 	}
-	log.Infoln("Sending withdraw request of seq", newSeqNum.String(), "to", peer)
+	log.Infof("Sending cooperative withdraw request to %s. %s, withdraw hash: %s",
+		ctype.Addr2Hex(peer), utils.PrintCooperativeWithdrawInfo(withdrawInfo), withdrawHash)
 	p.initLock.Lock()
+	defer p.initLock.Unlock()
 	err = p.streamWriter.WriteCelerMsg(peer, msg)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("WriteCelerMsg err: %w", err)
 	}
-	job, err := p.initJob(withdrawHash)
-	p.initLock.Unlock()
+	ledgerAddr, found, err := p.dal.GetChanLedger(cid)
+	if err != nil {
+		return nil, fmt.Errorf("Fail to get channel(%x) ledger: %w", cid, err)
+	}
+	if !found {
+		return nil, fmt.Errorf("no channel found: %x", cid)
+	}
+	job, err := p.initJob(withdrawHash, ledgerAddr)
+	if err != nil {
+		return nil, fmt.Errorf("initJob err: %w", err)
+	}
+	return job, nil
+}
+
+func (p *Processor) initJob(withdrawHash string, ledgerAddr ctype.Addr) (*structs.CooperativeWithdrawJob, error) {
+	job := &structs.CooperativeWithdrawJob{
+		WithdrawHash: withdrawHash,
+		State:        structs.CooperativeWithdrawWaitResponse,
+		LedgerAddr:   ledgerAddr,
+	}
+	err := p.dal.PutCooperativeWithdrawJob(withdrawHash, job)
 	if err != nil {
 		return nil, err
 	}
@@ -144,7 +172,7 @@ func (p *Processor) prepareJob(
 }
 
 func (p *Processor) sendCooperativeWithdrawTx(
-	job *jobs.CooperativeWithdrawJob,
+	job *structs.CooperativeWithdrawJob,
 	response *rpc.CooperativeWithdrawResponse) error {
 	requesterSig := response.RequesterSig
 	approverSig := response.ApproverSig
@@ -154,16 +182,18 @@ func (p *Processor) sendCooperativeWithdrawTx(
 		return err
 	}
 	cid := ctype.Bytes2Cid(response.WithdrawInfo.ChannelId)
-	peer, err := p.dal.GetPeer(cid)
+	peer, found, err := p.dal.GetChanPeer(cid)
 	if err != nil {
 		return err
 	}
-	if !p.signer.SigIsValid(peer, serializedInfo, response.ApproverSig) {
-		errMsg := "Invalid CooperativeWithdrawResponse signature"
-		return errors.New(errMsg)
+	if !found {
+		return common.ErrChannelNotFound
+	}
+	if !utils.SigIsValid(peer, serializedInfo, response.ApproverSig) {
+		return fmt.Errorf("Invalid CooperativeWithdrawResponse signature")
 	}
 	var sigs [][]byte
-	if strings.Compare(p.selfAddress, peer) < 0 {
+	if bytes.Compare(p.selfAddress.Bytes(), peer.Bytes()) < 0 {
 		sigs = [][]byte{requesterSig, approverSig}
 	} else {
 		sigs = [][]byte{approverSig, requesterSig}
@@ -177,8 +207,12 @@ func (p *Processor) sendCooperativeWithdrawTx(
 		return err
 	}
 
-	p.monitorSingleEvent(true)
-	err = p.dal.PutEventMonitorBit(p.eventMonitorName)
+	ledgerContract := p.nodeConfig.GetLedgerContractOf(cid)
+	if ledgerContract == nil {
+		return fmt.Errorf("Fail to get ledger for channel: %x", cid)
+	}
+	p.monitorSingleEvent(ledgerContract, true)
+	err = p.dal.UpsertMonitorRestart(monitor.NewEventStr(ledgerContract.GetAddr(), event.CooperativeWithdraw), true)
 	if err != nil {
 		return err
 	}
@@ -189,8 +223,12 @@ func (p *Processor) sendCooperativeWithdrawTx(
 		func(
 			transactor bind.ContractTransactor,
 			opts *bind.TransactOpts) (*types.Transaction, error) {
+			chanLedger := p.nodeConfig.GetLedgerContractOf(cid)
+			if chanLedger == nil {
+				return nil, fmt.Errorf("Fail to get ledger for channel: %x", cid)
+			}
 			contract, contractErr :=
-				ledger.NewCelerLedgerTransactor(p.ledger.GetAddr(), transactor)
+				ledger.NewCelerLedgerTransactor(chanLedger.GetAddr(), transactor)
 			if contractErr != nil {
 				return nil, contractErr
 			}
@@ -199,7 +237,7 @@ func (p *Processor) sendCooperativeWithdrawTx(
 	if err != nil {
 		return err
 	}
-	job.State = jobs.CooperativeWithdrawWaitTx
+	job.State = structs.CooperativeWithdrawWaitTx
 	job.TxHash = tx.Hash().Hex()
 	err = p.dal.PutCooperativeWithdrawJob(job.WithdrawHash, job)
 	if err != nil {
@@ -209,7 +247,7 @@ func (p *Processor) sendCooperativeWithdrawTx(
 	return nil
 }
 
-func (p *Processor) waitTx(job *jobs.CooperativeWithdrawJob) {
+func (p *Processor) waitTx(job *structs.CooperativeWithdrawJob) {
 	txHash := job.TxHash
 	receipt, err := p.transactorPool.WaitMined(txHash)
 	if err != nil {
@@ -235,7 +273,7 @@ func (p *Processor) registerCallback(withdrawHash string, cb Callback) {
 }
 
 func (p *Processor) maybeFireWithdrawCallback(
-	job *jobs.CooperativeWithdrawJob) {
+	job *structs.CooperativeWithdrawJob) {
 	p.callbacksLock.Lock()
 	defer p.callbacksLock.Unlock()
 	withdrawHash := job.WithdrawHash
@@ -246,7 +284,7 @@ func (p *Processor) maybeFireWithdrawCallback(
 	}
 }
 
-func (p *Processor) maybeFireErrCallback(job *jobs.CooperativeWithdrawJob) {
+func (p *Processor) maybeFireErrCallback(job *structs.CooperativeWithdrawJob) {
 	p.callbacksLock.Lock()
 	defer p.callbacksLock.Unlock()
 	withdrawHash := job.WithdrawHash
@@ -268,7 +306,7 @@ func (p *Processor) maybeFireErrCallbackWithWithdrawHash(
 	}
 }
 
-func (p *Processor) markRunningJobAndStartDispatcher(job *jobs.CooperativeWithdrawJob) {
+func (p *Processor) markRunningJobAndStartDispatcher(job *structs.CooperativeWithdrawJob) {
 	withdrawHash := job.WithdrawHash
 	p.runningJobsLock.Lock()
 	defer p.runningJobsLock.Unlock()
@@ -286,16 +324,16 @@ func (p *Processor) unmarkRunningJob(withdrawHash string) {
 	delete(p.runningJobs, withdrawHash)
 }
 
-func (p *Processor) dispatchJob(job *jobs.CooperativeWithdrawJob) {
+func (p *Processor) dispatchJob(job *structs.CooperativeWithdrawJob) {
 	switch job.State {
-	case jobs.CooperativeWithdrawWaitResponse:
+	case structs.CooperativeWithdrawWaitResponse:
 		// TODO(mzhou): Monitor withdraw deadline
-	case jobs.CooperativeWithdrawWaitTx:
+	case structs.CooperativeWithdrawWaitTx:
 		p.waitTx(job)
-	case jobs.CooperativeWithdrawSucceeded:
+	case structs.CooperativeWithdrawSucceeded:
 		p.maybeFireWithdrawCallback(job)
 		p.unmarkRunningJob(job.WithdrawHash)
-	case jobs.CooperativeWithdrawFailed:
+	case structs.CooperativeWithdrawFailed:
 		p.maybeFireErrCallback(job)
 		p.unmarkRunningJob(job.WithdrawHash)
 	}
@@ -316,28 +354,19 @@ func (p *Processor) resumeJob(withdrawHash string) {
 	job, err := p.dal.GetCooperativeWithdrawJob(withdrawHash)
 	if err != nil {
 		p.maybeFireErrCallbackWithWithdrawHash(
-			withdrawHash, fmt.Sprintf("Cannot retrieve deposit job %s", withdrawHash))
+			withdrawHash, fmt.Sprintf("Cannot retrieve cooperative withdraw job %s, err %s", withdrawHash, err))
 		return
 	}
 	p.markRunningJobAndStartDispatcher(job)
 }
 
-func (p *Processor) initJob(withdrawHash string) (*jobs.CooperativeWithdrawJob, error) {
-	job := jobs.NewCooperativeWithdrawJob(withdrawHash)
-	err := p.dal.PutCooperativeWithdrawJob(withdrawHash, job)
-	if err != nil {
-		return nil, err
-	}
-	return job, nil
-}
-
-func (p *Processor) abortJob(job *jobs.CooperativeWithdrawJob, err error) {
-	log.Error(fmt.Errorf("CooperativeWithdraw job %s failed: %s", job.WithdrawHash, err))
-	job.State = jobs.CooperativeWithdrawFailed
+func (p *Processor) abortJob(job *structs.CooperativeWithdrawJob, err error) {
+	log.Error(fmt.Errorf("CooperativeWithdraw job %s failed: %w", job.WithdrawHash, err))
+	job.State = structs.CooperativeWithdrawFailed
 	job.Error = err.Error()
 	withdrawHash := job.WithdrawHash
 	delete := func(tx *storage.DALTx, args ...interface{}) error {
-		err := tx.DeleteEventMonitorBit(p.eventMonitorName)
+		err := tx.UpsertMonitorRestart(monitor.NewEventStr(job.LedgerAddr, event.CooperativeWithdraw), false)
 		if err != nil {
 			return err
 		}
@@ -350,21 +379,11 @@ func (p *Processor) abortJob(job *jobs.CooperativeWithdrawJob, err error) {
 	p.dispatchJob(job)
 }
 
-func (p *Processor) removeJob(job *jobs.CooperativeWithdrawJob) {
-	err := p.dal.DeleteCooperativeWithdrawJob(job.WithdrawHash)
+func (p *Processor) CooperativeWithdraw(cid ctype.CidType, amount *big.Int, cb Callback) (string, error) {
+	log.Infoln("cooperative withdraw", amount, "from cid", ctype.Cid2Hex(cid))
+	job, err := p.prepareJob(cid, amount)
 	if err != nil {
 		log.Error(err)
-	}
-}
-
-func (p *Processor) CooperativeWithdraw(
-	cid ctype.CidType,
-	tokenType entity.TokenType,
-	tokenAddress string,
-	amount string,
-	cb Callback) (string, error) {
-	job, err := p.prepareJob(cid, tokenType, tokenAddress, amount)
-	if err != nil {
 		return "", err
 	}
 	withdrawHash := job.WithdrawHash
@@ -379,6 +398,7 @@ func (p *Processor) MonitorCooperativeWithdrawJob(withdrawHash string, cb Callba
 }
 
 func (p *Processor) RemoveCooperativeWithdrawJob(withdrawHash string) {
+	log.Infoln("remove cooperative withdraw job", withdrawHash)
 	err := p.dal.DeleteCooperativeWithdrawJob(withdrawHash)
 	if err != nil {
 		log.Error(err)

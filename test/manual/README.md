@@ -1,6 +1,6 @@
 # Run Local Manual Tests
 
-Follow instructions below to easily start a local testnet and play with multiple OSPs on your laptop.
+Follow instructions below to easily start a local testnet and play with multiple OSPs on your local machine.
 
 ## Requirements
 

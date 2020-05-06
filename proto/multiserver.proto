@@ -1,5 +1,4 @@
-// Copyright 2019 Celer Network
-//
+// Copyright 2018-2020 Celer Network
 // Used for communication between servers in a multi-server setup.
 
 syntax = "proto3";

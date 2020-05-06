@@ -1,0 +1,289 @@
+// Copyright 2018-2020 Celer Network
+
+syntax = "proto3";
+
+option go_package = "github.com/celer-network/goCeler/webapi/rpc";
+
+package webrpc;
+
+import "google/protobuf/any.proto";
+import "google/protobuf/empty.proto";
+import "entity.proto";
+import "message.proto";
+
+// Next tag: 3
+message GetPayHistoryRequest {
+  bool from_start = 1;
+  int32 itemsPerPage = 2;
+}
+
+// Next tag: 3
+message GetPayHistoryResponse {
+  repeated rpc.OneHistoricalPay pays = 1;
+  bool has_more_result = 2;
+}
+
+message TokenInfo {
+  entity.TokenType token_type = 1;
+  string token_address = 2;
+}
+message SetDelegationRequest{
+  repeated TokenInfo token_infos = 1;
+  int64 block_duration = 2;
+}
+message OpenPaymentChannelRequest {
+  TokenInfo token_info = 1;
+  string amount = 2;
+  string peer_amount = 3;
+}
+
+message ChannelID { string channel_id = 1; }
+
+message DepositOrWithdrawRequest {
+  TokenInfo token_info = 1;
+  string amount = 2;
+}
+
+message DepositOrWithdrawJob {
+  string job_id = 1;
+  string tx_hash = 2;
+}
+
+message GetBalanceResponse {
+  string free_balance = 1;
+  string locked_balance = 2;
+  string receiving_capacity = 3;
+}
+
+message GetPeerFreeBalanceRequest {
+  TokenInfo token_info = 1;
+  string peer_address = 2;
+}
+
+message FreeBalance { 
+  string free_balance = 1;
+  int32 join_status = 2;
+}
+
+message Condition {
+  bool on_chain_deployed = 1;
+  string contract_address = 2;
+  bytes is_finalized_args = 3;
+  bytes get_outcome_args = 4;
+}
+
+message SendConditionalPaymentRequest {
+  TokenInfo token_info = 1;
+  string amount = 2;
+  string destination = 3;
+  entity.TransferFunctionType transfer_logic_type = 4;
+  repeated Condition conditions = 5;
+  uint64 timeout = 6;
+  google.protobuf.Any note = 7;
+}
+
+message PaymentID { string payment_id = 1; }
+
+message PaymentInfo {
+  string payment_id = 1;
+  string sender = 2;
+  string receiver = 3;
+  TokenInfo token_info = 4;
+  string amount = 5;
+  string payment_json = 6;
+  uint32 status = 7;
+}
+
+message OutgoingPaymentInfo {
+  PaymentInfo payment = 1;
+  string error_reason = 2;
+  int64 error_code = 3;
+}
+
+message OnChainPaymentInfo {
+  string amount = 1;
+  uint64 resolve_deadline = 2;
+}
+
+message SessionID { string session_id = 1; }
+
+message CreateAppSessionOnVirtualContractRequest {
+  string contract_bin = 1;
+  string contract_constructor = 2;
+  uint64 nonce = 3;
+  uint64 on_chain_timeout = 4;
+}
+
+message CreateAppSessionOnDeployedContractRequest {
+  string contract_address = 1;
+  uint64 nonce = 2;
+  uint64 on_chain_timeout = 3;
+  repeated string participants = 4;
+}
+
+message DisputeInfo {
+  string session_id = 1;
+  uint64 seq_num = 2;
+}
+
+message SignOutgoingStateRequest {
+  string session_id = 1;
+  bytes state = 2;
+}
+
+message SignedState { bytes signed_state = 1; }
+
+message Data { bytes data = 1; }
+
+message Signature { bytes signature = 1; }
+
+message ValidateAckRequest {
+  string session_id = 1;
+  bytes envelope = 2;
+}
+
+message BoolValue { bool value = 1; }
+
+message ProcessReceivedStateRequest {
+  string session_id = 1;
+  bytes envelope = 2;
+}
+
+message ProcessReceivedStateResponse {
+  bytes decoded_state = 1;
+  bytes prepared_ack = 2;
+}
+
+message SettleAppSessionRequest {
+  string session_id = 1;
+  bytes state_proof = 2;
+}
+
+message SettleAppSessionByTimeoutRequest {
+  string session_id = 1;
+  bytes oracle_proof = 2;
+}
+
+message SettleAppSessionByInvalidityRequest {
+  string session_id = 1;
+  bytes oracle_proof = 2;
+  bytes cosigned_state_proof = 3;
+}
+
+message Address { string address = 1; }
+
+message GetBooleanOutcomeForAppSessionRequest {
+  string session_id = 1;
+  bytes query = 2;
+}
+
+message BooleanOutcome {
+  bool finalized = 1;
+  bool outcome = 2;
+}
+
+message ApplyActionForAppSessionRequest {
+  string session_id = 1;
+  bytes action = 2;
+}
+
+message BlockNumber { uint64 block_number = 1; }
+
+message AppSessionStatus { uint32 status = 1; }
+
+message GetStateForAppSessionRequest {
+  string session_id = 1;
+  int64 key = 2;
+}
+
+message AppSessionState { bytes state = 1; }
+
+message AppSessionSeqNum { uint64 seq_num = 1; }
+
+message SetMsgDropReq {
+  bool drop_recv = 1;
+  bool drop_send = 2;
+}
+
+message PaymentStatus { uint32 status = 1; }
+
+service WebApi {
+  rpc GetPayHistory(GetPayHistoryRequest) returns (GetPayHistoryResponse) {}
+  rpc SetDelegation(SetDelegationRequest) returns (google.protobuf.Empty) {}
+  rpc OpenPaymentChannel(OpenPaymentChannelRequest) returns (ChannelID) {}
+  rpc Deposit(DepositOrWithdrawRequest) returns (DepositOrWithdrawJob) {}
+  rpc MonitorDepositJob(DepositOrWithdrawJob) returns (DepositOrWithdrawJob) {}
+  rpc CooperativeWithdraw(DepositOrWithdrawRequest) returns (DepositOrWithdrawJob) {}
+  rpc MonitorCooperativeWithdrawJob(DepositOrWithdrawJob) returns (DepositOrWithdrawJob) {}
+  rpc GetBalance(TokenInfo) returns (GetBalanceResponse) {}
+  rpc GetPeerFreeBalance(GetPeerFreeBalanceRequest) returns (FreeBalance) {}
+  rpc SendConditionalPayment(SendConditionalPaymentRequest)
+      returns (PaymentID) {}
+  rpc SubscribeIncomingPayments(google.protobuf.Empty)
+      returns (stream PaymentInfo) {}
+  // TODO(mzhou): Refine the outgoing payment API.
+  rpc SubscribeOutgoingPayments(google.protobuf.Empty)
+      returns (stream OutgoingPaymentInfo) {}
+  rpc GetIncomingPaymentStatus(PaymentID) returns (PaymentStatus) {}
+  rpc GetOutgoingPaymentStatus(PaymentID) returns (PaymentStatus) {}
+  rpc ConfirmOutgoingPayment(PaymentID) returns (google.protobuf.Empty) {}
+  rpc RejectIncomingPayment(PaymentID) returns (google.protobuf.Empty) {}
+  rpc SettleOnChainResolvedIncomingPayment(PaymentID)
+      returns (google.protobuf.Empty) {}
+  rpc ResolveIncomingPaymentOnChain(PaymentID) returns (google.protobuf.Empty) {}
+  rpc GetOnChainPaymentInfo(PaymentID) returns (OnChainPaymentInfo) {}
+
+  // TODO(mzhou): Consider removing the following two APIs
+  rpc ConfirmOnChainResolvedPayments(TokenInfo)
+      returns (google.protobuf.Empty) {}
+  rpc SettleExpiredPayments(TokenInfo) returns (google.protobuf.Empty) {}
+
+  rpc IntendWithdraw(DepositOrWithdrawRequest) returns (google.protobuf.Empty) {}
+  rpc ConfirmWithdraw(TokenInfo) returns (google.protobuf.Empty) {}
+
+  rpc IntendSettlePaymentChannel(TokenInfo) returns (google.protobuf.Empty) {}
+  rpc ConfirmSettlePaymentChannel(TokenInfo) returns (google.protobuf.Empty) {}
+  rpc GetSettleFinalizedTimeForPaymentChannel(TokenInfo) returns (BlockNumber) {}
+
+  rpc SyncOnChainPaymentChannelStatus(TokenInfo)
+      returns (google.protobuf.Empty) {}
+  rpc SyncStateWithPeer(google.protobuf.Empty) returns (google.protobuf.Empty) {}
+
+  rpc CreateAppSessionOnVirtualContract(
+      CreateAppSessionOnVirtualContractRequest) returns (SessionID) {}
+  rpc CreateAppSessionOnDeployedContract(
+      CreateAppSessionOnDeployedContractRequest) returns (SessionID) {}
+  rpc SubscribeAppSessionDispute(SessionID) returns (stream DisputeInfo) {}
+  rpc SignOutgoingState(SignOutgoingStateRequest) returns (SignedState) {}
+  rpc ValidateAck(ValidateAckRequest) returns (BoolValue) {}
+  rpc SignData(Data) returns (Signature) {}
+  rpc ProcessReceivedState(ProcessReceivedStateRequest)
+      returns (ProcessReceivedStateResponse) {}
+  rpc SettleAppSession(SettleAppSessionRequest)
+      returns (google.protobuf.Empty) {}
+  rpc SettleAppSessionBySigTimeout(SettleAppSessionByTimeoutRequest)
+      returns (google.protobuf.Empty) {}
+  rpc SettleAppSessionByMoveTimeout(SettleAppSessionByTimeoutRequest)
+      returns (google.protobuf.Empty) {}
+  rpc SettleAppSessionByInvalidTurn(SettleAppSessionByInvalidityRequest)
+      returns (google.protobuf.Empty) {}
+  rpc SettleAppSessionByInvalidState(SettleAppSessionByInvalidityRequest)
+      returns (google.protobuf.Empty) {}
+  rpc DeleteAppSession(SessionID) returns (google.protobuf.Empty) {}
+  rpc GetDeployedAddressForAppSession(SessionID) returns (Address) {}
+  rpc GetBooleanOutcomeForAppSession(GetBooleanOutcomeForAppSessionRequest)
+      returns (BooleanOutcome) {}
+  rpc ApplyActionForAppSession(ApplyActionForAppSessionRequest)
+      returns (google.protobuf.Empty) {}
+  rpc FinalizeOnActionTimeoutForAppSession(SessionID)
+      returns (google.protobuf.Empty) {}
+  rpc GetSettleFinalizedTimeForAppSession(SessionID) returns (BlockNumber) {}
+  rpc GetActionDeadlineForAppSession(SessionID) returns (BlockNumber) {}
+  rpc GetStatusForAppSession(SessionID) returns (AppSessionStatus) {}
+  rpc GetStateForAppSession(GetStateForAppSessionRequest)
+      returns (AppSessionState) {}
+  rpc GetSeqNumForAppSession(SessionID) returns (AppSessionSeqNum) {}
+  rpc GetBlockNumber(google.protobuf.Empty) returns (BlockNumber) {}
+
+  rpc SetMsgDropper(SetMsgDropReq) returns (google.protobuf.Empty) {}
+}

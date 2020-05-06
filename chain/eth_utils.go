@@ -1,4 +1,4 @@
-// Copyright 2018-2019 Celer Network
+// Copyright 2018-2020 Celer Network
 
 package chain
 
@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/celer-network/goCeler/ctype"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
-	ethcommon "github.com/ethereum/go-ethereum/common"
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
 )
@@ -18,7 +18,7 @@ import (
 // Contract is the generic interface used by BoundContract
 // and mock contracts in unit tests.
 type Contract interface {
-	GetAddr() ethcommon.Address
+	GetAddr() ctype.Addr
 	GetABI() string
 	GetETHClient() *ethclient.Client
 	SendTransaction(*bind.TransactOpts, string, ...interface{}) (*ethtypes.Transaction, error)
@@ -32,7 +32,7 @@ type Contract interface {
 // It contains *bind.BoundContract (in go-ethereum) as an embedding
 type BoundContract struct {
 	*bind.BoundContract
-	addr ethcommon.Address
+	addr ctype.Addr
 	abi  string
 	conn *ethclient.Client
 }
@@ -40,7 +40,7 @@ type BoundContract struct {
 // NewBoundContract creates a new contract binding
 func NewBoundContract(
 	conn *ethclient.Client,
-	addr ethcommon.Address,
+	addr ctype.Addr,
 	rawABI string) (*BoundContract, error) {
 	parsedABI, err := abi.JSON(strings.NewReader((rawABI)))
 	return &BoundContract{
@@ -52,7 +52,7 @@ func NewBoundContract(
 }
 
 // GetAddr returns contract addr
-func (c *BoundContract) GetAddr() ethcommon.Address {
+func (c *BoundContract) GetAddr() ctype.Addr {
 	return c.addr
 }
 

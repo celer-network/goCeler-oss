@@ -1,0 +1,46 @@
+{
+    "max_dispute_timeout": 15,
+    "min_dispute_timeout": 5,
+    "log_level": "info",
+    "max_payment_timeout": 1000,
+    "refill_configs": {
+        "config": {
+            "0000000000000000000000000000000000000000": {
+                "threshold":     "400000000000000",
+                "refill_amount": "1000000000000000",
+                "pool_size":     "500000000000000000000"
+            },
+            "f3ccc0a86f8451ab193011fbb408db2e38eaf10a": {
+                "threshold":     "10000000000000000",
+                "refill_amount": "1000000000000000",
+                "pool_size":     "500000000000000000000"
+            }
+        },
+        "max_wait_s": 5
+    },
+    "deposit_config": {
+        "polling_interval_s": 3,
+        "min_batch_size": 3,
+        "max_batch_size": 5
+    },
+    "tcb_configs": {
+        "config": {
+            "0000000000000000000000000000000000000000": {
+                "token": {
+                    "erc_type": "ETH",
+                    "address": "0000000000000000000000000000000000000000"
+                },
+				"onchain_balance_safe_margin": "0",
+                "max_osp_deposit": "9000000000000000000"
+            },
+            "f3ccc0a86f8451ab193011fbb408db2e38eaf10a": {
+                "token": {
+                    "erc_type": "ERC20",
+                    "address": "f3ccc0a86f8451ab193011fbb408db2e38eaf10a"
+                },
+				"onchain_balance_safe_margin": "0",
+                "max_osp_deposit": "9000000000000000000"
+            }
+        }
+    }
+}

@@ -1,7 +1,7 @@
 // Copyright 2018 Celer Network
 
 syntax = "proto3";
-option go_package = "github.com/celer-network/goCeler-oss/rpc";
+option go_package = "github.com/celer-network/goCeler/rpc";
 
 package rpc;
 
@@ -9,8 +9,13 @@ import "message.proto";
 
 // Interface exported by the server.
 service Rpc {
+  rpc GetPayHistory(GetPayHistoryRequest) returns (GetPayHistoryResponse) {}
+  rpc QueryDelegation(QueryDelegationRequest) returns (QueryDelegationResponse) {}
+  rpc RequestDelegation(DelegationRequest) returns (DelegationResponse) {}
   rpc CelerOpenChannel(OpenChannelRequest) returns (OpenChannelResponse) {}
+  rpc CelerOpenTcbChannel(OpenChannelRequest) returns (OpenChannelResponse) {}
+  rpc CelerGetPeerStatus(PeerAddress) returns (PeerStatus) {}
   // unified offchain bidi streaming rpc and msg definition
   rpc CelerStream(stream CelerMsg) returns (stream CelerMsg) {}
+  rpc CelerMigrateChannel(MigrateChannelRequest) returns (MigrateChannelResponse) {}
 }
-

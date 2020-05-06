@@ -6,7 +6,7 @@ package rpc
 import (
 	context "context"
 	fmt "fmt"
-	entity "github.com/celer-network/goCeler-oss/entity"
+	entity "github.com/celer-network/goCeler/entity"
 	proto "github.com/golang/protobuf/proto"
 	any "github.com/golang/protobuf/ptypes/any"
 	empty "github.com/golang/protobuf/ptypes/empty"
@@ -27,6 +27,40 @@ var _ = math.Inf
 // A compilation error at this line likely means your copy of the
 // proto package needs to be updated.
 const _ = proto.ProtoPackageIsVersion3 // please upgrade the proto package
+
+type DepositState int32
+
+const (
+	DepositState_Deposit_NOT_FOUND DepositState = 0
+	DepositState_Deposit_QUEUED    DepositState = 1
+	DepositState_Deposit_SUBMITTED DepositState = 2
+	DepositState_Deposit_SUCCEEDED DepositState = 3
+	DepositState_Deposit_FAILED    DepositState = 4
+)
+
+var DepositState_name = map[int32]string{
+	0: "Deposit_NOT_FOUND",
+	1: "Deposit_QUEUED",
+	2: "Deposit_SUBMITTED",
+	3: "Deposit_SUCCEEDED",
+	4: "Deposit_FAILED",
+}
+
+var DepositState_value = map[string]int32{
+	"Deposit_NOT_FOUND": 0,
+	"Deposit_QUEUED":    1,
+	"Deposit_SUBMITTED": 2,
+	"Deposit_SUCCEEDED": 3,
+	"Deposit_FAILED":    4,
+}
+
+func (x DepositState) String() string {
+	return proto.EnumName(DepositState_name, int32(x))
+}
+
+func (DepositState) EnumDescriptor() ([]byte, []int) {
+	return fileDescriptor_a58c2d65cdc11488, []int{0}
+}
 
 // Next Tag: 3
 type RegisterStreamRequest struct {
@@ -140,7 +174,7 @@ func (m *SendTokenRequest) GetNote() *any.Any {
 	return nil
 }
 
-// Next Tag: 3
+// Next Tag: 4
 type SendTokenResponse struct {
 	Status               int32    `protobuf:"varint,1,opt,name=status,proto3" json:"status,omitempty"`
 	Error                string   `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"`
@@ -196,6 +230,227 @@ func (m *SendTokenResponse) GetPayId() string {
 	return ""
 }
 
+// Next Tag: 6
+type DepositRequest struct {
+	// payment channel peer address
+	PeerAddr string `protobuf:"bytes,1,opt,name=peer_addr,json=peerAddr,proto3" json:"peer_addr,omitempty"`
+	// payment channel token address
+	TokenAddr string `protobuf:"bytes,2,opt,name=token_addr,json=tokenAddr,proto3" json:"token_addr,omitempty"`
+	// deposit to channel peer or self (default: false, to self)
+	ToPeer bool `protobuf:"varint,3,opt,name=to_peer,json=toPeer,proto3" json:"to_peer,omitempty"`
+	// deposit amount in wei
+	AmtWei string `protobuf:"bytes,4,opt,name=amt_wei,json=amtWei,proto3" json:"amt_wei,omitempty"`
+	// time (in seconds) allowed for OSP to wait and batch requests before submitting the on-chain transaction
+	MaxWaitS             uint64   `protobuf:"varint,5,opt,name=max_wait_s,json=maxWaitS,proto3" json:"max_wait_s,omitempty"`
+	XXX_NoUnkeyedLiteral struct{} `json:"-"`
+	XXX_unrecognized     []byte   `json:"-"`
+	XXX_sizecache        int32    `json:"-"`
+}
+
+func (m *DepositRequest) Reset()         { *m = DepositRequest{} }
+func (m *DepositRequest) String() string { return proto.CompactTextString(m) }
+func (*DepositRequest) ProtoMessage()    {}
+func (*DepositRequest) Descriptor() ([]byte, []int) {
+	return fileDescriptor_a58c2d65cdc11488, []int{3}
+}
+
+func (m *DepositRequest) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_DepositRequest.Unmarshal(m, b)
+}
+func (m *DepositRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_DepositRequest.Marshal(b, m, deterministic)
+}
+func (m *DepositRequest) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_DepositRequest.Merge(m, src)
+}
+func (m *DepositRequest) XXX_Size() int {
+	return xxx_messageInfo_DepositRequest.Size(m)
+}
+func (m *DepositRequest) XXX_DiscardUnknown() {
+	xxx_messageInfo_DepositRequest.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_DepositRequest proto.InternalMessageInfo
+
+func (m *DepositRequest) GetPeerAddr() string {
+	if m != nil {
+		return m.PeerAddr
+	}
+	return ""
+}
+
+func (m *DepositRequest) GetTokenAddr() string {
+	if m != nil {
+		return m.TokenAddr
+	}
+	return ""
+}
+
+func (m *DepositRequest) GetToPeer() bool {
+	if m != nil {
+		return m.ToPeer
+	}
+	return false
+}
+
+func (m *DepositRequest) GetAmtWei() string {
+	if m != nil {
+		return m.AmtWei
+	}
+	return ""
+}
+
+func (m *DepositRequest) GetMaxWaitS() uint64 {
+	if m != nil {
+		return m.MaxWaitS
+	}
+	return 0
+}
+
+// Next Tag: 4
+type DepositResponse struct {
+	Status               int32    `protobuf:"varint,1,opt,name=status,proto3" json:"status,omitempty"`
+	Error                string   `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"`
+	DepositId            string   `protobuf:"bytes,3,opt,name=deposit_id,json=depositId,proto3" json:"deposit_id,omitempty"`
+	XXX_NoUnkeyedLiteral struct{} `json:"-"`
+	XXX_unrecognized     []byte   `json:"-"`
+	XXX_sizecache        int32    `json:"-"`
+}
+
+func (m *DepositResponse) Reset()         { *m = DepositResponse{} }
+func (m *DepositResponse) String() string { return proto.CompactTextString(m) }
+func (*DepositResponse) ProtoMessage()    {}
+func (*DepositResponse) Descriptor() ([]byte, []int) {
+	return fileDescriptor_a58c2d65cdc11488, []int{4}
+}
+
+func (m *DepositResponse) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_DepositResponse.Unmarshal(m, b)
+}
+func (m *DepositResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_DepositResponse.Marshal(b, m, deterministic)
+}
+func (m *DepositResponse) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_DepositResponse.Merge(m, src)
+}
+func (m *DepositResponse) XXX_Size() int {
+	return xxx_messageInfo_DepositResponse.Size(m)
+}
+func (m *DepositResponse) XXX_DiscardUnknown() {
+	xxx_messageInfo_DepositResponse.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_DepositResponse proto.InternalMessageInfo
+
+func (m *DepositResponse) GetStatus() int32 {
+	if m != nil {
+		return m.Status
+	}
+	return 0
+}
+
+func (m *DepositResponse) GetError() string {
+	if m != nil {
+		return m.Error
+	}
+	return ""
+}
+
+func (m *DepositResponse) GetDepositId() string {
+	if m != nil {
+		return m.DepositId
+	}
+	return ""
+}
+
+// Next Tag: 2
+type QueryDepositRequest struct {
+	DepositId            string   `protobuf:"bytes,1,opt,name=deposit_id,json=depositId,proto3" json:"deposit_id,omitempty"`
+	XXX_NoUnkeyedLiteral struct{} `json:"-"`
+	XXX_unrecognized     []byte   `json:"-"`
+	XXX_sizecache        int32    `json:"-"`
+}
+
+func (m *QueryDepositRequest) Reset()         { *m = QueryDepositRequest{} }
+func (m *QueryDepositRequest) String() string { return proto.CompactTextString(m) }
+func (*QueryDepositRequest) ProtoMessage()    {}
+func (*QueryDepositRequest) Descriptor() ([]byte, []int) {
+	return fileDescriptor_a58c2d65cdc11488, []int{5}
+}
+
+func (m *QueryDepositRequest) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_QueryDepositRequest.Unmarshal(m, b)
+}
+func (m *QueryDepositRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_QueryDepositRequest.Marshal(b, m, deterministic)
+}
+func (m *QueryDepositRequest) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_QueryDepositRequest.Merge(m, src)
+}
+func (m *QueryDepositRequest) XXX_Size() int {
+	return xxx_messageInfo_QueryDepositRequest.Size(m)
+}
+func (m *QueryDepositRequest) XXX_DiscardUnknown() {
+	xxx_messageInfo_QueryDepositRequest.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_QueryDepositRequest proto.InternalMessageInfo
+
+func (m *QueryDepositRequest) GetDepositId() string {
+	if m != nil {
+		return m.DepositId
+	}
+	return ""
+}
+
+// Next Tag: 3
+type QueryDepositResponse struct {
+	DepositState         DepositState `protobuf:"varint,1,opt,name=deposit_state,json=depositState,proto3,enum=rpc.DepositState" json:"deposit_state,omitempty"`
+	Error                string       `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"`
+	XXX_NoUnkeyedLiteral struct{}     `json:"-"`
+	XXX_unrecognized     []byte       `json:"-"`
+	XXX_sizecache        int32        `json:"-"`
+}
+
+func (m *QueryDepositResponse) Reset()         { *m = QueryDepositResponse{} }
+func (m *QueryDepositResponse) String() string { return proto.CompactTextString(m) }
+func (*QueryDepositResponse) ProtoMessage()    {}
+func (*QueryDepositResponse) Descriptor() ([]byte, []int) {
+	return fileDescriptor_a58c2d65cdc11488, []int{6}
+}
+
+func (m *QueryDepositResponse) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_QueryDepositResponse.Unmarshal(m, b)
+}
+func (m *QueryDepositResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_QueryDepositResponse.Marshal(b, m, deterministic)
+}
+func (m *QueryDepositResponse) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_QueryDepositResponse.Merge(m, src)
+}
+func (m *QueryDepositResponse) XXX_Size() int {
+	return xxx_messageInfo_QueryDepositResponse.Size(m)
+}
+func (m *QueryDepositResponse) XXX_DiscardUnknown() {
+	xxx_messageInfo_QueryDepositResponse.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_QueryDepositResponse proto.InternalMessageInfo
+
+func (m *QueryDepositResponse) GetDepositState() DepositState {
+	if m != nil {
+		return m.DepositState
+	}
+	return DepositState_Deposit_NOT_FOUND
+}
+
+func (m *QueryDepositResponse) GetError() string {
+	if m != nil {
+		return m.Error
+	}
+	return ""
+}
+
 // Admin request to ask the receiving osp to open a channel with peer.
 // Next tag: 6
 type OspOpenChannelRequest struct {
@@ -218,7 +473,7 @@ func (m *OspOpenChannelRequest) Reset()         { *m = OspOpenChannelRequest{} }
 func (m *OspOpenChannelRequest) String() string { return proto.CompactTextString(m) }
 func (*OspOpenChannelRequest) ProtoMessage()    {}
 func (*OspOpenChannelRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_a58c2d65cdc11488, []int{3}
+	return fileDescriptor_a58c2d65cdc11488, []int{7}
 }
 
 func (m *OspOpenChannelRequest) XXX_Unmarshal(b []byte) error {
@@ -287,7 +542,7 @@ func (m *BuildRoutingTableRequest) Reset()         { *m = BuildRoutingTableReque
 func (m *BuildRoutingTableRequest) String() string { return proto.CompactTextString(m) }
 func (*BuildRoutingTableRequest) ProtoMessage()    {}
 func (*BuildRoutingTableRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_a58c2d65cdc11488, []int{4}
+	return fileDescriptor_a58c2d65cdc11488, []int{8}
 }
 
 func (m *BuildRoutingTableRequest) XXX_Unmarshal(b []byte) error {
@@ -328,7 +583,7 @@ func (m *ClearExpiredPaysRequest) Reset()         { *m = ClearExpiredPaysRequest
 func (m *ClearExpiredPaysRequest) String() string { return proto.CompactTextString(m) }
 func (*ClearExpiredPaysRequest) ProtoMessage()    {}
 func (*ClearExpiredPaysRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_a58c2d65cdc11488, []int{5}
+	return fileDescriptor_a58c2d65cdc11488, []int{9}
 }
 
 func (m *ClearExpiredPaysRequest) XXX_Unmarshal(b []byte) error {
@@ -369,7 +624,7 @@ func (m *ConfirmOnChainResolvedPaysRequest) Reset()         { *m = ConfirmOnChai
 func (m *ConfirmOnChainResolvedPaysRequest) String() string { return proto.CompactTextString(m) }
 func (*ConfirmOnChainResolvedPaysRequest) ProtoMessage()    {}
 func (*ConfirmOnChainResolvedPaysRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_a58c2d65cdc11488, []int{6}
+	return fileDescriptor_a58c2d65cdc11488, []int{10}
 }
 
 func (m *ConfirmOnChainResolvedPaysRequest) XXX_Unmarshal(b []byte) error {
@@ -397,113 +652,352 @@ func (m *ConfirmOnChainResolvedPaysRequest) GetTokenAddress() []byte {
 	return nil
 }
 
-// Admin request to list all active peer osps.
-// Next tag: 2
-type ActivePeerOspsResponse struct {
-	// eth addr of peer osps.
-	Osps                 []string `protobuf:"bytes,1,rep,name=osps,proto3" json:"osps,omitempty"`
+type TokenCidPair struct {
+	TokenAddress         string   `protobuf:"bytes,1,opt,name=token_address,json=tokenAddress,proto3" json:"token_address,omitempty"`
+	Cid                  string   `protobuf:"bytes,2,opt,name=cid,proto3" json:"cid,omitempty"`
 	XXX_NoUnkeyedLiteral struct{} `json:"-"`
 	XXX_unrecognized     []byte   `json:"-"`
 	XXX_sizecache        int32    `json:"-"`
 }
 
-func (m *ActivePeerOspsResponse) Reset()         { *m = ActivePeerOspsResponse{} }
-func (m *ActivePeerOspsResponse) String() string { return proto.CompactTextString(m) }
-func (*ActivePeerOspsResponse) ProtoMessage()    {}
-func (*ActivePeerOspsResponse) Descriptor() ([]byte, []int) {
-	return fileDescriptor_a58c2d65cdc11488, []int{7}
+func (m *TokenCidPair) Reset()         { *m = TokenCidPair{} }
+func (m *TokenCidPair) String() string { return proto.CompactTextString(m) }
+func (*TokenCidPair) ProtoMessage()    {}
+func (*TokenCidPair) Descriptor() ([]byte, []int) {
+	return fileDescriptor_a58c2d65cdc11488, []int{11}
 }
 
-func (m *ActivePeerOspsResponse) XXX_Unmarshal(b []byte) error {
-	return xxx_messageInfo_ActivePeerOspsResponse.Unmarshal(m, b)
+func (m *TokenCidPair) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_TokenCidPair.Unmarshal(m, b)
 }
-func (m *ActivePeerOspsResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
-	return xxx_messageInfo_ActivePeerOspsResponse.Marshal(b, m, deterministic)
+func (m *TokenCidPair) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_TokenCidPair.Marshal(b, m, deterministic)
 }
-func (m *ActivePeerOspsResponse) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_ActivePeerOspsResponse.Merge(m, src)
+func (m *TokenCidPair) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_TokenCidPair.Merge(m, src)
 }
-func (m *ActivePeerOspsResponse) XXX_Size() int {
-	return xxx_messageInfo_ActivePeerOspsResponse.Size(m)
+func (m *TokenCidPair) XXX_Size() int {
+	return xxx_messageInfo_TokenCidPair.Size(m)
 }
-func (m *ActivePeerOspsResponse) XXX_DiscardUnknown() {
-	xxx_messageInfo_ActivePeerOspsResponse.DiscardUnknown(m)
+func (m *TokenCidPair) XXX_DiscardUnknown() {
+	xxx_messageInfo_TokenCidPair.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_ActivePeerOspsResponse proto.InternalMessageInfo
+var xxx_messageInfo_TokenCidPair proto.InternalMessageInfo
 
-func (m *ActivePeerOspsResponse) GetOsps() []string {
+func (m *TokenCidPair) GetTokenAddress() string {
 	if m != nil {
-		return m.Osps
+		return m.TokenAddress
+	}
+	return ""
+}
+
+func (m *TokenCidPair) GetCid() string {
+	if m != nil {
+		return m.Cid
+	}
+	return ""
+}
+
+type PeerOsp struct {
+	// eth addr of peer osp
+	OspAddress string `protobuf:"bytes,1,opt,name=osp_address,json=ospAddress,proto3" json:"osp_address,omitempty"`
+	// channels with the peer osp
+	TokenCidPairs []*TokenCidPair `protobuf:"bytes,2,rep,name=token_cid_pairs,json=tokenCidPairs,proto3" json:"token_cid_pairs,omitempty"`
+	// last update timestamp
+	UpdateTs             uint64   `protobuf:"varint,3,opt,name=update_ts,json=updateTs,proto3" json:"update_ts,omitempty"`
+	XXX_NoUnkeyedLiteral struct{} `json:"-"`
+	XXX_unrecognized     []byte   `json:"-"`
+	XXX_sizecache        int32    `json:"-"`
+}
+
+func (m *PeerOsp) Reset()         { *m = PeerOsp{} }
+func (m *PeerOsp) String() string { return proto.CompactTextString(m) }
+func (*PeerOsp) ProtoMessage()    {}
+func (*PeerOsp) Descriptor() ([]byte, []int) {
+	return fileDescriptor_a58c2d65cdc11488, []int{12}
+}
+
+func (m *PeerOsp) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_PeerOsp.Unmarshal(m, b)
+}
+func (m *PeerOsp) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_PeerOsp.Marshal(b, m, deterministic)
+}
+func (m *PeerOsp) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_PeerOsp.Merge(m, src)
+}
+func (m *PeerOsp) XXX_Size() int {
+	return xxx_messageInfo_PeerOsp.Size(m)
+}
+func (m *PeerOsp) XXX_DiscardUnknown() {
+	xxx_messageInfo_PeerOsp.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_PeerOsp proto.InternalMessageInfo
+
+func (m *PeerOsp) GetOspAddress() string {
+	if m != nil {
+		return m.OspAddress
+	}
+	return ""
+}
+
+func (m *PeerOsp) GetTokenCidPairs() []*TokenCidPair {
+	if m != nil {
+		return m.TokenCidPairs
 	}
 	return nil
 }
 
+func (m *PeerOsp) GetUpdateTs() uint64 {
+	if m != nil {
+		return m.UpdateTs
+	}
+	return 0
+}
+
+// Admin request to list all peer osps.
+// Next tag: 2
+type PeerOspsResponse struct {
+	// info of peer osps.
+	PeerOsps             []*PeerOsp `protobuf:"bytes,1,rep,name=peer_osps,json=peerOsps,proto3" json:"peer_osps,omitempty"`
+	XXX_NoUnkeyedLiteral struct{}   `json:"-"`
+	XXX_unrecognized     []byte     `json:"-"`
+	XXX_sizecache        int32      `json:"-"`
+}
+
+func (m *PeerOspsResponse) Reset()         { *m = PeerOspsResponse{} }
+func (m *PeerOspsResponse) String() string { return proto.CompactTextString(m) }
+func (*PeerOspsResponse) ProtoMessage()    {}
+func (*PeerOspsResponse) Descriptor() ([]byte, []int) {
+	return fileDescriptor_a58c2d65cdc11488, []int{13}
+}
+
+func (m *PeerOspsResponse) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_PeerOspsResponse.Unmarshal(m, b)
+}
+func (m *PeerOspsResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_PeerOspsResponse.Marshal(b, m, deterministic)
+}
+func (m *PeerOspsResponse) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_PeerOspsResponse.Merge(m, src)
+}
+func (m *PeerOspsResponse) XXX_Size() int {
+	return xxx_messageInfo_PeerOspsResponse.Size(m)
+}
+func (m *PeerOspsResponse) XXX_DiscardUnknown() {
+	xxx_messageInfo_PeerOspsResponse.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_PeerOspsResponse proto.InternalMessageInfo
+
+func (m *PeerOspsResponse) GetPeerOsps() []*PeerOsp {
+	if m != nil {
+		return m.PeerOsps
+	}
+	return nil
+}
+
+// cooperative withdraw/settle channel request
+type ChannelOpRequest struct {
+	Cid                  string   `protobuf:"bytes,1,opt,name=cid,proto3" json:"cid,omitempty"`
+	Wei                  string   `protobuf:"bytes,2,opt,name=wei,proto3" json:"wei,omitempty"`
+	XXX_NoUnkeyedLiteral struct{} `json:"-"`
+	XXX_unrecognized     []byte   `json:"-"`
+	XXX_sizecache        int32    `json:"-"`
+}
+
+func (m *ChannelOpRequest) Reset()         { *m = ChannelOpRequest{} }
+func (m *ChannelOpRequest) String() string { return proto.CompactTextString(m) }
+func (*ChannelOpRequest) ProtoMessage()    {}
+func (*ChannelOpRequest) Descriptor() ([]byte, []int) {
+	return fileDescriptor_a58c2d65cdc11488, []int{14}
+}
+
+func (m *ChannelOpRequest) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_ChannelOpRequest.Unmarshal(m, b)
+}
+func (m *ChannelOpRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_ChannelOpRequest.Marshal(b, m, deterministic)
+}
+func (m *ChannelOpRequest) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_ChannelOpRequest.Merge(m, src)
+}
+func (m *ChannelOpRequest) XXX_Size() int {
+	return xxx_messageInfo_ChannelOpRequest.Size(m)
+}
+func (m *ChannelOpRequest) XXX_DiscardUnknown() {
+	xxx_messageInfo_ChannelOpRequest.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_ChannelOpRequest proto.InternalMessageInfo
+
+func (m *ChannelOpRequest) GetCid() string {
+	if m != nil {
+		return m.Cid
+	}
+	return ""
+}
+
+func (m *ChannelOpRequest) GetWei() string {
+	if m != nil {
+		return m.Wei
+	}
+	return ""
+}
+
+type ChannelOpResponse struct {
+	Status               int32    `protobuf:"varint,1,opt,name=status,proto3" json:"status,omitempty"`
+	Error                string   `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"`
+	XXX_NoUnkeyedLiteral struct{} `json:"-"`
+	XXX_unrecognized     []byte   `json:"-"`
+	XXX_sizecache        int32    `json:"-"`
+}
+
+func (m *ChannelOpResponse) Reset()         { *m = ChannelOpResponse{} }
+func (m *ChannelOpResponse) String() string { return proto.CompactTextString(m) }
+func (*ChannelOpResponse) ProtoMessage()    {}
+func (*ChannelOpResponse) Descriptor() ([]byte, []int) {
+	return fileDescriptor_a58c2d65cdc11488, []int{15}
+}
+
+func (m *ChannelOpResponse) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_ChannelOpResponse.Unmarshal(m, b)
+}
+func (m *ChannelOpResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_ChannelOpResponse.Marshal(b, m, deterministic)
+}
+func (m *ChannelOpResponse) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_ChannelOpResponse.Merge(m, src)
+}
+func (m *ChannelOpResponse) XXX_Size() int {
+	return xxx_messageInfo_ChannelOpResponse.Size(m)
+}
+func (m *ChannelOpResponse) XXX_DiscardUnknown() {
+	xxx_messageInfo_ChannelOpResponse.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_ChannelOpResponse proto.InternalMessageInfo
+
+func (m *ChannelOpResponse) GetStatus() int32 {
+	if m != nil {
+		return m.Status
+	}
+	return 0
+}
+
+func (m *ChannelOpResponse) GetError() string {
+	if m != nil {
+		return m.Error
+	}
+	return ""
+}
+
 func init() {
+	proto.RegisterEnum("rpc.DepositState", DepositState_name, DepositState_value)
 	proto.RegisterType((*RegisterStreamRequest)(nil), "rpc.RegisterStreamRequest")
 	proto.RegisterType((*SendTokenRequest)(nil), "rpc.SendTokenRequest")
 	proto.RegisterType((*SendTokenResponse)(nil), "rpc.SendTokenResponse")
+	proto.RegisterType((*DepositRequest)(nil), "rpc.DepositRequest")
+	proto.RegisterType((*DepositResponse)(nil), "rpc.DepositResponse")
+	proto.RegisterType((*QueryDepositRequest)(nil), "rpc.QueryDepositRequest")
+	proto.RegisterType((*QueryDepositResponse)(nil), "rpc.QueryDepositResponse")
 	proto.RegisterType((*OspOpenChannelRequest)(nil), "rpc.OspOpenChannelRequest")
 	proto.RegisterType((*BuildRoutingTableRequest)(nil), "rpc.BuildRoutingTableRequest")
 	proto.RegisterType((*ClearExpiredPaysRequest)(nil), "rpc.ClearExpiredPaysRequest")
 	proto.RegisterType((*ConfirmOnChainResolvedPaysRequest)(nil), "rpc.ConfirmOnChainResolvedPaysRequest")
-	proto.RegisterType((*ActivePeerOspsResponse)(nil), "rpc.ActivePeerOspsResponse")
+	proto.RegisterType((*TokenCidPair)(nil), "rpc.TokenCidPair")
+	proto.RegisterType((*PeerOsp)(nil), "rpc.PeerOsp")
+	proto.RegisterType((*PeerOspsResponse)(nil), "rpc.PeerOspsResponse")
+	proto.RegisterType((*ChannelOpRequest)(nil), "rpc.ChannelOpRequest")
+	proto.RegisterType((*ChannelOpResponse)(nil), "rpc.ChannelOpResponse")
 }
 
 func init() { proto.RegisterFile("osp_admin.proto", fileDescriptor_a58c2d65cdc11488) }
 
 var fileDescriptor_a58c2d65cdc11488 = []byte{
-	// 799 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x9c, 0x55, 0xdd, 0x6e, 0x23, 0x35,
-	0x14, 0xd6, 0x6c, 0x93, 0x2c, 0x31, 0x25, 0x34, 0x56, 0x7e, 0xda, 0x34, 0x65, 0xcb, 0x2c, 0x54,
-	0xd9, 0x15, 0xcc, 0xa0, 0xc2, 0xd5, 0x5e, 0x80, 0xb2, 0xa1, 0x02, 0xae, 0xb2, 0x9a, 0xad, 0x54,
-	0xc4, 0xcd, 0xc8, 0x99, 0x39, 0x4d, 0xac, 0x4c, 0x6c, 0x63, 0x3b, 0x5b, 0xe6, 0x0a, 0x89, 0x17,
-	0xe0, 0x82, 0x7b, 0x5e, 0x81, 0x87, 0xe1, 0x15, 0x78, 0x0a, 0xae, 0x90, 0x3d, 0x9e, 0x90, 0x5f,
-	0x21, 0xf6, 0x6e, 0xec, 0x73, 0xce, 0xf7, 0x7d, 0xe7, 0x3b, 0xb6, 0x07, 0xbd, 0xcf, 0x95, 0x88,
-	0x49, 0xba, 0xa0, 0x2c, 0x10, 0x92, 0x6b, 0x8e, 0x8f, 0xa4, 0x48, 0x7a, 0xfd, 0x29, 0xe7, 0xd3,
-	0x0c, 0x42, 0x22, 0x68, 0x48, 0x18, 0xe3, 0x9a, 0x68, 0xca, 0x99, 0x2a, 0x52, 0x7a, 0x67, 0x2e,
-	0x6a, 0x57, 0x93, 0xe5, 0x7d, 0x48, 0x58, 0xee, 0x42, 0xe7, 0xdb, 0x21, 0x58, 0x08, 0x5d, 0x06,
-	0x8f, 0x81, 0x69, 0x5a, 0xae, 0xfc, 0x39, 0x6a, 0x47, 0x30, 0xa5, 0x4a, 0x83, 0x7c, 0xad, 0x25,
-	0x90, 0x45, 0x04, 0x3f, 0x2e, 0x41, 0x69, 0x3c, 0x40, 0x27, 0x02, 0x40, 0xc6, 0x52, 0x24, 0x31,
-	0x49, 0x53, 0x09, 0x4a, 0x9d, 0x7a, 0x97, 0xde, 0xa0, 0x1e, 0x35, 0xcc, 0x7e, 0x24, 0x92, 0x61,
-	0xb1, 0xbb, 0xca, 0x04, 0x3d, 0x5b, 0x65, 0x3e, 0xba, 0xf4, 0x06, 0xc7, 0x45, 0xe6, 0x8d, 0x9e,
-	0xb9, 0x4c, 0xff, 0x57, 0x0f, 0x9d, 0xbc, 0x06, 0x96, 0xde, 0xf2, 0x39, 0xb0, 0x92, 0xe8, 0x0c,
-	0xbd, 0x93, 0x2a, 0x6d, 0x2b, 0x1d, 0xc1, 0xe3, 0x54, 0x69, 0x53, 0x82, 0xbb, 0xe8, 0x31, 0x59,
-	0xe8, 0xf8, 0x01, 0xa8, 0x05, 0xac, 0x47, 0x35, 0xb2, 0xd0, 0x77, 0x40, 0xf1, 0x05, 0x42, 0xda,
-	0x60, 0x14, 0x55, 0x47, 0x36, 0x56, 0xb7, 0x3b, 0xb6, 0x6e, 0x80, 0x2a, 0x8c, 0x6b, 0x38, 0xad,
-	0x5c, 0x7a, 0x83, 0x77, 0xaf, 0x5b, 0x41, 0x61, 0x47, 0x50, 0xda, 0x11, 0x0c, 0x59, 0x1e, 0xd9,
-	0x0c, 0xff, 0x7b, 0xd4, 0x5c, 0x13, 0xa4, 0x04, 0x67, 0x0a, 0x70, 0x07, 0xd5, 0x94, 0x26, 0x7a,
-	0x59, 0x34, 0x5c, 0x8d, 0xdc, 0x0a, 0xb7, 0x50, 0x15, 0xa4, 0xe4, 0xd2, 0x89, 0x29, 0x16, 0xb8,
-	0x8d, 0x6a, 0x82, 0xe4, 0x31, 0x4d, 0x9d, 0x8e, 0xaa, 0x20, 0xf9, 0x77, 0xa9, 0xff, 0xb7, 0x87,
-	0xda, 0x63, 0x25, 0xc6, 0x02, 0xd8, 0x68, 0x46, 0x18, 0x83, 0x6c, 0xdb, 0xd9, 0x75, 0xbf, 0xbc,
-	0x7d, 0x7e, 0xe1, 0xcf, 0xca, 0x36, 0x75, 0x2e, 0xc0, 0xb2, 0x36, 0xae, 0x9b, 0x81, 0x9b, 0x9f,
-	0xd5, 0x7c, 0x9b, 0x0b, 0x70, 0x9d, 0x9b, 0x4f, 0xfc, 0x14, 0xbd, 0xf7, 0xaf, 0x31, 0x06, 0xf8,
-	0xc8, 0x02, 0x1f, 0xaf, 0xbc, 0x31, 0xb0, 0x21, 0x6a, 0x29, 0xc8, 0xee, 0xe3, 0x14, 0x04, 0x57,
-	0x54, 0xc7, 0xa5, 0xc7, 0x15, 0xab, 0xbf, 0x69, 0x62, 0x5f, 0x17, 0xa1, 0x61, 0x61, 0x77, 0x88,
-	0x5a, 0x56, 0xf1, 0x76, 0x41, 0xb5, 0x28, 0x30, 0xb1, 0x8d, 0x02, 0xff, 0x2b, 0x74, 0xfa, 0x72,
-	0x49, 0xb3, 0x34, 0xe2, 0x4b, 0x4d, 0xd9, 0xf4, 0x96, 0x4c, 0x32, 0x28, 0xdb, 0xdf, 0x91, 0xe8,
-	0xed, 0x4a, 0xf4, 0xbf, 0x44, 0xdd, 0x51, 0x06, 0x44, 0xde, 0xfc, 0x24, 0xa8, 0x84, 0xf4, 0x15,
-	0xc9, 0xd5, 0xff, 0xaa, 0xff, 0x16, 0x7d, 0x38, 0xe2, 0xec, 0x9e, 0xca, 0xc5, 0xd8, 0xd8, 0x4f,
-	0xcd, 0x70, 0x79, 0xf6, 0xe6, 0x2d, 0x90, 0x3e, 0x41, 0x9d, 0x61, 0xa2, 0xe9, 0x1b, 0x78, 0x05,
-	0x20, 0xc7, 0x4a, 0xa8, 0xd5, 0x31, 0xc1, 0xa8, 0xc2, 0x95, 0x30, 0x55, 0x47, 0x83, 0x7a, 0x64,
-	0xbf, 0xaf, 0xff, 0xa8, 0xa1, 0xea, 0xd0, 0xdc, 0x63, 0xfc, 0xbb, 0x87, 0xae, 0x0e, 0x4b, 0xb8,
-	0xa3, 0x7a, 0x56, 0x02, 0xe2, 0xab, 0x40, 0x8a, 0x24, 0xf8, 0x4f, 0xbd, 0xbd, 0xce, 0xce, 0x41,
-	0xbe, 0x31, 0xf7, 0xda, 0xff, 0xe2, 0x97, 0x3f, 0xff, 0xfa, 0xed, 0x51, 0xe0, 0x3f, 0x0b, 0xed,
-	0x13, 0x12, 0x9a, 0x79, 0x84, 0x49, 0x01, 0x17, 0x73, 0x96, 0x18, 0xbc, 0x58, 0x3a, 0xc0, 0x58,
-	0x90, 0x5c, 0xbd, 0xf0, 0x9e, 0xe3, 0x9f, 0x51, 0x7f, 0xdb, 0xe2, 0x0d, 0x55, 0xfd, 0x42, 0xd5,
-	0xfe, 0x29, 0x1c, 0xd4, 0xf2, 0xcc, 0x6a, 0x79, 0xea, 0x7f, 0xb0, 0xa1, 0xc5, 0x80, 0xc4, 0x50,
-	0xa0, 0xac, 0x04, 0x50, 0xd4, 0xdc, 0x39, 0x24, 0xf8, 0xc2, 0xb2, 0x1e, 0x3a, 0x3c, 0x07, 0x69,
-	0x2f, 0x2c, 0x6d, 0xd7, 0xc7, 0x8e, 0x56, 0xf2, 0xa5, 0x86, 0x70, 0x62, 0x60, 0x1c, 0xd5, 0x37,
-	0xa0, 0x37, 0xe7, 0x88, 0x0f, 0x60, 0xf5, 0xce, 0xad, 0x84, 0xfd, 0x43, 0xf7, 0x9f, 0x58, 0xa2,
-	0x33, 0xdc, 0x5d, 0xef, 0x8f, 0xd8, 0xdc, 0xd8, 0x9c, 0x00, 0x3c, 0x43, 0x8d, 0xcd, 0x6b, 0x8f,
-	0x7b, 0x16, 0x6f, 0xef, 0x5b, 0x70, 0xb0, 0x1f, 0xdf, 0xd2, 0xf4, 0xfd, 0x0d, 0x1a, 0x2e, 0xc0,
-	0x0c, 0xd3, 0xd4, 0x9b, 0xa6, 0xee, 0x50, 0x7d, 0xf5, 0x76, 0xe1, 0xb6, 0x25, 0xd9, 0x7e, 0x5c,
-	0x7b, 0x9d, 0xed, 0x6d, 0xd7, 0xc6, 0xb9, 0xc5, 0x6f, 0xfb, 0x27, 0x0e, 0x5f, 0x01, 0x4b, 0xed,
-	0xb1, 0x37, 0xc0, 0x73, 0xd4, 0xd8, 0xfc, 0x27, 0xb8, 0x16, 0xf6, 0xfe, 0x28, 0x0e, 0xb6, 0xf0,
-	0xb1, 0xa5, 0x78, 0xe2, 0xf7, 0xd6, 0x5b, 0x90, 0x0e, 0x42, 0x59, 0x88, 0x17, 0xde, 0xf3, 0x97,
-	0x57, 0x3f, 0x7c, 0x34, 0xa5, 0x7a, 0xb6, 0x9c, 0x04, 0x09, 0x5f, 0x84, 0x09, 0x64, 0x20, 0x3f,
-	0x65, 0xa0, 0x1f, 0xb8, 0x9c, 0x87, 0x53, 0x3e, 0x32, 0xeb, 0x50, 0x8a, 0x64, 0x52, 0xb3, 0xf0,
-	0x9f, 0xff, 0x13, 0x00, 0x00, 0xff, 0xff, 0x4e, 0x2a, 0xa7, 0x2e, 0x2b, 0x07, 0x00, 0x00,
+	// 1273 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x9c, 0x56, 0xdb, 0x6e, 0xdb, 0x36,
+	0x18, 0x9e, 0x72, 0xf6, 0x1f, 0x37, 0xb5, 0x15, 0xbb, 0x49, 0x9c, 0xa4, 0xcd, 0xd8, 0x2e, 0x70,
+	0x0b, 0xcc, 0x1a, 0xba, 0xa2, 0xc0, 0x0a, 0x6c, 0x43, 0x62, 0xbb, 0x5b, 0x80, 0xad, 0x6e, 0x15,
+	0x07, 0x19, 0x76, 0x51, 0x81, 0x91, 0x18, 0x87, 0x88, 0x2d, 0xb2, 0x24, 0x9d, 0xd4, 0xd8, 0xc5,
+	0x80, 0xbe, 0xc0, 0x2e, 0x76, 0x5b, 0xec, 0xa5, 0xf6, 0x0a, 0x7b, 0x8a, 0x5d, 0x0d, 0xa4, 0x68,
+	0x55, 0x72, 0x1c, 0x74, 0xcd, 0x9d, 0x78, 0xf8, 0xbf, 0xef, 0xfb, 0x8f, 0x14, 0xdc, 0x66, 0x92,
+	0x07, 0x38, 0x1a, 0xd0, 0xb8, 0xc1, 0x05, 0x53, 0xcc, 0x9d, 0x15, 0x3c, 0xac, 0x6d, 0xf5, 0x18,
+	0xeb, 0xf5, 0x89, 0x87, 0x39, 0xf5, 0x70, 0x1c, 0x33, 0x85, 0x15, 0x65, 0xb1, 0x4c, 0xae, 0xd4,
+	0x36, 0xec, 0xa9, 0x59, 0x9d, 0x0c, 0x4f, 0x3d, 0x1c, 0x8f, 0xec, 0xd1, 0xe6, 0xe4, 0x11, 0x19,
+	0x70, 0x35, 0x3e, 0x2c, 0x92, 0x58, 0xd1, 0x74, 0x75, 0x6b, 0x40, 0xa4, 0xc4, 0x3d, 0x92, 0x2c,
+	0xd1, 0x39, 0x54, 0x7d, 0xd2, 0xa3, 0x52, 0x11, 0x71, 0xa8, 0x04, 0xc1, 0x03, 0x9f, 0xbc, 0x19,
+	0x12, 0xa9, 0xdc, 0x3a, 0x94, 0x38, 0x21, 0x22, 0x10, 0x3c, 0x0c, 0x70, 0x14, 0x09, 0x22, 0xe5,
+	0xba, 0xb3, 0xe3, 0xd4, 0x0b, 0xfe, 0x8a, 0xde, 0xf7, 0x79, 0xb8, 0x97, 0xec, 0xa6, 0x37, 0x89,
+	0x3a, 0x4b, 0x6f, 0xce, 0xec, 0x38, 0xf5, 0x62, 0x72, 0xb3, 0xad, 0xce, 0xec, 0x4d, 0xf4, 0x87,
+	0x03, 0xa5, 0x43, 0x12, 0x47, 0x5d, 0x76, 0x4e, 0xe2, 0x31, 0xd1, 0x06, 0x2c, 0x45, 0x52, 0x19,
+	0x4b, 0x4b, 0xb0, 0x18, 0x49, 0xa5, 0x4d, 0xdc, 0x35, 0x58, 0xc4, 0x03, 0x15, 0x5c, 0x12, 0x6a,
+	0x00, 0x0b, 0xfe, 0x02, 0x1e, 0xa8, 0x63, 0x42, 0xdd, 0x6d, 0x00, 0xa5, 0x31, 0x12, 0xab, 0x59,
+	0x73, 0x56, 0x30, 0x3b, 0xc6, 0xae, 0x0e, 0x73, 0x31, 0x53, 0x64, 0x7d, 0x6e, 0xc7, 0xa9, 0x2f,
+	0x3f, 0xae, 0x34, 0x92, 0xe8, 0x34, 0xc6, 0xd1, 0x69, 0xec, 0xc5, 0x23, 0xdf, 0xdc, 0x40, 0xbf,
+	0x40, 0x39, 0x23, 0x48, 0x72, 0x16, 0x4b, 0xe2, 0xde, 0x81, 0x05, 0xa9, 0xb0, 0x1a, 0x26, 0x0e,
+	0xcf, 0xfb, 0x76, 0xe5, 0x56, 0x60, 0x9e, 0x08, 0xc1, 0x84, 0x15, 0x93, 0x2c, 0xdc, 0x2a, 0x2c,
+	0x70, 0x3c, 0x0a, 0x68, 0x64, 0x75, 0xcc, 0x73, 0x3c, 0x3a, 0x88, 0xd0, 0x7b, 0x07, 0x56, 0x5a,
+	0x84, 0x33, 0x49, 0xd5, 0xd8, 0xd3, 0x4d, 0x28, 0x98, 0x40, 0x65, 0x5c, 0x5d, 0xd2, 0x1b, 0x46,
+	0x73, 0xde, 0xa5, 0x99, 0x49, 0x97, 0xd6, 0x60, 0x51, 0xb1, 0x40, 0xdf, 0x36, 0x34, 0x4b, 0xfe,
+	0x82, 0x62, 0x2f, 0x09, 0xc9, 0xc5, 0x68, 0x2e, 0x17, 0xa3, 0x2d, 0x80, 0x01, 0x7e, 0x1b, 0x5c,
+	0x62, 0xaa, 0x02, 0xb9, 0x3e, 0xbf, 0xe3, 0xd4, 0xe7, 0xfc, 0xa5, 0x01, 0x7e, 0x7b, 0x8c, 0xa9,
+	0x3a, 0x44, 0xaf, 0xe1, 0x76, 0xaa, 0xee, 0x46, 0x6e, 0x6f, 0x03, 0x44, 0x09, 0xc0, 0x07, 0xd7,
+	0x0b, 0x76, 0xe7, 0x20, 0x42, 0x4f, 0x60, 0xf5, 0xd5, 0x90, 0x88, 0xd1, 0x44, 0x08, 0xf2, 0x56,
+	0xce, 0xa4, 0x55, 0x04, 0x95, 0xbc, 0x95, 0x95, 0xf6, 0x14, 0x6e, 0x8d, 0xcd, 0xb4, 0x28, 0x62,
+	0x2c, 0x57, 0x1e, 0x97, 0x1b, 0x82, 0x87, 0x0d, 0x7b, 0xf9, 0x50, 0x1f, 0xf8, 0xc5, 0x28, 0xb3,
+	0x9a, 0x2e, 0x1d, 0xfd, 0xeb, 0x40, 0xb5, 0x23, 0x79, 0x87, 0x93, 0xb8, 0x79, 0x86, 0xe3, 0x98,
+	0xf4, 0x27, 0x8b, 0x3e, 0x5b, 0xca, 0xce, 0xb4, 0x52, 0x76, 0xbf, 0x1a, 0xa7, 0x4b, 0x8d, 0x38,
+	0x31, 0xf0, 0x5a, 0x8e, 0xed, 0x34, 0x53, 0x4e, 0xdd, 0x11, 0x27, 0x36, 0x83, 0xfa, 0xd3, 0xbd,
+	0x0f, 0xb7, 0x3e, 0x24, 0x58, 0x03, 0xcf, 0x1a, 0xe0, 0x62, 0x9a, 0x63, 0x0d, 0xeb, 0x41, 0x45,
+	0x92, 0xfe, 0x69, 0x30, 0xf6, 0x36, 0x9f, 0xda, 0xb2, 0x3e, 0xb3, 0xee, 0xee, 0x25, 0x59, 0xf6,
+	0xa0, 0x62, 0x14, 0x4f, 0x1a, 0xcc, 0x27, 0x06, 0xfa, 0x2c, 0x67, 0x80, 0xbe, 0x87, 0xf5, 0xfd,
+	0x21, 0xed, 0x47, 0x3e, 0x1b, 0x2a, 0x1a, 0xf7, 0xba, 0xf8, 0xa4, 0x4f, 0xc6, 0xee, 0x5f, 0x91,
+	0xe8, 0x5c, 0x95, 0x88, 0xbe, 0x83, 0xb5, 0x66, 0x9f, 0x60, 0xd1, 0x7e, 0xcb, 0xa9, 0x20, 0xd1,
+	0x4b, 0x3c, 0x92, 0x9f, 0x64, 0xff, 0x23, 0x7c, 0xde, 0x64, 0xf1, 0x29, 0x15, 0x83, 0x8e, 0x0e,
+	0x3f, 0xd5, 0x7d, 0xc7, 0xfa, 0x17, 0x37, 0x40, 0x6a, 0x43, 0xd1, 0x44, 0xba, 0x49, 0xa3, 0x97,
+	0x98, 0x8a, 0xe9, 0x46, 0x85, 0x89, 0x08, 0x97, 0x60, 0x36, 0xa4, 0x91, 0x2d, 0x08, 0xfd, 0x89,
+	0xde, 0x39, 0xb0, 0xa8, 0x5b, 0xa9, 0x23, 0xb9, 0x7b, 0x0f, 0x96, 0x93, 0xc9, 0x9c, 0x05, 0x00,
+	0x26, 0xf9, 0xd8, 0xfc, 0x1b, 0xb8, 0x9d, 0x70, 0x84, 0x34, 0x0a, 0x38, 0xa6, 0x42, 0xcf, 0xba,
+	0xd9, 0xfa, 0xb2, 0xad, 0xc5, 0xac, 0x1e, 0x3f, 0x51, 0x63, 0x57, 0x52, 0xb7, 0xff, 0x90, 0x47,
+	0x58, 0x91, 0x40, 0x25, 0xc9, 0x9f, 0xf3, 0x97, 0x92, 0x8d, 0xae, 0x44, 0xdf, 0x42, 0xc9, 0x6a,
+	0x90, 0x69, 0xd5, 0x3f, 0xb4, 0xf3, 0x82, 0x49, 0xae, 0xa5, 0x68, 0x96, 0xa2, 0x61, 0xb1, 0x37,
+	0x93, 0xe9, 0xa1, 0x4d, 0xd0, 0x53, 0x28, 0xd9, 0x52, 0xee, 0xf0, 0x71, 0x0c, 0xad, 0xa7, 0x4e,
+	0xea, 0xa9, 0xde, 0xf9, 0x30, 0x4b, 0xf5, 0x27, 0xda, 0x83, 0x72, 0xc6, 0xee, 0x26, 0x83, 0xe0,
+	0xd1, 0x6f, 0x50, 0xcc, 0x76, 0xa0, 0x5b, 0x85, 0xb2, 0x5d, 0x07, 0x2f, 0x3a, 0xdd, 0xe0, 0x79,
+	0xe7, 0xe8, 0x45, 0xab, 0xf4, 0x99, 0xeb, 0xa6, 0xe3, 0x30, 0x78, 0x75, 0xd4, 0x3e, 0x6a, 0xb7,
+	0x4a, 0x4e, 0xf6, 0xea, 0xe1, 0xd1, 0xfe, 0xcf, 0x07, 0xdd, 0x6e, 0xbb, 0x55, 0x9a, 0xc9, 0x6f,
+	0x37, 0x9b, 0xed, 0x76, 0xab, 0xdd, 0x2a, 0xcd, 0x66, 0x11, 0x9e, 0xef, 0x1d, 0xfc, 0xd4, 0x6e,
+	0x95, 0xe6, 0x1e, 0xbf, 0x07, 0x98, 0xdf, 0xd3, 0xcf, 0xa8, 0xfb, 0x97, 0x03, 0xbb, 0xd7, 0xd7,
+	0xd5, 0x31, 0x55, 0x67, 0xe3, 0xf8, 0xba, 0xbb, 0x26, 0x88, 0x1f, 0x2d, 0xc2, 0xda, 0x9d, 0x2b,
+	0x0f, 0x47, 0x5b, 0x3f, 0xab, 0xe8, 0xc9, 0xbb, 0xbf, 0xff, 0xf9, 0x73, 0xa6, 0x81, 0x1e, 0x7a,
+	0xe6, 0x05, 0xf7, 0x74, 0x16, 0xbc, 0x30, 0x81, 0x0b, 0x58, 0x1c, 0x6a, 0xbc, 0x40, 0x58, 0xc0,
+	0x80, 0xe3, 0x91, 0x7c, 0xe6, 0x3c, 0x72, 0x7f, 0x87, 0xad, 0xc9, 0xbe, 0xc9, 0xa9, 0xda, 0x4a,
+	0x54, 0x4d, 0x6f, 0xad, 0x6b, 0xb5, 0x3c, 0x34, 0x5a, 0xee, 0xa3, 0xbb, 0x39, 0x2d, 0x1a, 0x24,
+	0x20, 0x09, 0x4a, 0x2a, 0x80, 0x42, 0xf9, 0x4a, 0xe7, 0xbb, 0xdb, 0x86, 0xf5, 0xba, 0x89, 0x70,
+	0x2d, 0xed, 0xb6, 0xa1, 0x5d, 0x43, 0xae, 0xa5, 0x15, 0x6c, 0xa8, 0x88, 0x77, 0xa2, 0x61, 0x34,
+	0x55, 0x0f, 0x2a, 0x3e, 0x09, 0x2f, 0xf6, 0x43, 0x2c, 0x95, 0x85, 0x3d, 0x88, 0x4f, 0x99, 0xbb,
+	0x6a, 0xd8, 0xec, 0xce, 0xc7, 0x38, 0x90, 0xe1, 0xd8, 0x42, 0x6b, 0x39, 0x0e, 0x41, 0xc2, 0x8b,
+	0xe0, 0x44, 0x03, 0x6b, 0xa2, 0xd7, 0xb0, 0xfc, 0x03, 0x51, 0x69, 0x0c, 0xaf, 0x81, 0xaa, 0x55,
+	0xb3, 0x6d, 0x93, 0x36, 0x18, 0xda, 0x31, 0x0c, 0x35, 0x54, 0xcd, 0x06, 0x2f, 0x6d, 0x39, 0x8d,
+	0x7f, 0x06, 0x2b, 0xf9, 0x97, 0xc2, 0xad, 0x19, 0xa8, 0xa9, 0xcf, 0xc7, 0xff, 0xf6, 0xc4, 0xf0,
+	0x30, 0x4e, 0x74, 0xa9, 0x68, 0x7b, 0xcd, 0x74, 0x0c, 0x85, 0xf4, 0x4f, 0xc4, 0x4d, 0xf4, 0x4e,
+	0xfe, 0x2a, 0xd5, 0xee, 0x4c, 0x6e, 0x5b, 0x3f, 0x36, 0x0d, 0x7e, 0x15, 0x95, 0x2c, 0xbe, 0x24,
+	0x71, 0x64, 0x66, 0x8f, 0x06, 0xee, 0xc0, 0xa2, 0x6d, 0x1b, 0x1b, 0xfe, 0xfc, 0x93, 0x5c, 0xab,
+	0xe4, 0x37, 0x2d, 0xe4, 0x86, 0x81, 0x5c, 0x45, 0x2b, 0x16, 0xd2, 0xbe, 0x2f, 0x1a, 0x30, 0x82,
+	0x62, 0xf6, 0x91, 0x76, 0xd7, 0x0d, 0xc0, 0x94, 0xd7, 0xbe, 0xb6, 0x31, 0xe5, 0xc4, 0xe2, 0xdf,
+	0x33, 0xf8, 0x1b, 0xa8, 0x62, 0xf1, 0xdf, 0xe8, 0x4b, 0x41, 0x86, 0xe5, 0x1c, 0x56, 0xf2, 0x3f,
+	0xa6, 0x36, 0xf2, 0x53, 0xff, 0x56, 0xaf, 0x8d, 0xfc, 0x17, 0x86, 0xe6, 0x1e, 0xaa, 0x65, 0x23,
+	0x2f, 0x2c, 0x84, 0x34, 0x10, 0x9a, 0xac, 0x0f, 0xab, 0x4d, 0xc6, 0x38, 0x11, 0x58, 0xd1, 0x0b,
+	0xa2, 0xdb, 0x32, 0x12, 0xf8, 0xd2, 0xa6, 0x61, 0x72, 0xb0, 0xda, 0x34, 0x5c, 0x99, 0x9b, 0x68,
+	0xd7, 0x90, 0xed, 0xa0, 0x4d, 0x4b, 0x66, 0xb3, 0xeb, 0x85, 0x8c, 0xf1, 0x4b, 0x8b, 0x99, 0x14,
+	0x55, 0x39, 0xc3, 0x76, 0x48, 0x94, 0xea, 0x93, 0x4f, 0xe5, 0x7a, 0x60, 0xb8, 0xee, 0xa2, 0x8d,
+	0x29, 0x5c, 0xd2, 0x20, 0x3e, 0x73, 0x1e, 0xed, 0xef, 0xfe, 0xfa, 0xa0, 0x47, 0xd5, 0xd9, 0xf0,
+	0xa4, 0x11, 0xb2, 0x81, 0x17, 0x92, 0x3e, 0x11, 0x5f, 0xc6, 0x44, 0x5d, 0x32, 0x71, 0xee, 0xf5,
+	0x58, 0x53, 0xaf, 0x3d, 0xc1, 0xc3, 0x93, 0x05, 0x13, 0xb6, 0xaf, 0xff, 0x0b, 0x00, 0x00, 0xff,
+	0xff, 0x80, 0xfd, 0x23, 0x5f, 0x97, 0x0c, 0x00, 0x00,
 }
 
 // Reference imports to suppress errors if they are not otherwise used.
@@ -524,14 +1018,23 @@ type AdminClient interface {
 	ClearExpiredPaysWithPeerOsps(ctx context.Context, in *ClearExpiredPaysRequest, opts ...grpc.CallOption) (*empty.Empty, error)
 	// BuildRoutingTable instructs Osp to build routing table.
 	BuildRoutingTable(ctx context.Context, in *BuildRoutingTableRequest, opts ...grpc.CallOption) (*empty.Empty, error)
-	// GetActivePeerOsps returns eth addresses of active peer osps. Keep admin informed about who are connecting to the osp.
-	GetActivePeerOsps(ctx context.Context, in *empty.Empty, opts ...grpc.CallOption) (*ActivePeerOspsResponse, error)
+	// RecvBcastRoutingInfo gives the OSP (listener & router) the incoming
+	// broadcast routing information (OSP server forwarding to the listener).
+	RecvBcastRoutingInfo(ctx context.Context, in *RoutingRequest, opts ...grpc.CallOption) (*empty.Empty, error)
+	// GetPeerOsps returns info of all peer osps.
+	GetPeerOsps(ctx context.Context, in *empty.Empty, opts ...grpc.CallOption) (*PeerOspsResponse, error)
 	// OspOpenChannel instructs Osp to open a state channel with a peer described in request.
 	OspOpenChannel(ctx context.Context, in *OspOpenChannelRequest, opts ...grpc.CallOption) (*empty.Empty, error)
-	// SendToken instruscts the OSP to send token specified in SendTokenRequest.
+	// SendToken instructs the OSP to send token specified in SendTokenRequest.
 	SendToken(ctx context.Context, in *SendTokenRequest, opts ...grpc.CallOption) (*SendTokenResponse, error)
+	// Deposit instructs the OSP to deposit token specified in DepositRequest.
+	Deposit(ctx context.Context, in *DepositRequest, opts ...grpc.CallOption) (*DepositResponse, error)
+	// QueryDeposit asks OSP about the deposit status
+	QueryDeposit(ctx context.Context, in *QueryDepositRequest, opts ...grpc.CallOption) (*QueryDepositResponse, error)
 	// RegisterStream instructs the OSP to connect with other osp specified in RegisterStreamRequest.
 	RegisterStream(ctx context.Context, in *RegisterStreamRequest, opts ...grpc.CallOption) (*empty.Empty, error)
+	CooperativeWithdraw(ctx context.Context, in *ChannelOpRequest, opts ...grpc.CallOption) (*ChannelOpResponse, error)
+	CooperativeSettle(ctx context.Context, in *ChannelOpRequest, opts ...grpc.CallOption) (*ChannelOpResponse, error)
 }
 
 type adminClient struct {
@@ -569,9 +1072,18 @@ func (c *adminClient) BuildRoutingTable(ctx context.Context, in *BuildRoutingTab
 	return out, nil
 }
 
-func (c *adminClient) GetActivePeerOsps(ctx context.Context, in *empty.Empty, opts ...grpc.CallOption) (*ActivePeerOspsResponse, error) {
-	out := new(ActivePeerOspsResponse)
-	err := c.cc.Invoke(ctx, "/rpc.Admin/GetActivePeerOsps", in, out, opts...)
+func (c *adminClient) RecvBcastRoutingInfo(ctx context.Context, in *RoutingRequest, opts ...grpc.CallOption) (*empty.Empty, error) {
+	out := new(empty.Empty)
+	err := c.cc.Invoke(ctx, "/rpc.Admin/RecvBcastRoutingInfo", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *adminClient) GetPeerOsps(ctx context.Context, in *empty.Empty, opts ...grpc.CallOption) (*PeerOspsResponse, error) {
+	out := new(PeerOspsResponse)
+	err := c.cc.Invoke(ctx, "/rpc.Admin/GetPeerOsps", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -596,9 +1108,45 @@ func (c *adminClient) SendToken(ctx context.Context, in *SendTokenRequest, opts 
 	return out, nil
 }
 
+func (c *adminClient) Deposit(ctx context.Context, in *DepositRequest, opts ...grpc.CallOption) (*DepositResponse, error) {
+	out := new(DepositResponse)
+	err := c.cc.Invoke(ctx, "/rpc.Admin/Deposit", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *adminClient) QueryDeposit(ctx context.Context, in *QueryDepositRequest, opts ...grpc.CallOption) (*QueryDepositResponse, error) {
+	out := new(QueryDepositResponse)
+	err := c.cc.Invoke(ctx, "/rpc.Admin/QueryDeposit", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *adminClient) RegisterStream(ctx context.Context, in *RegisterStreamRequest, opts ...grpc.CallOption) (*empty.Empty, error) {
 	out := new(empty.Empty)
 	err := c.cc.Invoke(ctx, "/rpc.Admin/RegisterStream", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *adminClient) CooperativeWithdraw(ctx context.Context, in *ChannelOpRequest, opts ...grpc.CallOption) (*ChannelOpResponse, error) {
+	out := new(ChannelOpResponse)
+	err := c.cc.Invoke(ctx, "/rpc.Admin/CooperativeWithdraw", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *adminClient) CooperativeSettle(ctx context.Context, in *ChannelOpRequest, opts ...grpc.CallOption) (*ChannelOpResponse, error) {
+	out := new(ChannelOpResponse)
+	err := c.cc.Invoke(ctx, "/rpc.Admin/CooperativeSettle", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -613,14 +1161,23 @@ type AdminServer interface {
 	ClearExpiredPaysWithPeerOsps(context.Context, *ClearExpiredPaysRequest) (*empty.Empty, error)
 	// BuildRoutingTable instructs Osp to build routing table.
 	BuildRoutingTable(context.Context, *BuildRoutingTableRequest) (*empty.Empty, error)
-	// GetActivePeerOsps returns eth addresses of active peer osps. Keep admin informed about who are connecting to the osp.
-	GetActivePeerOsps(context.Context, *empty.Empty) (*ActivePeerOspsResponse, error)
+	// RecvBcastRoutingInfo gives the OSP (listener & router) the incoming
+	// broadcast routing information (OSP server forwarding to the listener).
+	RecvBcastRoutingInfo(context.Context, *RoutingRequest) (*empty.Empty, error)
+	// GetPeerOsps returns info of all peer osps.
+	GetPeerOsps(context.Context, *empty.Empty) (*PeerOspsResponse, error)
 	// OspOpenChannel instructs Osp to open a state channel with a peer described in request.
 	OspOpenChannel(context.Context, *OspOpenChannelRequest) (*empty.Empty, error)
-	// SendToken instruscts the OSP to send token specified in SendTokenRequest.
+	// SendToken instructs the OSP to send token specified in SendTokenRequest.
 	SendToken(context.Context, *SendTokenRequest) (*SendTokenResponse, error)
+	// Deposit instructs the OSP to deposit token specified in DepositRequest.
+	Deposit(context.Context, *DepositRequest) (*DepositResponse, error)
+	// QueryDeposit asks OSP about the deposit status
+	QueryDeposit(context.Context, *QueryDepositRequest) (*QueryDepositResponse, error)
 	// RegisterStream instructs the OSP to connect with other osp specified in RegisterStreamRequest.
 	RegisterStream(context.Context, *RegisterStreamRequest) (*empty.Empty, error)
+	CooperativeWithdraw(context.Context, *ChannelOpRequest) (*ChannelOpResponse, error)
+	CooperativeSettle(context.Context, *ChannelOpRequest) (*ChannelOpResponse, error)
 }
 
 // UnimplementedAdminServer can be embedded to have forward compatible implementations.
@@ -636,8 +1193,11 @@ func (*UnimplementedAdminServer) ClearExpiredPaysWithPeerOsps(ctx context.Contex
 func (*UnimplementedAdminServer) BuildRoutingTable(ctx context.Context, req *BuildRoutingTableRequest) (*empty.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method BuildRoutingTable not implemented")
 }
-func (*UnimplementedAdminServer) GetActivePeerOsps(ctx context.Context, req *empty.Empty) (*ActivePeerOspsResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GetActivePeerOsps not implemented")
+func (*UnimplementedAdminServer) RecvBcastRoutingInfo(ctx context.Context, req *RoutingRequest) (*empty.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RecvBcastRoutingInfo not implemented")
+}
+func (*UnimplementedAdminServer) GetPeerOsps(ctx context.Context, req *empty.Empty) (*PeerOspsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetPeerOsps not implemented")
 }
 func (*UnimplementedAdminServer) OspOpenChannel(ctx context.Context, req *OspOpenChannelRequest) (*empty.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method OspOpenChannel not implemented")
@@ -645,8 +1205,20 @@ func (*UnimplementedAdminServer) OspOpenChannel(ctx context.Context, req *OspOpe
 func (*UnimplementedAdminServer) SendToken(ctx context.Context, req *SendTokenRequest) (*SendTokenResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SendToken not implemented")
 }
+func (*UnimplementedAdminServer) Deposit(ctx context.Context, req *DepositRequest) (*DepositResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Deposit not implemented")
+}
+func (*UnimplementedAdminServer) QueryDeposit(ctx context.Context, req *QueryDepositRequest) (*QueryDepositResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method QueryDeposit not implemented")
+}
 func (*UnimplementedAdminServer) RegisterStream(ctx context.Context, req *RegisterStreamRequest) (*empty.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method RegisterStream not implemented")
+}
+func (*UnimplementedAdminServer) CooperativeWithdraw(ctx context.Context, req *ChannelOpRequest) (*ChannelOpResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CooperativeWithdraw not implemented")
+}
+func (*UnimplementedAdminServer) CooperativeSettle(ctx context.Context, req *ChannelOpRequest) (*ChannelOpResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CooperativeSettle not implemented")
 }
 
 func RegisterAdminServer(s *grpc.Server, srv AdminServer) {
@@ -707,20 +1279,38 @@ func _Admin_BuildRoutingTable_Handler(srv interface{}, ctx context.Context, dec 
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Admin_GetActivePeerOsps_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _Admin_RecvBcastRoutingInfo_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RoutingRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AdminServer).RecvBcastRoutingInfo(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/rpc.Admin/RecvBcastRoutingInfo",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AdminServer).RecvBcastRoutingInfo(ctx, req.(*RoutingRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Admin_GetPeerOsps_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(empty.Empty)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(AdminServer).GetActivePeerOsps(ctx, in)
+		return srv.(AdminServer).GetPeerOsps(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/rpc.Admin/GetActivePeerOsps",
+		FullMethod: "/rpc.Admin/GetPeerOsps",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(AdminServer).GetActivePeerOsps(ctx, req.(*empty.Empty))
+		return srv.(AdminServer).GetPeerOsps(ctx, req.(*empty.Empty))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -761,6 +1351,42 @@ func _Admin_SendToken_Handler(srv interface{}, ctx context.Context, dec func(int
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Admin_Deposit_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DepositRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AdminServer).Deposit(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/rpc.Admin/Deposit",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AdminServer).Deposit(ctx, req.(*DepositRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Admin_QueryDeposit_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(QueryDepositRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AdminServer).QueryDeposit(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/rpc.Admin/QueryDeposit",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AdminServer).QueryDeposit(ctx, req.(*QueryDepositRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _Admin_RegisterStream_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(RegisterStreamRequest)
 	if err := dec(in); err != nil {
@@ -775,6 +1401,42 @@ func _Admin_RegisterStream_Handler(srv interface{}, ctx context.Context, dec fun
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(AdminServer).RegisterStream(ctx, req.(*RegisterStreamRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Admin_CooperativeWithdraw_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ChannelOpRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AdminServer).CooperativeWithdraw(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/rpc.Admin/CooperativeWithdraw",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AdminServer).CooperativeWithdraw(ctx, req.(*ChannelOpRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Admin_CooperativeSettle_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ChannelOpRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AdminServer).CooperativeSettle(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/rpc.Admin/CooperativeSettle",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AdminServer).CooperativeSettle(ctx, req.(*ChannelOpRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -796,8 +1458,12 @@ var _Admin_serviceDesc = grpc.ServiceDesc{
 			Handler:    _Admin_BuildRoutingTable_Handler,
 		},
 		{
-			MethodName: "GetActivePeerOsps",
-			Handler:    _Admin_GetActivePeerOsps_Handler,
+			MethodName: "RecvBcastRoutingInfo",
+			Handler:    _Admin_RecvBcastRoutingInfo_Handler,
+		},
+		{
+			MethodName: "GetPeerOsps",
+			Handler:    _Admin_GetPeerOsps_Handler,
 		},
 		{
 			MethodName: "OspOpenChannel",
@@ -808,8 +1474,24 @@ var _Admin_serviceDesc = grpc.ServiceDesc{
 			Handler:    _Admin_SendToken_Handler,
 		},
 		{
+			MethodName: "Deposit",
+			Handler:    _Admin_Deposit_Handler,
+		},
+		{
+			MethodName: "QueryDeposit",
+			Handler:    _Admin_QueryDeposit_Handler,
+		},
+		{
 			MethodName: "RegisterStream",
 			Handler:    _Admin_RegisterStream_Handler,
+		},
+		{
+			MethodName: "CooperativeWithdraw",
+			Handler:    _Admin_CooperativeWithdraw_Handler,
+		},
+		{
+			MethodName: "CooperativeSettle",
+			Handler:    _Admin_CooperativeSettle_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

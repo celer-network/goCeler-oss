@@ -1,14 +1,16 @@
-// Copyright 2018-2019 Celer Network
+// Copyright 2018-2020 Celer Network
 
 package cobj
 
 import (
-	"errors"
 	"time"
 
-	log "github.com/celer-network/goCeler-oss/clog"
-	"github.com/celer-network/goCeler-oss/rpc"
-	"github.com/celer-network/goCeler-oss/rtconfig"
+	"github.com/celer-network/goCeler/ctype"
+
+	"github.com/celer-network/goCeler/common"
+	"github.com/celer-network/goCeler/rpc"
+	"github.com/celer-network/goCeler/rtconfig"
+	"github.com/celer-network/goutils/log"
 )
 
 type CelerStreamWriter struct {
@@ -19,13 +21,12 @@ func NewCelerStreamWriter(connManager *rpc.ConnectionManager) *CelerStreamWriter
 	return &CelerStreamWriter{connManager: connManager}
 }
 
-func (w *CelerStreamWriter) WriteCelerMsg(peerTo string, msg *rpc.CelerMsg) error {
+func (w *CelerStreamWriter) WriteCelerMsg(peerTo ctype.Addr, msg *rpc.CelerMsg) error {
 	sendTimeout := int64(rtconfig.GetStreamSendTimeoutSecond())
 	sendChan := make(chan error, 1)
-	// One celer stream implementation.
 	celerStream := w.connManager.GetCelerStream(peerTo)
 	if celerStream == nil {
-		return errors.New("NO_CELER_MSG_STREAM")
+		return common.ErrNoCelerStream
 	}
 	go func() {
 		err := celerStream.SafeSend(msg)
@@ -39,8 +40,8 @@ func (w *CelerStreamWriter) WriteCelerMsg(peerTo string, msg *rpc.CelerMsg) erro
 	select {
 	case <-timer.C:
 		w.connManager.CleanupStreams(peerTo)
-		log.Errorln("CelerMsg send timed out:", peerTo)
-		return errors.New("SEND_MSG_TIMEOUT")
+		log.Errorln("CelerMsg send timed out:", peerTo.Hex())
+		return common.ErrCelerMsgTimeout
 	case err := <-sendChan:
 		timer.Stop()
 		return err

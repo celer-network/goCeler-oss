@@ -1,4 +1,4 @@
-// Copyright 2018-2019 Celer Network
+// Copyright 2018-2020 Celer Network
 
 // Package main implements rpc server logic defined in rpc/rpc.proto
 package main
@@ -18,30 +18,35 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"path"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
 	"syscall"
 	"time"
 
-	log "github.com/celer-network/goCeler-oss/clog"
-	"github.com/celer-network/goCeler-oss/cnode"
-	"github.com/celer-network/goCeler-oss/common"
-	"github.com/celer-network/goCeler-oss/config"
-	"github.com/celer-network/goCeler-oss/ctype"
-	"github.com/celer-network/goCeler-oss/entity"
-	"github.com/celer-network/goCeler-oss/metrics"
-	"github.com/celer-network/goCeler-oss/rpc"
-	"github.com/celer-network/goCeler-oss/rtconfig"
-	"github.com/celer-network/goCeler-oss/transactor"
-	"github.com/celer-network/goCeler-oss/utils"
+	"github.com/celer-network/goCeler/cnode"
+	"github.com/celer-network/goCeler/common"
+	"github.com/celer-network/goCeler/common/structs"
+	"github.com/celer-network/goCeler/config"
+	"github.com/celer-network/goCeler/ctype"
+	"github.com/celer-network/goCeler/delegate"
+	"github.com/celer-network/goCeler/entity"
+	celerx_fee_interface "github.com/celer-network/goCeler/fee-manager/interface"
+	"github.com/celer-network/goCeler/metrics"
+	"github.com/celer-network/goCeler/route"
+	"github.com/celer-network/goCeler/rpc"
+	"github.com/celer-network/goCeler/rtconfig"
+	"github.com/celer-network/goCeler/transactor"
+	"github.com/celer-network/goCeler/utils"
+	"github.com/celer-network/goutils/log"
 	"github.com/ethereum/go-ethereum/accounts/keystore"
-	"github.com/golang/protobuf/jsonpb"
+	"github.com/go-redis/redis"
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes"
 	"github.com/golang/protobuf/ptypes/any"
 	"github.com/golang/protobuf/ptypes/empty"
+	"github.com/google/uuid"
 	"github.com/grpc-ecosystem/grpc-gateway/runtime"
 	"golang.org/x/crypto/ssh/terminal"
 	"google.golang.org/grpc"
@@ -52,48 +57,69 @@ import (
 )
 
 var (
-	pjson          = flag.String("profile", "config/profile.json", "Path to profile json file")
-	dbg            = flag.Bool("debug", false, "enable reflection and verbos log for debug")
-	port           = flag.Int("port", 10000, "The server listening port")
-	selfrpc        = flag.String("selfrpc", "", "Internal server host:port for inter-server communication")
-	adminrpc       = flag.String("adminrpc", ":11000", "The server admin endpoint")
-	adminweb       = flag.String("adminweb", ":8090", "The server admin http endpoint")
-	ks             = flag.String("ks", "", "Path to keystore json file")
-	noPassword     = flag.Bool("nopassword", false, "Assume empty password for keystores")
-	transactorks   = flag.String("transactorks", "", "Paths to keystore json files for on-chain transactions, separated by comma")
-	passwordDir    = flag.String("passworddir", "", "Path to the directory containing passwords")
-	storedir       = flag.String("storedir", "", "Path to the store directory")
-	showver        = flag.Bool("v", false, "Show version and exit")
-	isosp          = flag.Bool("isosp", true, "Run as an OSP node")
-	listenOnChain  = flag.Bool("loc", true, "Listen to on-chain log events")
-	rtcfile        = flag.String("rtc", "rt_config.json", "runtime config json file path")
-	ospMaxRedial   = flag.Int("ospmaxredial", 10, "max retry for osp to dial to another osp")
-	ospRedialDelay = flag.Int64("ospredialdelay", 5, "retry delay (in sec) for osp to dial to another osp")
-	routingData    = flag.String("routeData", "", "Path to routing data json file")
-	tlsCert        = flag.String("tlscert", "", "Path to TLS cert file")
-	tlsKey         = flag.String("tlskey", "", "Path to TLS private key file")
-	tlsClient      = flag.Bool("tlsclient", false, "Require tls client cert by CelerCA")
+	pjson                = flag.String("profile", "config/profile.json", "Path to profile json file")
+	dbg                  = flag.Bool("debug", false, "enable reflection and verbos log for debug")
+	port                 = flag.Int("port", 10000, "The server listening port")
+	selfrpc              = flag.String("selfrpc", "", "Internal server host:port for inter-server communication")
+	adminrpc             = flag.String("adminrpc", ":11000", "The server admin endpoint")
+	adminweb             = flag.String("adminweb", ":8090", "The server admin http endpoint")
+	listenerweb          = flag.String("listenerweb", "", "The event listener admin http endpoint")
+	ks                   = flag.String("ks", "", "Path to keystore json file")
+	depositks            = flag.String("depositks", "", "Path to depositor keystore json file")
+	noPassword           = flag.Bool("nopassword", false, "Assume empty password for keystores")
+	transactorks         = flag.String("transactorks", "", "Paths to keystore json files for on-chain transactions, separated by comma")
+	passwordDir          = flag.String("passworddir", "", "Path to the directory containing passwords")
+	storedir             = flag.String("storedir", "", "Path to the store directory")
+	storesql             = flag.String("storesql", "", "sql database URL")
+	showver              = flag.Bool("v", false, "Show version and exit")
+	isosp                = flag.Bool("isosp", true, "Run as an OSP node")
+	listenOnChain        = flag.Bool("loc", true, "Listen to on-chain log events")
+	svrname              = flag.String("svrname", "", "unique server name")
+	rtcfile              = flag.String("rtc", "rt_config.json", "runtime config json file path")
+	receiveDoneNotifyee  = flag.String("fmrecvdone", "localhost:8092/notify/osp/feereceived", "end point to notify for a pay received with note")
+	payDoneNotifyee      = flag.String("fmsenddone", "localhost:8092/notify/osp/sendcomplete", "end point to notify for a pay send complete")
+	redisAddr            = flag.String("redisaddr", "", "Redis address to publish pay event")
+	pubRetryInterval     = flag.Int64("pubretryintervalsec", 10, "retry interval in seconds for pay event publish")
+	ospMaxRedial         = flag.Int("ospmaxredial", 10, "max retry for osp to dial to another osp")
+	ospRedialDelay       = flag.Int64("ospredialdelay", 5, "retry delay (in sec) for osp to dial to another osp")
+	routingData          = flag.String("routedata", "", "Path to routing data json file")
+	tlsCert              = flag.String("tlscert", "", "Path to TLS cert file")
+	tlsKey               = flag.String("tlskey", "", "Path to TLS private key file")
+	tlsClient            = flag.Bool("tlsclient", false, "Require tls client cert by CelerCA")
+	allowTsDiffInMinutes = flag.Uint64("allowtsdiff", 120, "Allowed timestamp diff (in minutes) when authenticating peer in pay history request")
+	routerBcastInterval  = flag.Uint64("routerbcastinterval", 0, "interval (in sec) to broadcast route updates, should only set for test purpose")
+	routerBuildInterval  = flag.Uint64("routerbuildinterval", 0, "interval (in sec) to uild routing table, should only set for test purpose")
+	routerAliveTimeout   = flag.Uint64("routeralivetimeout", 0, "timeout (in sec) for router aliveness, should only set for test purpose")
+	ospClearPayInterval  = flag.Uint64("ospclearpayinterval", 0, "interval (in sec) for osp to clear expired and on-chain resolved pays with its peers, should only set for test purpose")
 )
 
 var selfHostPort string
 
+const maxItemsPerPage int32 = 1000
+const defaultItemsPerPage int32 = 50
+
 type server struct {
-	cNode         *cnode.CNode
-	jsonMarshaler *jsonpb.Marshaler
-	netClient     *http.Client
-	lastOcTs      int64      // timestamp in seconds of last processed open channel request
-	lastOcTsLock  sync.Mutex // lock to protect r/w of lastOcTs
+	cNode        *cnode.CNode
+	netClient    *http.Client
+	lastOcTs     int64      // timestamp in seconds of last processed open channel request
+	lastOcTsLock sync.Mutex // lock to protect r/w of lastOcTs
+	delegate     *delegate.DelegateManager
+	config       *common.CProfile
+	redisClient  *redis.Client
+	rpc.UnimplementedRpcServer
 }
 type serverInterOSP struct {
 	svr      *server
 	adminSvr *adminService
+	rpc.UnimplementedMultiServerServer
 }
 type adminService struct {
 	// Note: adminService doesn't own cNode.
-	cNode           *cnode.CNode
-	ospEthToRPC     map[ctype.Addr]string
-	ospEthToRPCLock sync.Mutex
-	streamRetryCb   rpc.ErrCallbackFunc
+	cNode                        *cnode.CNode
+	ospEthToRPC                  map[ctype.Addr]string
+	ospEthToRPCLock              sync.Mutex
+	streamRetryCb                rpc.ErrCallbackFunc
+	rpc.UnimplementedAdminServer // so new rpc won't break build due to missing interface func
 }
 
 func newAdminService(cNode *cnode.CNode) *adminService {
@@ -101,11 +127,15 @@ func newAdminService(cNode *cnode.CNode) *adminService {
 		cNode:       cNode,
 		ospEthToRPC: make(map[ctype.Addr]string),
 	}
-	adminS.streamRetryCb = func(addrStr string, streamErr error) {
+	adminS.streamRetryCb = func(addr ctype.Addr, streamErr error) {
 		// Register the callback to handle stream errors and try to reconnect.
-		log.Infoln("streamRetryCb triggered for", addrStr, streamErr)
+		// TODO: note that such a two-step API has a tiny race-condition window
+		// in case the stream quickly disconnects after a successful call to
+		// RegisterStream() and before RegisterStreamErrCallback() is done.
+		// The next design should either allow them both to be done atomically
+		// or allow RegisterStreamErrCallback() before RegisterStream().
+		log.Infoln("streamRetryCb triggered for", addr.Hex(), streamErr)
 		delay := time.Duration(*ospRedialDelay) * time.Second
-		addr := ctype.Hex2Addr(addrStr)
 		adminS.ospEthToRPCLock.Lock()
 		ospRPC, ok := adminS.ospEthToRPC[addr]
 		delete(adminS.ospEthToRPC, addr)
@@ -117,25 +147,61 @@ func newAdminService(cNode *cnode.CNode) *adminService {
 		}
 
 		for i := 0; i < *ospMaxRedial; i++ {
-			log.Debugln("streamRetryCb: try to register again", addrStr)
+			log.Debugln("streamRetryCb: try to register again", addr.Hex())
 			adminS.ospEthToRPCLock.Lock()
 			if peerRPC := adminS.ospEthToRPC[addr]; peerRPC == ospRPC {
 				return
 			}
-			err := adminS.cNode.RegisterStream(addrStr, ospRPC)
+			err := adminS.cNode.RegisterStream(addr, ospRPC)
 			if err == nil {
-				log.Infoln("streamRetry:Cb successful re-register", addrStr)
+				log.Infoln("streamRetry:Cb successful re-register", addr.Hex())
 				adminS.ospEthToRPC[addr] = ospRPC
 				adminS.ospEthToRPCLock.Unlock()
 				return
 			}
 			adminS.ospEthToRPCLock.Unlock()
-			log.Errorln("streamRetryCb: register failed", addrStr, err)
+			log.Errorln("streamRetryCb: register failed", addr.Hex(), err)
 			time.Sleep(delay)
 		}
-		log.Errorln("streamRetry:Cb retry dial", addrStr, "for", *ospMaxRedial, "times, giving up")
+		log.Errorln("streamRetry:Cb retry dial", addr.Hex(), "for", *ospMaxRedial, "times, giving up")
 	}
 	return adminS
+}
+
+func (s *server) RequestDelegation(ctx context.Context, in *rpc.DelegationRequest) (*rpc.DelegationResponse, error) {
+	log.Infof("RequestDelegation: %x", in.GetProof().GetSigner())
+	dal := s.cNode.GetDAL()
+	proof := in.GetProof()
+	delegationDesc := &rpc.DelegationDescription{}
+	signer := utils.RecoverSigner(proof.GetDelegationDescriptionBytes(), proof.GetSignature())
+	err := proto.Unmarshal(proof.GetDelegationDescriptionBytes(), delegationDesc)
+	if err != nil {
+		return nil, err
+	}
+
+	if signer != ctype.Bytes2Addr(delegationDesc.GetDelegatee()) {
+		return nil, errors.New("Not signed by delegatee")
+	}
+	if s.cNode.EthAddress != ctype.Bytes2Addr(delegationDesc.GetDelegator()) {
+		return nil, errors.New("Not delegating to " + s.cNode.EthAddress.Hex())
+	}
+	err = dal.UpdatePeerDelegateProof(signer, proof)
+	if err != nil {
+		return nil, err
+	}
+	return &rpc.DelegationResponse{}, nil
+}
+
+func (s *server) QueryDelegation(ctx context.Context, in *rpc.QueryDelegationRequest) (*rpc.QueryDelegationResponse, error) {
+	dal := s.cNode.GetDAL()
+	proof, found, err := dal.GetPeerDelegateProof(ctype.Bytes2Addr(in.GetDelegatee()))
+	if err != nil {
+		return nil, err
+	}
+	if !found || proof == nil {
+		return nil, common.ErrDelegateProofNotFound
+	}
+	return &rpc.QueryDelegationResponse{Proof: proof}, nil
 }
 
 func (s *server) CelerStream(stream rpc.Rpc_CelerStreamServer) error {
@@ -145,10 +211,27 @@ func (s *server) CelerStream(stream rpc.Rpc_CelerStreamServer) error {
 		return err
 	}
 	if msg.GetAuthReq() != nil {
-		log.Infof("server got AuthReq from %x", msg.GetAuthReq().GetMyAddr())
+		req := msg.GetAuthReq()
+		reqjs, _ := utils.PbToJSONHexBytes(req)
+		log.Infoln("Recv AuthReq:", reqjs)
+		ackMsg, err2 := s.cNode.HandleAuthReq(req)
+		if err2 != nil {
+			log.Warnln("AuthReq err:", err2)
+			return status.Error(codes.InvalidArgument, err2.Error())
+		}
+		if req.GetProtocolVersion() >= 1 {
+			// send AuthAck back to requester if protocol version >= 1
+			// r0.15 code doesn't expect AuthAck msg
+			err = stream.Send(ackMsg)
+			if err != nil {
+				log.Warnln("Send AuthAck err:", err)
+				return status.Error(codes.Canceled, err.Error())
+			}
+		}
+
 		ctx, err = s.cNode.AddCelerStream(msg, stream)
 		if err != nil {
-			log.Warnln("AddCelerStream err:", err.Error(), "authreq:", msg.GetAuthReq().String())
+			log.Warnln("AddCelerStream err:", err.Error())
 			return status.Error(codes.InvalidArgument, err.Error())
 		}
 	} else {
@@ -159,14 +242,119 @@ func (s *server) CelerStream(stream rpc.Rpc_CelerStreamServer) error {
 	return nil
 }
 
+func (s *server) GetPayHistory(ctx context.Context, in *rpc.GetPayHistoryRequest) (*rpc.GetPayHistoryResponse, error) {
+	log.Debugf("GetPayHistory peer: %s, item per page: %d, before ts: %d, smallest payid: %s", in.GetPeer(), in.GetItemsPerPage(), in.GetBeforeTs(), in.GetSmallestPayId())
+	// Read input
+	peerStr := in.GetPeer()
+	peer := ctype.Hex2Addr(peerStr)
+	beforeTs := in.GetBeforeTs()
+	itemsPerPage := in.GetItemsPerPage()
+	smallestPayIDStr := in.GetSmallestPayId()
+	smallestPayID := ctype.Hex2PayID(smallestPayIDStr)
+	// set default values
+	beforeTsTime := time.Unix(beforeTs, 0).UTC()
+	if beforeTs == 0 {
+		beforeTsTime = time.Now().UTC()
+	}
+	if itemsPerPage == 0 {
+		itemsPerPage = defaultItemsPerPage
+	}
+	if itemsPerPage > maxItemsPerPage {
+		itemsPerPage = maxItemsPerPage
+	}
+	// verify identity
+	tsSig := in.GetTsSig()
+	tsFromPeer := in.GetTs()
+	tsFromServer := uint64(time.Now().Unix())
+	if utils.RecoverSigner(utils.Uint64ToBytes(tsFromPeer), tsSig) != peer {
+		// sig is invalid
+		return nil, errors.New("Invalid Signature")
+	}
+	// require ts from peer be within a window.
+	if tsFromPeer > tsFromServer+*allowTsDiffInMinutes*60 || tsFromPeer < tsFromServer-*allowTsDiffInMinutes*60 {
+		return nil, errors.New("Invalid Timestamp")
+	}
+
+	// Query history with parameters
+	payIDs, pays, instates, createTses, err := s.cNode.GetDAL().GetPayHistory(peer, beforeTsTime, smallestPayID, itemsPerPage)
+	if err != nil {
+		log.Errorln(err)
+		return nil, err
+	}
+	log.Debugln("History result:", payIDs, pays, instates, createTses, beforeTsTime)
+
+	// Generate response
+	resp := &rpc.GetPayHistoryResponse{
+		Pays: make([]*rpc.OneHistoricalPay, 0, len(payIDs)),
+	}
+	for i := 0; i < len(payIDs); i++ {
+		onePay := &rpc.OneHistoricalPay{}
+		amt := big.NewInt(0).SetBytes(pays[i].GetTransferFunc().GetMaxTransfer().GetReceiver().GetAmt())
+		src := pays[i].GetSrc()
+		dst := pays[i].GetDest()
+		token := pays[i].GetTransferFunc().GetMaxTransfer().GetToken().GetTokenAddress()
+		onePay.Amt = amt.String()
+		onePay.Token = ctype.Addr2Hex(ctype.Bytes2Addr(token))
+		onePay.Src = ctype.Addr2Hex(ctype.Bytes2Addr(src))
+		onePay.Dst = ctype.Addr2Hex(ctype.Bytes2Addr(dst))
+		onePay.State = instates[i]
+		onePay.PayId = ctype.PayID2Hex(payIDs[i])
+		onePay.CreateTs = createTses[i]
+		resp.Pays = append(resp.Pays, onePay)
+	}
+	return resp, nil
+}
+
+func (s *server) CelerGetPeerStatus(ctx context.Context, in *rpc.PeerAddress) (*rpc.PeerStatus, error) {
+	peer, err := utils.ValidateAndFormatAddress(in.Address)
+	if err != nil {
+		return nil, err
+	}
+	tokenAddr, err := utils.ValidateAndFormatAddress(in.TokenAddr)
+	if err != nil {
+		return nil, err
+	}
+
+	if s.cNode == nil {
+		return nil, fmt.Errorf("server error: cNode not initialized")
+	}
+
+	resp := new(rpc.PeerStatus)
+	resp.FreeBalance = "0"
+	// look up local database first to check if we could find the channel id locally
+	if cid, err := s.cNode.GetChannelIdForPeer(peer, tokenAddr); err == nil {
+		b, err2 := s.cNode.GetBalance(cid)
+		if err2 == nil {
+			resp.FreeBalance = b.MyFree.String() // myfree is peer's receiving capacity
+		} else {
+			log.Warn("getbalance err. cid:", cid.Hex(), err2)
+		}
+
+		resp.JoinStatus = rpc.JoinCelerStatus_LOCAL
+		log.Infof("CelerGetPeerStatus server request: peer %x token %x free %s", peer, tokenAddr, resp.FreeBalance)
+	} else { // if could not find locally, further check to see if it's a remote endpoint
+		joinStatus := s.cNode.GetJoinStatusForNode(peer, tokenAddr)
+		if joinStatus != rpc.JoinCelerStatus_LOCAL {
+			if joinStatus == rpc.JoinCelerStatus_NOT_JOIN {
+				log.Infof("peer %x not join Celer for token %x, error: %s", peer, tokenAddr, err)
+				resp.FreeBalance = ""
+			}
+		}
+		resp.JoinStatus = joinStatus
+	}
+
+	return resp, nil
+}
 func (s *adminService) HandleOpenChannelFinish(cid ctype.CidType) {
 	log.Infoln("open channel succeeded, cid:", cid.Hex())
 }
+
 func (s *adminService) HandleOpenChannelErr(e *common.E) {
 	log.Errorln("open channel error, reason: ", e.Reason)
 }
+
 func (s *adminService) OspOpenChannel(ctx context.Context, in *rpc.OspOpenChannelRequest) (*empty.Empty, error) {
-	log.Infof("OspOpenChannel: peer: %x, self depo: %s, peer depo: %s",
+	log.Infof("OspOpenChannel: peer: %x, self deposit: %s, peer deposit: %s",
 		in.GetPeerEthAddress(), in.GetSelfDepositAmtWei(), in.GetPeerDepositAmtWei())
 	selfDeposit, ok := big.NewInt(0).SetString(in.GetSelfDepositAmtWei(), 10)
 	if !ok {
@@ -180,7 +368,7 @@ func (s *adminService) OspOpenChannel(ctx context.Context, in *rpc.OspOpenChanne
 		TokenType:    in.GetTokenType(),
 		TokenAddress: in.GetTokenAddress(),
 	}
-	existingCid, _ := s.cNode.GetChannelIdForPeer(ctype.Bytes2Hex(in.GetPeerEthAddress()), ctype.Bytes2Hex(in.GetTokenAddress()))
+	existingCid, _ := s.cNode.GetChannelIdForPeer(ctype.Bytes2Addr(in.GetPeerEthAddress()), ctype.Bytes2Addr(in.GetTokenAddress()))
 	if bytes.Compare(existingCid.Bytes(), ctype.ZeroCid.Bytes()) != 0 {
 		log.Errorf("channel already exist: %x", existingCid)
 		return nil, status.Errorf(codes.AlreadyExists, "channel already exist: %x", existingCid)
@@ -191,6 +379,10 @@ func (s *adminService) OspOpenChannel(ctx context.Context, in *rpc.OspOpenChanne
 		return nil, status.Errorf(codes.Unknown, "failed to open channel: %s", err.Error())
 	}
 	return &empty.Empty{}, nil
+}
+
+func (s *server) CelerOpenTcbChannel(ctx context.Context, in *rpc.OpenChannelRequest) (*rpc.OpenChannelResponse, error) {
+	return s.cNode.ProcessTcbRequest(in)
 }
 
 func (s *server) CelerOpenChannel(ctx context.Context, in *rpc.OpenChannelRequest) (*rpc.OpenChannelResponse, error) {
@@ -213,6 +405,15 @@ func (s *server) CelerOpenChannel(ctx context.Context, in *rpc.OpenChannelReques
 	// ocWait is 0, proceed directly
 	return s.cNode.ProcessOpenChannelRequest(in)
 }
+
+func (s *server) CelerMigrateChannel(ctx context.Context, in *rpc.MigrateChannelRequest) (*rpc.MigrateChannelResponse, error) {
+	if in == nil {
+		return nil, common.ErrInvalidArg
+	}
+
+	return s.cNode.ProcessMigrateChannelRequest(in)
+}
+
 func beautifyRT(table map[ctype.Addr]ctype.CidType) map[string]string {
 	ret := make(map[string]string)
 	for k, v := range table {
@@ -220,17 +421,18 @@ func beautifyRT(table map[ctype.Addr]ctype.CidType) map[string]string {
 	}
 	return ret
 }
+
 func (s *adminService) ConfirmOnChainResolvedPaysWithPeerOsps(ctx context.Context, in *rpc.ConfirmOnChainResolvedPaysRequest) (*empty.Empty, error) {
-	log.Infoln("Admin: ConfirmOnChainResolvedPaysWithPeeerOsps")
-	activeOsps := s.cNode.GetActiveOsps()
-	err := s.actToOspsOnToken(in.GetTokenAddress(), activeOsps, s.cNode.ConfirmOnChainResolvedPays)
+	log.Infoln("Admin: ConfirmOnChainResolvedPaysWithPeerOsps")
+	connectedOsps := s.cNode.GetConnectedOsps()
+	err := s.actToOspsOnToken(in.GetTokenAddress(), connectedOsps, s.cNode.ConfirmOnChainResolvedPays)
 	return &empty.Empty{}, err
 }
 
 func (s *adminService) ClearExpiredPaysWithPeerOsps(ctx context.Context, in *rpc.ClearExpiredPaysRequest) (*empty.Empty, error) {
 	log.Infoln("Admin: ClearExpiredPaysWithPeerOsps")
-	activeOsps := s.cNode.GetActiveOsps()
-	err := s.actToOspsOnToken(in.GetTokenAddress(), activeOsps, s.cNode.SettleExpiredPays)
+	connectedOsps := s.cNode.GetConnectedOsps()
+	err := s.actToOspsOnToken(in.GetTokenAddress(), connectedOsps, s.cNode.SettleExpiredPays)
 	return &empty.Empty{}, err
 }
 
@@ -244,7 +446,7 @@ func (s *adminService) actToOspsOnToken(tokenAddr []byte, osps map[ctype.Addr]bo
 		tokenAddrStr := ctype.Addr2Hex(token)
 		errs := make(map[string]error)
 		for osp := range osps {
-			cid, err := s.cNode.GetChannelIdForPeer(ctype.Addr2Hex(osp), tokenAddrStr)
+			cid, err := s.cNode.GetChannelIdForPeer(osp, token)
 			if err != nil {
 				key := ctype.Addr2Hex(osp) + "@" + tokenAddrStr
 				errs[key] = err
@@ -268,6 +470,11 @@ func (s *adminService) getSupportedTokensFromRtConfig() map[ctype.Addr]bool {
 	tks := make(map[ctype.Addr]bool)
 	if rtconfig.GetStandardConfigs() != nil && rtconfig.GetStandardConfigs().GetConfig() != nil {
 		for token := range rtconfig.GetStandardConfigs().GetConfig() {
+			tks[ctype.Hex2Addr(token)] = true
+		}
+	}
+	if rtconfig.GetTcbConfigs() != nil && rtconfig.GetTcbConfigs().GetConfig() != nil {
+		for token := range rtconfig.GetTcbConfigs().GetConfig() {
 			tks[ctype.Hex2Addr(token)] = true
 		}
 	}
@@ -307,6 +514,7 @@ func (s *adminService) actOnToken(tokenAddr []byte, action actionToToken) error 
 	}
 	return nil
 }
+
 func (s *adminService) BuildRoutingTable(ctx context.Context, in *rpc.BuildRoutingTableRequest) (*empty.Empty, error) {
 	log.Infoln("Admin: building routing table")
 	err := s.actOnToken(in.GetTokenAddress(), func(token ctype.Addr) error {
@@ -319,6 +527,15 @@ func (s *adminService) BuildRoutingTable(ctx context.Context, in *rpc.BuildRouti
 	return &empty.Empty{}, err
 }
 
+func (s *adminService) RecvBcastRoutingInfo(ctx context.Context, in *rpc.RoutingRequest) (*empty.Empty, error) {
+	log.Debugln("Admin: recv bcast routing info from", in.GetSender())
+	err := s.cNode.RecvBcastRoutingInfo(in)
+	if err != nil {
+		log.Errorln("Admin: recv bcast routing info err:", err)
+	}
+	return &empty.Empty{}, err
+}
+
 func (s *adminService) RegisterStream(ctx context.Context, in *rpc.RegisterStreamRequest) (*empty.Empty, error) {
 	log.Infoln("Admin: register stream", in.PeerRpcAddress, ctype.Bytes2Hex(in.PeerEthAddress))
 	s.ospEthToRPCLock.Lock()
@@ -326,23 +543,34 @@ func (s *adminService) RegisterStream(ctx context.Context, in *rpc.RegisterStrea
 	if peerRPC := s.ospEthToRPC[ctype.Bytes2Addr(in.PeerEthAddress)]; peerRPC == in.PeerRpcAddress {
 		return &empty.Empty{}, status.Errorf(codes.AlreadyExists, "connection to %s already exist", in.PeerRpcAddress)
 	}
-	err := s.cNode.RegisterStream(ctype.Bytes2Hex(in.PeerEthAddress), in.PeerRpcAddress)
+	err := s.cNode.RegisterStream(ctype.Bytes2Addr(in.PeerEthAddress), in.PeerRpcAddress)
 	if err != nil {
 		log.Errorln("RegisterStream failed:", ctype.Bytes2Hex(in.PeerEthAddress), in.PeerRpcAddress, err)
 		return &empty.Empty{}, status.Errorf(codes.Unknown, "RegisterStream failed: %s", err)
 	}
 	s.ospEthToRPC[ctype.Bytes2Addr(in.PeerEthAddress)] = in.PeerRpcAddress
-	s.cNode.RegisterStreamErrCallback(ctype.Bytes2Hex(in.PeerEthAddress), s.streamRetryCb)
+	s.cNode.RegisterStreamErrCallback(ctype.Bytes2Addr(in.PeerEthAddress), s.streamRetryCb)
 	return &empty.Empty{}, nil
 }
 
-func (s *adminService) GetActivePeerOsps(ctx context.Context, in *empty.Empty) (*rpc.ActivePeerOspsResponse, error) {
-	activeOsps := s.cNode.GetActiveOsps()
-	ospList := make([]string, 0, len(activeOsps))
-	for osp := range activeOsps {
-		ospList = append(ospList, ctype.Addr2Hex(osp))
+func (s *adminService) GetPeerOsps(ctx context.Context, in *empty.Empty) (*rpc.PeerOspsResponse, error) {
+	peerOsps := s.cNode.GetPeerOsps()
+	resp := &rpc.PeerOspsResponse{}
+	for addr, osp := range peerOsps {
+		peerOsp := &rpc.PeerOsp{
+			OspAddress: ctype.Addr2Hex(addr),
+			UpdateTs:   uint64(osp.UpdateTime.Unix()),
+		}
+		for tk, cid := range osp.TokenCids {
+			tkcid := &rpc.TokenCidPair{
+				TokenAddress: ctype.Addr2Hex(tk),
+				Cid:          ctype.Cid2Hex(cid),
+			}
+			peerOsp.TokenCidPairs = append(peerOsp.TokenCidPairs, tkcid)
+		}
+		resp.PeerOsps = append(resp.PeerOsps, peerOsp)
 	}
-	return &rpc.ActivePeerOspsResponse{Osps: ospList}, nil
+	return resp, nil
 }
 
 func (s *adminService) SendToken(ctx context.Context, in *rpc.SendTokenRequest) (*rpc.SendTokenResponse, error) {
@@ -365,15 +593,17 @@ func (s *adminService) SendToken(ctx context.Context, in *rpc.SendTokenRequest) 
 		},
 	}
 	if in.TokenAddr != "" {
-		tokenAddr, err2 := hex.DecodeString(strings.TrimPrefix(in.TokenAddr, "0x"))
+		tokenAddr, err2 := utils.ValidateAndFormatAddress(in.TokenAddr)
 		if err2 != nil {
 			return &rpc.SendTokenResponse{Status: 1, Error: "Can't parse token address."}, status.Error(codes.InvalidArgument, "Can't parse token address")
 		}
-		tokenTransfer.Token.TokenAddress = tokenAddr
-		tokenTransfer.Token.TokenType = entity.TokenType_ERC20
+		if tokenAddr != ctype.EthTokenAddr {
+			tokenTransfer.Token.TokenAddress = tokenAddr.Bytes()
+			tokenTransfer.Token.TokenType = entity.TokenType_ERC20
+		}
 	}
 	pay := &entity.ConditionalPay{
-		Src:  ctype.Hex2Bytes(s.cNode.EthAddress),
+		Src:  s.cNode.EthAddress.Bytes(),
 		Dest: dstAddr,
 		TransferFunc: &entity.TransferFunction{
 			LogicType:   entity.TransferFunctionType_BOOLEAN_AND,
@@ -385,7 +615,7 @@ func (s *adminService) SendToken(ctx context.Context, in *rpc.SendTokenRequest) 
 
 	noteType, _ := ptypes.AnyMessageName(in.Note)
 	if noteType == "" {
-		noteType = "reward"
+		noteType = "reward" // TODO: upgrade reward svr to also use note
 	}
 
 	metrics.IncSvrAdminSendTokenCnt(metrics.SvrAdminSendAttempt, noteType)
@@ -395,17 +625,68 @@ func (s *adminService) SendToken(ctx context.Context, in *rpc.SendTokenRequest) 
 			err, "sending token from admin error to", ctype.Bytes2Hex(dstAddr),
 			"tokenAmt:", utils.BytesToBigInt(tokenTransfer.Receiver.Amt),
 			"tokenAddr:", ctype.Bytes2Hex(tokenTransfer.Token.TokenAddress))
+
+		// filter too many retries error and no celer stream error
+		if strings.Contains(err.Error(), "too many retries") || strings.Contains(err.Error(), common.ErrNoCelerStream.Error()) {
+			metrics.IncSvrAdminSendTokenCnt(metrics.SvrAdminSendSucceed, noteType)
+		}
 		return &rpc.SendTokenResponse{Status: 1, Error: err.Error()}, status.Error(codes.Unavailable, err.Error())
 	}
 
 	metrics.IncSvrAdminSendTokenCnt(metrics.SvrAdminSendSucceed, noteType)
 	return &rpc.SendTokenResponse{
 		Status: 0,
-		PayId:  payID.Hex(),
+		PayId:  ctype.PayID2Hex(payID),
 	}, nil
 }
-func postFeeEvent(endpoint string, event proto.Message, jsonMarshaler *jsonpb.Marshaler, netClient *http.Client) error {
-	buf, err := jsonMarshaler.MarshalToString(event)
+
+func (s *adminService) Deposit(ctx context.Context, in *rpc.DepositRequest) (*rpc.DepositResponse, error) {
+	peerAddr := ctype.Hex2Addr(in.GetPeerAddr())
+	tokenAddr := ctype.Hex2Addr(in.GetTokenAddr())
+	amount := utils.Wei2BigInt(in.GetAmtWei())
+	if amount == nil {
+		return &rpc.DepositResponse{Status: 1, Error: "Can't parse amount."}, status.Error(codes.InvalidArgument, "Can't parse amount")
+	}
+	depositID, err := s.cNode.RequestDeposit(
+		peerAddr, tokenAddr, in.GetToPeer(), amount, time.Duration(in.GetMaxWaitS())*time.Second)
+	if err != nil {
+		return &rpc.DepositResponse{Status: 1, Error: err.Error()}, status.Error(codes.Unavailable, err.Error())
+	}
+	return &rpc.DepositResponse{Status: 0, DepositId: depositID}, nil
+}
+
+func (s *adminService) QueryDeposit(ctx context.Context, in *rpc.QueryDepositRequest) (*rpc.QueryDepositResponse, error) {
+	state, errMsg, err := s.cNode.QueryDeposit(in.GetDepositId())
+	if err != nil {
+		errCode := codes.Unavailable
+		if errors.Is(err, common.ErrDepositNotFound) {
+			errCode = codes.NotFound
+		}
+		return &rpc.QueryDepositResponse{
+			DepositState: rpc.DepositState_Deposit_NOT_FOUND, Error: err.Error(),
+		}, status.Error(errCode, err.Error())
+	}
+	var depositState rpc.DepositState
+	switch state {
+	case structs.DepositState_NULL:
+		depositState = rpc.DepositState_Deposit_NOT_FOUND
+	case structs.DepositState_QUEUED, structs.DepositState_APPROVING_ERC20, structs.DepositState_TX_SUBMITTING:
+		depositState = rpc.DepositState_Deposit_QUEUED
+	case structs.DepositState_TX_SUBMITTED:
+		depositState = rpc.DepositState_Deposit_SUBMITTED
+	case structs.DepositState_SUCCEEDED:
+		depositState = rpc.DepositState_Deposit_SUCCEEDED
+	case structs.DepositState_FAILED:
+		depositState = rpc.DepositState_Deposit_FAILED
+	}
+	return &rpc.QueryDepositResponse{
+		DepositState: depositState,
+		Error:        errMsg,
+	}, nil
+}
+
+func postFeeEvent(endpoint string, event proto.Message, netClient *http.Client) error {
+	buf, err := utils.PbToJSONString(event)
 	if err != nil {
 		log.Errorln("marshal event:", err)
 		return err
@@ -416,7 +697,44 @@ func postFeeEvent(endpoint string, event proto.Message, jsonMarshaler *jsonpb.Ma
 	}
 	return err
 }
-func (s *server) HandleSendComplete(
+
+func (s *server) publishPayEvent(category string, payEvent *celerx_fee_interface.FeeEvent, noteTypeUrl string) {
+	if s.redisClient != nil {
+		payID := payEvent.GetPayId()
+		eventJSON, toJSONErr := utils.PbToJSONString(payEvent)
+		subkey := "emptynote"
+		if noteTypeUrl != "" {
+			subkey = noteTypeUrl
+		}
+		pubTopic := fmt.Sprintf("%s:%s", category, subkey)
+		if toJSONErr != nil {
+			log.Errorf("Publishing PayEvent Err: %v, topic %s payid %x", toJSONErr, pubTopic, payID)
+		} else {
+			var numNotified int64
+			var pubErr error
+			// retry 3 times at most.
+			numRetry := 3
+			for i := 0; i < numRetry; i++ {
+				log.Debugf("Publishing PayEvent: topic %s, payid %x", pubTopic, payID)
+				numNotified, pubErr = s.redisClient.Publish(pubTopic, eventJSON).Result()
+				if pubErr != nil {
+					log.Errorf("Publishing PayEvent Err: %v, topic %s payid %x", pubErr, pubTopic, payID)
+				} else if numNotified != 0 {
+					break
+				}
+				if i != numRetry-1 {
+					// skip sleep in last retry ending up with failure, which is wasteful.
+					time.Sleep(time.Duration(*pubRetryInterval) * time.Second)
+				}
+			}
+			if pubErr == nil && numNotified == 0 {
+				log.Warnf("Publishing PayEvent Err: pub topic %s payid %x multiple times but no subscriber", pubTopic, payID)
+			}
+		}
+	}
+}
+
+func (s *server) handlePaySendFinalize(
 	payID ctype.PayIDType,
 	pay *entity.ConditionalPay,
 	note *any.Any,
@@ -426,43 +744,100 @@ func (s *server) HandleSendComplete(
 		paid = true
 	}
 	log.Infoln("payID", ctype.Bytes2Hex(payID.Bytes()), "Done. Note:", note, "paid", paid)
+	if note != nil {
+		event := &celerx_fee_interface.FeeEvent{
+			Pay:          pay,
+			SendSuccess:  paid,
+			Note:         note,
+			NotePbString: note.String(),
+			PayId:        payID.Bytes(),
+		}
+		// No need to notify delegate for send finalization. Delegate is built inside osp, use function call below instead.
+		if !ptypes.Is(note, &delegate.PayOriginNote{}) {
+			go s.publishPayEvent("paysendfinalized", event, note.GetTypeUrl())
+		} else {
+			delegateEvent := &delegate.DelegateEvent{
+				PayID:       payID,
+				Pay:         pay,
+				Note:        note,
+				SendSuccess: paid,
+			}
+			log.Debugln("Notifying delegate for paysend finalization", payID.Hex())
+			err := s.delegate.NotifyPaySendFinalize(delegateEvent)
+			if err != nil {
+				log.Errorln("post fee (recv agent):", err)
+				return
+			}
+		}
+	}
 }
+
+func (s *server) HandleSendComplete(
+	payID ctype.PayIDType,
+	pay *entity.ConditionalPay,
+	note *any.Any,
+	reason rpc.PaymentSettleReason) {
+	s.handlePaySendFinalize(payID, pay, note, reason)
+}
+
 func (s *server) HandleDestinationUnreachable(payID ctype.PayIDType, pay *entity.ConditionalPay, note *any.Any) {
 	log.Errorln(payID.String(), "unreachable")
+	s.handlePaySendFinalize(payID, pay, note, rpc.PaymentSettleReason_PAY_DEST_UNREACHABLE)
 }
+
 func (s *server) HandleSendFail(payID ctype.PayIDType, pay *entity.ConditionalPay, note *any.Any, errMsg string) {
 	log.Errorln(payID.String(), "failed", errMsg)
+	s.handlePaySendFinalize(payID, pay, note, rpc.PaymentSettleReason_PAY_REJECTED)
 }
-func (s *server) HandleNewCelerStream(addr []byte) {
+
+func (s *server) HandleNewCelerStream(addr ctype.Addr) {
+	log.Debugln("Notifying delegate for new stream", addr.Hex())
+	err := s.delegate.NotifyNewStream(addr)
+	if err != nil {
+		log.Warnln("post newstream (recv agent) to delegate:", err, "addr:", addr.Hex())
+		return
+	}
 }
 
 func (s *server) Initialize(
-	keyStore string, passPhrase string, transactorConfigs []*transactor.TransactorConfig, routingBytes []byte) {
-	config := *common.ParseProfile(*pjson)
-	overrideConfig(&config)
+	masterTxConfig, depositTxConfig *transactor.TransactorConfig,
+	transactorConfigs []*transactor.TransactorConfig, routingBytes []byte) {
+	s.config = common.ParseProfile(*pjson)
+	overrideConfig(s.config)
 	var err error
-	s.cNode, err =
-		cnode.NewCNode(
-			keyStore,
-			passPhrase,
-			transactorConfigs,
-			config,
-			common.ServiceProviderPolicy,
-			routingBytes)
+	s.cNode, err = cnode.NewCNode(
+		masterTxConfig,
+		depositTxConfig,
+		transactorConfigs,
+		*s.config,
+		route.ServiceProviderPolicy,
+		routingBytes)
 	if err != nil {
 		log.Fatalln("Server init error:", err)
 	}
+	s.delegate = delegate.NewDelegateManager(s.cNode.EthAddress, s.cNode.GetDAL(), s.cNode)
 	s.cNode.OnReceivingToken(s)
 	s.cNode.OnSendToken(s)
 	s.cNode.OnNewStream(s)
 }
+
 func (s *server) HandleReceivingStart(payID ctype.PayIDType, pay *entity.ConditionalPay, note *any.Any) {
 }
+
 func (s *server) HandleReceivingDone(
 	payID ctype.PayIDType,
 	pay *entity.ConditionalPay,
 	note *any.Any,
 	reason rpc.PaymentSettleReason) {
+	event := &celerx_fee_interface.FeeEvent{
+		PayId:        payID.Bytes(),
+		Pay:          pay,
+		Note:         note,
+		NotePbString: note.String(),
+	}
+	if note != nil {
+		go s.publishPayEvent("receivedone", event, note.GetTypeUrl())
+	}
 }
 
 func (s *serverInterOSP) FwdMsg(ctx context.Context, in *rpc.FwdReq) (*rpc.FwdReply, error) {
@@ -471,14 +846,16 @@ func (s *serverInterOSP) FwdMsg(ctx context.Context, in *rpc.FwdReq) (*rpc.FwdRe
 
 	// Reject if the destination client is not connected to this OSP.
 	dest := in.GetDest()
-	if !s.svr.cNode.IsLocalPeer(dest) {
+	if !s.svr.cNode.IsLocalPeer(ctype.Hex2Addr(dest)) {
 		return &reply, nil
 	}
 
 	err := s.svr.cNode.ForwardMsgToPeer(in)
 	if err != nil {
-		log.Error(err)
 		reply.Accepted = false
+		if err != common.ErrNoCelerStream {
+			reply.Err = err.Error()
+		}
 	} else {
 		reply.Accepted = true
 	}
@@ -499,11 +876,37 @@ func (s *serverInterOSP) PickServer(ctx context.Context, in *rpc.PickReq) (*rpc.
 	return &reply, nil
 }
 
+func (s *serverInterOSP) BcastRoutingInfo(ctx context.Context, in *rpc.BcastRoutingRequest) (*rpc.BcastRoutingReply, error) {
+	log.Debugln("BcastRoutingInfo:", in.String())
+
+	s.svr.cNode.BcastRoutingInfo(in.GetReq(), in.GetOsps())
+
+	reply := rpc.BcastRoutingReply{}
+	return &reply, nil
+}
+
 func overrideConfig(config *common.CProfile) {
-	if *storedir != "" {
-		config.StoreDir = *storedir
+	count := 0
+	stores := []string{*storedir, *storesql}
+	for _, st := range stores {
+		if st != "" {
+			count++
+		}
+	}
+	if count > 1 {
+		log.Fatalln("specify only one of -storedir, -storesql")
+		os.Exit(1)
 	}
 
+	if count == 1 {
+		config.StoreDir = ""
+		config.StoreSql = ""
+		if *storedir != "" {
+			config.StoreDir = *storedir
+		} else if *storesql != "" {
+			config.StoreSql = *storesql
+		}
+	}
 	selfHostPort = *selfrpc
 	if selfHostPort != "" {
 		host, port2, err := getHostPort(selfHostPort)
@@ -516,11 +919,14 @@ func overrideConfig(config *common.CProfile) {
 		}
 		config.SelfRPC = selfHostPort
 	}
+	config.SvrName = *svrname
+	if config.SvrName == "" {
+		config.SvrName = fmt.Sprintf("svr:%s", uuid.New().String())
+	}
 	if *isosp {
 		config.IsOSP = true
 	}
 	config.ListenOnChain = *listenOnChain
-	config.WebPort = *adminweb
 }
 
 func getHostPort(svrAddr string) (string, int, error) {
@@ -531,7 +937,7 @@ func getHostPort(svrAddr string) (string, int, error) {
 
 	port, err := strconv.Atoi(hostport[1])
 	if err != nil {
-		return "", 0, fmt.Errorf("invalid port: %s: %s", hostport[1], err)
+		return "", 0, fmt.Errorf("invalid port: %s: %w", hostport[1], err)
 	}
 
 	return hostport[0], port, nil
@@ -547,7 +953,7 @@ func readPassword(ksBytes []byte) string {
 	}
 
 	if *passwordDir != "" {
-		passwordBytes, passwordErr := ioutil.ReadFile(path.Join(*passwordDir, ksAddress))
+		passwordBytes, passwordErr := ioutil.ReadFile(filepath.Join(*passwordDir, ksAddress))
 		if passwordErr != nil {
 			log.Fatal(passwordErr)
 		}
@@ -578,29 +984,60 @@ func readPassword(ksBytes []byte) string {
 	return ksPasswordStr
 }
 
+func setGlobalConfig() {
+	config.EventListenerHttp = *listenerweb
+	if *routerBcastInterval != 0 {
+		log.Infof("set router bcast interval to %d seconds", *routerBcastInterval)
+		config.RouterBcastInterval = time.Duration(*routerBcastInterval) * time.Second
+	}
+	if *routerBuildInterval != 0 {
+		log.Infof("set router build interval to %d seconds", *routerBuildInterval)
+		config.RouterBuildInterval = time.Duration(*routerBuildInterval) * time.Second
+	}
+	if *routerAliveTimeout != 0 {
+		log.Infof("set router alive timeout to %d seconds", *routerAliveTimeout)
+		config.RouterAliveTimeout = time.Duration(*routerAliveTimeout) * time.Second
+	}
+	if *ospClearPayInterval != 0 {
+		log.Infof("set osp clear pay interval to %d seconds", *ospClearPayInterval)
+		config.OspClearPaysInterval = time.Duration(*ospClearPayInterval) * time.Second
+	}
+}
+
 func main() {
 	flag.Parse()
 	if *showver {
 		printver()
 		os.Exit(0)
 	}
+	setGlobalConfig()
+	var err error
+
 	var ksBytes []byte
 	var ksStr string
-	var ksErr error
 	if *ks != "" {
-		ksBytes, ksErr = ioutil.ReadFile(*ks)
-		if ksErr != nil {
-			log.Fatalln(ksErr)
+		ksBytes, err = ioutil.ReadFile(*ks)
+		if err != nil {
+			log.Fatalln(err)
 		}
 		ksStr = string(ksBytes)
 	}
 
+	var dksBytes []byte
+	var dksStr string
+	if *depositks != "" {
+		dksBytes, err = ioutil.ReadFile(*depositks)
+		if err != nil {
+			log.Fatalln(err)
+		}
+		dksStr = string(dksBytes)
+	}
+
 	var routingBytes []byte
-	var routingErr error
 	if *routingData != "" {
-		routingBytes, routingErr = ioutil.ReadFile(*routingData)
-		if routingErr != nil {
-			log.Fatalln(routingErr)
+		routingBytes, err = ioutil.ReadFile(*routingData)
+		if err != nil {
+			log.Fatalln(err)
 		}
 	}
 
@@ -640,9 +1077,17 @@ func main() {
 		}
 	}
 	var rpcServer server
-	rpcServer.jsonMarshaler = &jsonpb.Marshaler{}
 	rpcServer.netClient = &http.Client{Timeout: 3 * time.Second}
-	rpcServer.Initialize(ksStr, readPassword(ksBytes), tConfigs, routingBytes)
+	if *redisAddr != "" {
+		rpcServer.redisClient = redis.NewClient(&redis.Options{Addr: *redisAddr})
+	}
+	masterTxConfig := transactor.NewTransactorConfig(ksStr, readPassword(ksBytes))
+	if dksStr != "" {
+		depositTxConfig := transactor.NewTransactorConfig(dksStr, readPassword(dksBytes))
+		rpcServer.Initialize(masterTxConfig, depositTxConfig, tConfigs, routingBytes)
+	} else {
+		rpcServer.Initialize(masterTxConfig, nil, tConfigs, routingBytes)
+	}
 	rpc.RegisterRpcServer(s, &rpcServer)
 
 	adminS := setUpAdminService(&rpcServer)
@@ -665,15 +1110,12 @@ func main() {
 		if *dbg {
 			reflection.Register(s2)
 		}
-		interOSPServer := serverInterOSP{&rpcServer, adminS}
+		interOSPServer := serverInterOSP{
+			svr:      &rpcServer,
+			adminSvr: adminS,
+		}
 		rpc.RegisterMultiServerServer(s2, &interOSPServer)
 		go s2.Serve(lis2)
-		// Trigger a rt build as router processor post happened before this point will not succeed.
-		if *listenOnChain {
-			time.AfterFunc(time.Second, func() {
-				utils.RequestBuildRoutingTable("localhost" + *adminweb)
-			})
-		}
 	}
 
 	// Run the main server.
@@ -713,7 +1155,8 @@ func setUpAdminService(osp *server) *adminService {
 
 	http.Handle("/admin/", gwmux)
 	http.Handle("/metrics", metrics.GetPromExporter())
-	log.Info("Celer server has 4th port (admin HTTP)....", *adminweb)
+	_, port, err = getHostPort(*adminweb)
+	log.Info("Celer server has 4th port (admin HTTP)....", port)
 	go func() {
 		err := http.ListenAndServe(*adminweb, http.DefaultServeMux)
 		if err != nil {

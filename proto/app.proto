@@ -1,0 +1,36 @@
+syntax = "proto3";
+option go_package = "github.com/celer-network/goCeler/app";
+import "google/protobuf/descriptor.proto";
+package app;
+
+extend google.protobuf.FieldOptions {
+  string soltype = 1003;
+}
+
+// Next Tag: 5
+message AppState {
+  // nonce should be unique for each app session among the same signers
+  uint64 nonce = 1 [(soltype) = "uint"];
+  // for each nonce, new state has higher sequence number
+  uint64 seq_num = 2 [(soltype) = "uint"];
+  // app specific state
+  bytes state = 3;
+  // on-chain response (settle, action) timeout
+  uint64 timeout = 4 [(soltype) = "uint"];
+}
+
+// Next Tag: 3
+message StateProof {
+  // serialized AppState
+  bytes app_state = 1;
+  repeated bytes sigs = 2;
+}
+
+// used for multi-session app
+// Next Tag: 3
+message SessionQuery {
+  // session ID
+  bytes session = 1 [(soltype) = "bytes32"];
+  // query related to the specified session
+  bytes query = 2;
+}

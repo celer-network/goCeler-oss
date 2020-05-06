@@ -6,7 +6,7 @@ package rpc
 import (
 	context "context"
 	fmt "fmt"
-	rpc "github.com/celer-network/goCeler-oss/rpc"
+	rpc "github.com/celer-network/goCeler/rpc"
 	proto "github.com/golang/protobuf/proto"
 	empty "github.com/golang/protobuf/ptypes/empty"
 	grpc "google.golang.org/grpc"

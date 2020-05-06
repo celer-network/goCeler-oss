@@ -1,17 +1,107 @@
-// Copyright 2018-2019 Celer Network
+// Copyright 2018-2020 Celer Network
 
 package fsm
 
 import (
 	"fmt"
 
-	"github.com/celer-network/goCeler-oss/ctype"
-	"github.com/celer-network/goCeler-oss/storage"
+	enums "github.com/celer-network/goCeler/common/structs"
+	"github.com/celer-network/goCeler/ctype"
+	"github.com/celer-network/goCeler/storage"
 )
+
+// Define directed edge for channel states. NO cycles!
+// key is current state, value is allowed possible next states.
+var validChanStateTransitions = map[int][]int{
+	enums.ChanState_TRUST_OPENED:  []int{enums.ChanState_INSTANTIATING, enums.ChanState_OPENED},
+	enums.ChanState_INSTANTIATING: []int{enums.ChanState_OPENED},
+	enums.ChanState_OPENED:        []int{enums.ChanState_SETTLING, enums.ChanState_CLOSED},
+	enums.ChanState_SETTLING:      []int{enums.ChanState_CLOSED},
+}
+
+func ChanStateName(state int) string {
+	switch state {
+	case enums.ChanState_TRUST_OPENED:
+		return "CHANNEL_TRUST_OPENED"
+	case enums.ChanState_INSTANTIATING:
+		return "CHANNEL_INSTANTIATING"
+	case enums.ChanState_OPENED:
+		return "CHANNEL_OPENED"
+	case enums.ChanState_SETTLING:
+		return "CHANNEL_SETTLING"
+	case enums.ChanState_CLOSED:
+		return "CHANNEL_CLOSED"
+	default:
+		return "CHANNEL_NULL"
+	}
+}
+
+func OnChannelUpdate(cid ctype.CidType, currState int) error {
+	switch currState {
+	case enums.ChanState_TRUST_OPENED, enums.ChanState_INSTANTIATING, enums.ChanState_OPENED:
+		return nil
+	default:
+		return fmt.Errorf("%x OnChannelUpdate err, state %s", cid, ChanStateName(currState))
+	}
+}
+
+func OnChannelIntendSettle(tx *storage.DALTx, args ...interface{}) error {
+	cid := args[0].(ctype.CidType)
+	state, found, err := tx.GetChanState(cid)
+	if err != nil {
+		return fmt.Errorf("%x OnChannelIntendSettle err, state %s, err %w", cid, ChanStateName(state), err)
+	}
+	if !found {
+		return fmt.Errorf("%x OnChannelIntendSettle err, channel not found", cid)
+	}
+	switch state {
+	case enums.ChanState_TRUST_OPENED, enums.ChanState_INSTANTIATING:
+		return fmt.Errorf("%x needs to be instantiated on-chain before dispute", cid)
+	case enums.ChanState_OPENED:
+		return tx.UpdateChanState(cid, enums.ChanState_SETTLING)
+	case enums.ChanState_SETTLING:
+		return nil
+	case enums.ChanState_CLOSED:
+		return fmt.Errorf("%x OnPscIntendSettle err, state %s", cid, ChanStateName(state))
+	}
+	return nil
+}
+
+func OnChannelConfirmSettle(tx *storage.DALTx, args ...interface{}) error {
+	cid := args[0].(ctype.CidType)
+	peer, state, found, err := tx.GetChanPeerState(cid)
+	if err != nil {
+		return fmt.Errorf("%x OnChannelConfirmSettle err, state %s, err %w", cid, ChanStateName(state), err)
+	}
+	if !found {
+		return fmt.Errorf("%x OnChannelConfirmSettle err, channel not found", cid)
+	}
+	switch state {
+	case enums.ChanState_TRUST_OPENED, enums.ChanState_INSTANTIATING, enums.ChanState_OPENED, enums.ChanState_SETTLING:
+		err = tx.UpdatePeerCid(peer, cid, false) // remove cid
+		if err != nil {
+			return fmt.Errorf("%x OnChannelConfirmSettle err %w", cid, err)
+		}
+		return tx.UpdateChanState(cid, enums.ChanState_CLOSED)
+	case enums.ChanState_CLOSED:
+		return nil
+	}
+	return nil
+}
+
+// IsChanStateChangeValid returns true if new state is possible to reach in channel lifecycle
+// also return true if new == old
+func IsChanStateChangeValid(old, new int) bool {
+	return isReachable(validChanStateTransitions, old, new)
+}
+
+// ---------------------------- Deprecated state ----------------------------
 
 /**
  *	Currently support 5 states and 4 events
  *	State:
+ *		PscTrustOpened
+ *		PscInstantiatingTCB
  *		PscOpen
  *		PscDispute
  *		PscClosed
@@ -24,120 +114,11 @@ import (
 
 // do NOT modify the string representation of existing states
 const (
-	PscOpen    = "OPENED"
-	PscDispute = "DISPUTING"
-	PscClosed  = "CLOSED"
+	PscTrustOpened = "TRUST_OPENED"
+	// client waiting for instantiating tcb tx, after tx is mined,
+	// state will move to PscOpen
+	PscInstantiatingTCB = "INSTANTIATING_TCB"
+	PscOpen             = "OPENED"
+	PscDispute          = "DISPUTING"
+	PscClosed           = "CLOSED"
 )
-
-func OnPscAuthOpen(tx *storage.DALTx, args ...interface{}) error {
-	cid := args[0].(ctype.CidType)
-	state, _, err := tx.GetChannelState(cid)
-	if err == nil {
-		return fmt.Errorf("%x OnPscAuthOpen err, state %s", cid, state)
-	}
-	err = addPeerActiveChannel(tx, cid)
-	if err != nil {
-		return err
-	}
-	return tx.PutChannelState(cid, PscOpen)
-}
-
-func OnPscIntendSettle(tx *storage.DALTx, args ...interface{}) error {
-	cid := args[0].(ctype.CidType)
-	state, _, err := tx.GetChannelState(cid)
-	if err != nil {
-		return fmt.Errorf("%x OnPscIntendSettle err, state %s, err %s", cid, state, err)
-	}
-	switch state {
-	case PscOpen:
-		return tx.PutChannelState(cid, PscDispute)
-	case PscDispute:
-		return nil
-	case PscClosed:
-		return fmt.Errorf("%x OnPscIntendSettle err, state %s", cid, state)
-	}
-	return nil
-}
-
-func OnPscConfirmSettle(tx *storage.DALTx, args ...interface{}) error {
-	cid := args[0].(ctype.CidType)
-	state, _, err := tx.GetChannelState(cid)
-	if err != nil {
-		return fmt.Errorf("%x OnPscConfirmSettle err, state %s, err %s", cid, state, err)
-	}
-	switch state {
-	case PscOpen, PscDispute:
-		err = deletePeerActiveChannel(tx, cid)
-		if err != nil {
-			return err
-		}
-		return tx.PutChannelState(cid, PscClosed)
-	case PscClosed:
-		return nil
-	}
-	return nil
-}
-
-func OnPscUpdateSimplex(tx *storage.DALTx, args ...interface{}) error {
-	cid := args[0].(ctype.CidType)
-	state, _, err := tx.GetChannelState(cid)
-	if err != nil {
-		return fmt.Errorf("%x OnPscUpdateSimplex err, state %s, err %s", cid, state, err)
-	}
-	switch state {
-	case PscOpen:
-		// put the same state again to update the activity timestamp
-		return tx.PutChannelState(cid, state)
-	case PscDispute, PscClosed:
-		return fmt.Errorf("%x OnPscUpdateSimplex err, state %s", cid, state)
-	}
-	return nil
-}
-
-func addPeerActiveChannel(tx *storage.DALTx, cid ctype.CidType) error {
-	peer, err := tx.GetPeer(cid)
-	if err != nil {
-		return err
-	}
-	var cids map[ctype.CidType]bool
-	exist, err := tx.HasPeerActiveChannels(peer)
-	if err != nil {
-		return err
-	}
-	if exist {
-		cids, err = tx.GetPeerActiveChannels(peer)
-		if err != nil {
-			return err
-		}
-	} else {
-		cids = make(map[ctype.CidType]bool)
-	}
-	cids[cid] = true
-	return tx.PutPeerActiveChannels(peer, cids)
-}
-
-func deletePeerActiveChannel(tx *storage.DALTx, cid ctype.CidType) error {
-	var err error
-	peer, err := tx.GetPeer(cid)
-	if err != nil {
-		return err
-	}
-	var cids map[ctype.CidType]bool
-	exist, err := tx.HasPeerActiveChannels(peer)
-	if err != nil {
-		return err
-	}
-	if exist {
-		cids, err = tx.GetPeerActiveChannels(peer)
-		if err != nil {
-			return err
-		}
-		delete(cids, cid)
-		if len(cids) == 0 {
-			return tx.DeletePeerActiveChannels(peer)
-		} else {
-			return tx.PutPeerActiveChannels(peer, cids)
-		}
-	}
-	return nil
-}

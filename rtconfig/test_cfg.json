@@ -3,6 +3,10 @@
     "min_gas_gwei": 4,
     "max_gas_gwei": 10,
     "stream_send_timeout_s": 1,
+    "tcb_configs": {
+        "config": {
+        }
+    },
     "standard_configs": {
         "config": {
         }

@@ -1,4 +1,4 @@
-// Copyright 2018-2019 Celer Network
+// Copyright 2018-2020 Celer Network
 
 package msghdl
 
@@ -8,16 +8,15 @@ import (
 	"fmt"
 	"math/big"
 
-	log "github.com/celer-network/goCeler-oss/clog"
-	"github.com/celer-network/goCeler-oss/common"
-	"github.com/celer-network/goCeler-oss/ctype"
-	"github.com/celer-network/goCeler-oss/entity"
-	"github.com/celer-network/goCeler-oss/fsm"
-	"github.com/celer-network/goCeler-oss/ledgerview"
-	"github.com/celer-network/goCeler-oss/pem"
-	"github.com/celer-network/goCeler-oss/rpc"
-	"github.com/celer-network/goCeler-oss/storage"
-	"github.com/celer-network/goCeler-oss/utils"
+	"github.com/celer-network/goCeler/common"
+	"github.com/celer-network/goCeler/ctype"
+	"github.com/celer-network/goCeler/entity"
+	"github.com/celer-network/goCeler/fsm"
+	"github.com/celer-network/goCeler/pem"
+	"github.com/celer-network/goCeler/rpc"
+	"github.com/celer-network/goCeler/storage"
+	"github.com/celer-network/goCeler/utils"
+	"github.com/celer-network/goutils/log"
 	"github.com/golang/protobuf/proto"
 )
 
@@ -46,20 +45,19 @@ func (h *CelerMsgHandler) HandleHopAckState(frame *common.MsgFrame) error {
 	}
 	log.Debugln("Receive hop ack simplex:", utils.PrintSimplexChannel(&ackSimplex))
 
-	peerTo := ctype.Addr2Hex(frame.PeerAddr)
 	// Verify signature
-	sigValid := h.crypto.SigIsValid(peerTo, ackState.GetSimplexState(), ackState.GetSigOfPeerTo())
+	sigValid := utils.SigIsValid(frame.PeerAddr, ackState.GetSimplexState(), ackState.GetSigOfPeerTo())
 	if !sigValid {
-		log.Errorln(common.ErrInvalidSig, peerTo, utils.PrintSimplexChannel(&ackSimplex))
+		log.Errorln(common.ErrInvalidSig, ctype.Addr2Hex(frame.PeerAddr), utils.PrintSimplexChannel(&ackSimplex))
 		return common.ErrInvalidSig
 	}
 
 	ackSeqNum := ackSimplex.GetSeqNum()
 	logEntry.SeqNums.Ack = ackSeqNum
 	if ackSeqNum > 0 {
-		sigValid = h.crypto.SigIsValid(h.nodeConfig.GetOnChainAddr(), ackState.GetSimplexState(), ackState.GetSigOfPeerFrom())
+		sigValid = utils.SigIsValid(h.nodeConfig.GetOnChainAddr(), ackState.GetSimplexState(), ackState.GetSigOfPeerFrom())
 		if !sigValid {
-			log.Errorln(common.ErrInvalidSig, peerTo, utils.PrintSimplexChannel(&ackSimplex))
+			log.Errorln(common.ErrInvalidSig, ctype.Addr2Hex(frame.PeerAddr), utils.PrintSimplexChannel(&ackSimplex))
 			return common.ErrInvalidSig
 		}
 	}
@@ -96,40 +94,7 @@ func (h *CelerMsgHandler) HandleHopAckState(frame *common.MsgFrame) error {
 	}
 
 	// acknowledge ackedMsgs
-	for _, msg := range ackedMsgs {
-		if msg.GetPaymentSettleRequest() != nil {
-			for _, settledPay := range msg.GetPaymentSettleRequest().GetSettledPays() {
-				payID := ctype.Bytes2PayID(settledPay.GetSettledPayId())
-				logEntry.PayIds = append(logEntry.PayIds, ctype.PayID2Hex(payID))
-				pay, _, err2 := h.dal.GetConditionalPay(payID)
-				if err2 != nil {
-					logEntry.Error = append(logEntry.Error, err2.Error())
-					log.Errorln("Can't find completed pay", payID.Hex(), err2)
-					continue
-				}
-				if h.payFromSelf(pay) {
-					// I'm the sender, notify complete
-					h.notifyPayComplete(settledPay, pay)
-				} else {
-					// I'm not the sender, forward request to upstream
-					h.forwardToUpstream(settledPay, pay, logEntry)
-				}
-			}
-		}
-		if req := msg.GetCondPayRequest(); req != nil {
-			payID := ctype.PayID2Hex(ctype.PayBytes2PayID(msg.GetCondPayRequest().GetCondPay()))
-			logEntry.PayId = payID
-			logEntry.PayIds = append(logEntry.PayIds, payID)
-			if req.GetDirectPay() {
-				h.notifyDirectPayComplete(msg)
-
-				// Special case of a single ACKed direct-pay.
-				if len(ackedMsgs) == 1 {
-					logEntry.DirectPay = true
-				}
-			}
-		}
-	}
+	h.processAckMsgs(ackedMsgs, logEntry)
 
 	// handle nackedErrMsg
 	if nackedErrMsg != nil {
@@ -151,11 +116,16 @@ func (h *CelerMsgHandler) HandleHopAckState(frame *common.MsgFrame) error {
 				payID := ctype.Bytes2PayID(settledPay.GetSettledPayId())
 				logEntry.PayId = ctype.PayID2Hex(payID)
 				logEntry.NackPayIds = append(logEntry.NackPayIds, ctype.PayID2Hex(payID))
-				pay, _, err2 := h.dal.GetConditionalPay(payID)
+				pay, _, found, err2 := h.dal.GetPayment(payID)
 				if err2 != nil {
 					logEntry.Error = append(logEntry.Error, err2.Error())
-					log.Errorln("Can't find failed pay", payID.Hex(), err2)
-					return err2
+					log.Errorln(err2, payID.Hex())
+					continue
+				}
+				if !found {
+					logEntry.Error = append(logEntry.Error, common.ErrPayNotFound.Error())
+					log.Errorln(common.ErrPayNotFound, payID.Hex())
+					continue
 				}
 				h.notifyPayError(payID, pay, ackErr.GetReason())
 			}
@@ -180,7 +150,7 @@ func (h *CelerMsgHandler) HandleHopAckState(frame *common.MsgFrame) error {
 			resendLogEntry.PayId = ctype.PayID2Hex(payID)
 			resendLogEntry.Dst = ctype.Bytes2Hex(pay.GetDest())
 			resendLogEntry.DirectPay = directPay
-			err = h.messager.SendCondPayRequest(&pay, req.GetNote(), resendLogEntry)
+			err = h.messager.SendCondPayRequest(req.GetCondPay(), req.GetNote(), resendLogEntry)
 			if err != nil {
 				log.Error(err)
 				resendLogEntry.Error = append(resendLogEntry.Error, err.Error())
@@ -194,9 +164,13 @@ func (h *CelerMsgHandler) HandleHopAckState(frame *common.MsgFrame) error {
 			for _, settledPay := range msg.GetPaymentSettleRequest().GetSettledPays() {
 				payID := ctype.Bytes2Cid(settledPay.GetSettledPayId())
 				log.Debugln("resend settle request", payID.Hex())
-				pay, _, err2 := h.dal.GetConditionalPay(payID)
+				pay, _, found, err2 := h.dal.GetPayment(payID)
 				if err2 != nil {
 					log.Error(err2, payID.Hex())
+					continue
+				}
+				if !found {
+					log.Errorln(common.ErrPayNotFound, payID.Hex())
 					continue
 				}
 				payIDs = append(payIDs, payID)
@@ -235,15 +209,81 @@ func (h *CelerMsgHandler) HandleHopAckState(frame *common.MsgFrame) error {
 	return nil
 }
 
+// HandleMysimplexFromAuthAck calls internal funcs to update db and go over msg queue
+// note when this is called by handleAuthAck, msgqueue doesn't have the peer in memory yet
+func (h *CelerMsgHandler) HandleMysimplexFromAuthAck(tx *storage.DALTx, cid ctype.CidType, ackState *rpc.SignedSimplexState) error {
+	var ackSimplex entity.SimplexPaymentChannel
+	err := proto.Unmarshal(ackState.GetSimplexState(), &ackSimplex)
+	if err != nil {
+		return fmt.Errorf("fail parse simplex, err: %w", err)
+	}
+	var ackErr *rpc.Error
+	var ackedMsgs []*rpc.CelerMsg
+	var nackedErrMsg *rpc.CelerMsg
+	var nackedInflightMsgs []*rpc.CelerMsg
+	var routeLoopPayMsg *rpc.CelerMsg
+	var lastNackSeqNum uint64
+	err = h.handleHopAckTx(tx, ackState, &ackSimplex, ackErr, cid,
+		&ackedMsgs, &nackedErrMsg, &nackedInflightMsgs, &lastNackSeqNum, &routeLoopPayMsg)
+	if err != nil {
+		return err
+	}
+	logEntry := new(pem.PayEventMessage)
+	h.processAckMsgs(ackedMsgs, logEntry)
+	return nil
+}
+
+func (h *CelerMsgHandler) processAckMsgs(ackedMsgs []*rpc.CelerMsg, logEntry *pem.PayEventMessage) {
+	for _, msg := range ackedMsgs {
+		if msg.GetPaymentSettleRequest() != nil {
+			for _, settledPay := range msg.GetPaymentSettleRequest().GetSettledPays() {
+				payID := ctype.Bytes2PayID(settledPay.GetSettledPayId())
+				logEntry.PayIds = append(logEntry.PayIds, ctype.PayID2Hex(payID))
+				pay, _, found, err2 := h.dal.GetPayment(payID)
+				if err2 != nil {
+					logEntry.Error = append(logEntry.Error, err2.Error())
+					log.Errorln(err2, payID.Hex())
+					continue
+				}
+				if !found {
+					logEntry.Error = append(logEntry.Error, common.ErrPayNotFound.Error())
+					log.Errorln(common.ErrPayNotFound, payID.Hex())
+					continue
+				}
+				if h.payFromSelf(pay) {
+					// I'm the sender, notify complete
+					h.notifyPayComplete(settledPay, pay)
+				} else {
+					// I'm not the sender, forward request to upstream
+					go h.forwardToUpstream(settledPay, pay, logEntry)
+				}
+			}
+		}
+		if req := msg.GetCondPayRequest(); req != nil {
+			payID := ctype.PayID2Hex(ctype.PayBytes2PayID(msg.GetCondPayRequest().GetCondPay()))
+			logEntry.PayId = payID
+			logEntry.PayIds = append(logEntry.PayIds, payID)
+			if req.GetDirectPay() {
+				h.notifyDirectPayComplete(msg)
+
+				// Special case of a single ACKed direct-pay.
+				if len(ackedMsgs) == 1 {
+					logEntry.DirectPay = true
+				}
+			}
+		}
+	}
+}
+
 func (h *CelerMsgHandler) notifyPayComplete(
 	settledPay *rpc.SettledPayment, pay *entity.ConditionalPay) {
 	payID := ctype.Bytes2PayID(settledPay.GetSettledPayId())
 	amt := new(big.Int).SetBytes(settledPay.GetAmount())
 	paid := !(amt.Cmp(new(big.Int).SetUint64(0)) == 0)
 	log.Debugln("notify pay complete", payID.Hex(), "paid:", paid)
-	note, err := h.dal.GetPayNote(payID)
+	note, _, err := h.dal.GetPayNote(payID)
 	if err != nil {
-		log.Traceln(err)
+		log.Error(err)
 	}
 	h.sendingCallbackLock.RLock()
 	if h.onSendingToken != nil {
@@ -280,9 +320,9 @@ func (h *CelerMsgHandler) notifyPayError(
 		return
 	}
 	log.Warnln("notify pay error", payID.Hex(), errMsg)
-	note, err := h.dal.GetPayNote(payID)
+	note, _, err := h.dal.GetPayNote(payID)
 	if err != nil {
-		log.Traceln(err)
+		log.Error(err)
 	}
 	h.sendingCallbackLock.RLock()
 	if h.onSendingToken != nil {
@@ -296,7 +336,8 @@ func (h *CelerMsgHandler) forwardToUpstream(
 
 	payID := ctype.Bytes2PayID(settledPay.GetSettledPayId())
 	if settledPay.GetReason() == rpc.PaymentSettleReason_PAY_REJECTED ||
-		settledPay.GetReason() == rpc.PaymentSettleReason_PAY_DEST_UNREACHABLE {
+		settledPay.GetReason() == rpc.PaymentSettleReason_PAY_DEST_UNREACHABLE ||
+		settledPay.GetReason() == rpc.PaymentSettleReason_PAY_RESOLVED_ONCHAIN {
 
 		log.Debugln("forward rejected pay to upstream", payID.Hex())
 		err := h.messager.SendOnePaySettleProof(payID, settledPay.GetReason(), logEntry)
@@ -321,52 +362,56 @@ func (h *CelerMsgHandler) handleHopAckTx(tx *storage.DALTx, args ...interface{})
 	*retNackedMsg = nil
 	*retNackeInflightMsgs = nil
 	*retRouteLoopPayMsg = nil
-	myAddr := h.nodeConfig.GetOnChainAddr()
 
-	// channel state machine
-	err := fsm.OnPscUpdateSimplex(tx, cid)
+	_, chanState, baseSeq, lastUsedSeq, lastAckedSeq, lastNackedSeq, found, err := tx.GetChanForRecvResponse(cid)
 	if err != nil {
-		log.Error(err)
-		return err
+		return fmt.Errorf("GetChanForRecvResponse err %w", err)
+	}
+	if !found {
+		return common.ErrChannelNotFound
+	}
+	err = fsm.OnChannelUpdate(cid, chanState)
+	if err != nil {
+		return fmt.Errorf("OnChannelUpdate err %w", err)
 	}
 
-	seqNums, err := tx.GetChannelSeqNums(cid)
-	if err != nil {
-		_, seqNums, err = ledgerview.GetChannelSeqNumsFromSimplexState(tx, cid, myAddr)
-		if err != nil {
-			log.Error(err)
-			return err
-		}
-	}
-
-	lastNacked := seqNums.LastNacked
+	lastNacked := lastNackedSeq
 	// Handle Nacked Error message
 	if ackErr != nil {
 		if ackErr.GetCode() == rpc.ErrCode_PAY_ROUTE_LOOP {
 			errSeq := ackErr.GetSeq()
-			routeLoopPayMsg, _ := h.getChannelMessage(tx, cid, errSeq)
+			routeLoopPayMsg, err2 := h.getChanMessage(tx, cid, errSeq)
+			if err2 != nil {
+				log.Error(err2)
+			}
 			*retRouteLoopPayMsg = routeLoopPayMsg
 		} else if ackErr.GetCode() != rpc.ErrCode_INVALID_SEQ_NUM {
 			// recover from critical failure
 			errSeq := ackErr.GetSeq()
 			// set nackedMsg
-			nackedMsg, _ := h.getChannelMessage(tx, cid, errSeq)
+			nackedMsg, err2 := h.getChanMessage(tx, cid, errSeq)
+			if err2 != nil {
+				log.Error(err2)
+			}
 			*retNackedMsg = nackedMsg
 			req := nackedMsg.GetCondPayRequest()
 			if req != nil {
 				payID := ctype.PayBytes2PayID(req.GetCondPay())
-				_, _, err = fsm.OnPayEgressNacked(tx, payID)
+				err = fsm.OnPayEgressNacked(tx, payID)
 				if err != nil {
 					log.Error(err)
 				}
 			}
-			seqNums.Base = ackSimplex.GetSeqNum()
+			baseSeq = ackSimplex.GetSeqNum()
 			// all in-flight messages become invalid and need to be resent with higher sequence numbers
-			seqNums.LastNacked = seqNums.LastUsed
+			lastNackedSeq = lastUsedSeq
 			nackedInflightMsgs := []*rpc.CelerMsg{}
-			log.Warnln(cid.Hex(), "ackErr:", ackErr, "update base seq to", seqNums.Base, "last inflight", seqNums.LastNacked)
-			for i := errSeq + 1; i <= seqNums.LastNacked; i++ {
-				msg, _ := h.getChannelMessage(tx, cid, i)
+			log.Warnln(cid.Hex(), "ackErr:", ackErr, "update base seq to", baseSeq, "last inflight", lastNackedSeq)
+			for i := errSeq + 1; i <= lastNackedSeq; i++ {
+				msg, err2 := h.getChanMessage(tx, cid, i)
+				if err2 != nil {
+					log.Error(err2)
+				}
 				if msg != nil {
 					nackedInflightMsgs = append(nackedInflightMsgs, msg)
 				}
@@ -376,25 +421,24 @@ func (h *CelerMsgHandler) handleHopAckTx(tx *storage.DALTx, args ...interface{})
 	}
 
 	// newly acked seq, handle acked messages
-	if ackSimplex.GetSeqNum() > seqNums.LastAcked {
-		from := seqNums.LastAcked + 1
+	if ackSimplex.GetSeqNum() > lastAckedSeq {
+		from := lastAckedSeq + 1
 		// process previously nacked msg
-		if lastNacked > seqNums.LastAcked {
+		if lastNacked > lastAckedSeq {
 			for i := from; i <= lastNacked; i++ {
-				msg, err2 := h.getChannelMessage(tx, cid, i)
+				msg, err2 := h.getChanMessage(tx, cid, i)
 				if err2 != nil {
-					log.Warnln(err2)
+					log.Error(err2)
 					continue
 				}
 				if msg.GetCondPayRequest() != nil {
 					payID := ctype.PayBytes2PayID(msg.GetCondPayRequest().GetCondPay())
-					_, _, err = fsm.OnPayEgressUpdateAfterNack(tx, payID)
+					err = fsm.OnPayEgressUpdateAfterNack(tx, payID)
 					if err != nil {
-						log.Error(err)
-						return err
+						return fmt.Errorf("OnPayEgressUpdateAfterNack err %w", err)
 					}
 				}
-				err = tx.DeleteChannelMessage(cid, i)
+				err = tx.DeleteChanMessage(cid, i)
 				if err != nil {
 					log.Warnf("cannot delete NACKed msg %d for %x: %s", i, cid, err)
 				}
@@ -405,21 +449,20 @@ func (h *CelerMsgHandler) handleHopAckTx(tx *storage.DALTx, args ...interface{})
 		// process each acked message
 		ackedMsgs := []*rpc.CelerMsg{}
 		for i := from; i <= ackSimplex.GetSeqNum(); i++ {
-			msg, err2 := h.getChannelMessage(tx, cid, i)
+			msg, err2 := h.getChanMessage(tx, cid, i)
 			if err2 != nil {
-				log.Warnln(err2)
+				log.Error(err2)
 				continue
 			}
 			if msg.GetCondPayRequest() != nil {
 				payID := ctype.PayBytes2PayID(msg.GetCondPayRequest().GetCondPay())
 				directPay := msg.GetCondPayRequest().GetDirectPay()
 				if directPay {
-					_, _, err = fsm.OnPayEgressDirectCoSignedPaid(tx, payID, cid)
+					err = fsm.OnPayEgressCoSignedPaid(tx, payID)
 				} else {
-					_, _, err = fsm.OnPayEgressDelivered(tx, payID)
+					err = fsm.OnPayEgressDelivered(tx, payID)
 				}
 				if err != nil {
-					log.Error(err)
 					return err
 				}
 				log.Debugln("Receive ACK for cond pay request", payID.Hex(), "direct", directPay)
@@ -429,58 +472,63 @@ func (h *CelerMsgHandler) handleHopAckTx(tx *storage.DALTx, args ...interface{})
 					amt := new(big.Int).SetBytes(pay.GetAmount())
 					paid := !((*amt).Cmp(new(big.Int).SetUint64(0)) == 0)
 					if paid {
-						_, _, err = fsm.OnPayEgressCoSignedPaid(tx, payID)
+						err = fsm.OnPayEgressCoSignedPaid(tx, payID)
 					} else {
-						_, _, err = fsm.OnPayEgressCoSignedCanceled(tx, payID)
+						err = fsm.OnPayEgressCoSignedCanceled(tx, payID)
 					}
 					if err != nil {
-						log.Error(err)
 						return err
 					}
 					log.Debugln("Receive ACK pay settle request", payID.Hex(), "paid:", paid)
+
+					err = tx.DeleteSecretByPayID(payID)
+					if err != nil {
+						log.Errorln("DeleteSecretByPayID err", err, payID.Hex())
+					}
 				}
 			} else {
 				log.Errorln("invalid message type", msg)
 				continue
 			}
 			ackedMsgs = append(ackedMsgs, msg)
-			err = tx.DeleteChannelMessage(cid, i)
+			err = tx.DeleteChanMessage(cid, i)
 			if err != nil {
 				log.Warnf("cannot delete ACKed msg %d for %x: %s", i, cid, err)
 			}
 		}
-
-		err = tx.PutSimplexState(cid, myAddr, ackState)
+		lastAckedSeq = ackSimplex.GetSeqNum()
+		err = tx.UpdateChanForRecvResponse(cid, baseSeq, lastUsedSeq, lastAckedSeq, lastNackedSeq, ackState)
 		if err != nil {
-			return errors.New("put simplex failed:" + err.Error())
+			return errors.New("UpdateChanForRecvResponse failed:" + err.Error())
 		}
 		*retAckedMsgs = ackedMsgs
+	} else {
+		err = tx.UpdateChanSeqNums(cid, baseSeq, lastUsedSeq, lastAckedSeq, lastNackedSeq)
+		if err != nil {
+			return errors.New("UpdateChanSeqNums failed:" + err.Error())
+		}
 	}
-
-	seqNums.LastAcked = ackSimplex.GetSeqNum()
-	*retLastNackSeqNum = seqNums.LastNacked
-	err = tx.PutChannelSeqNums(cid, seqNums)
-	if err != nil {
-		return errors.New("PutChannelSeqNums failed:" + err.Error())
-	}
-
+	*retLastNackSeqNum = lastNackedSeq
 	return nil
 }
 
-func (h *CelerMsgHandler) getChannelMessage(tx *storage.DALTx, cid ctype.CidType, seq uint64) (*rpc.CelerMsg, error) {
+func (h *CelerMsgHandler) getChanMessage(tx *storage.DALTx, cid ctype.CidType, seq uint64) (*rpc.CelerMsg, error) {
 	var err error
+	var found bool
 	msg, ok := h.messager.GetMsgQueue(cid, seq)
 	if !ok {
-		log.Warnf("cannot get msg %d for %x from msgQueue", seq, cid)
-		msg, err = tx.GetChannelMessage(cid, seq)
+		log.Warnf("cannot get msg %d for %x from msgQueue, fetching from database", seq, cid)
+		msg, found, err = tx.GetChanMessage(cid, seq)
 		if err != nil {
-			err = fmt.Errorf("cannot get msg %d for %x from database: %s", seq, cid, err)
-			return nil, err
+			return nil, fmt.Errorf("cannot get msg %d for %x from database, err: %w", seq, cid, err)
+		}
+		if !found {
+			return nil, fmt.Errorf("cannot get msg %d for %x from database", seq, cid)
 		}
 	}
 	return msg, nil
 }
 
 func (h *CelerMsgHandler) payFromSelf(pay *entity.ConditionalPay) bool {
-	return bytes.Compare(pay.GetSrc(), h.nodeConfig.GetOnChainAddrBytes()) == 0
+	return bytes.Compare(pay.GetSrc(), h.nodeConfig.GetOnChainAddr().Bytes()) == 0
 }

@@ -1,72 +1,65 @@
-// Copyright 2018-2019 Celer Network
+// Copyright 2018-2020 Celer Network
 
 package cooperativewithdraw
 
 import (
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"math/big"
-	"strings"
 	"sync"
 
-	"github.com/celer-network/goCeler-oss/chain/channel-eth-go/ledger"
-	"github.com/celer-network/goCeler-oss/chain"
-	log "github.com/celer-network/goCeler-oss/clog"
-	"github.com/celer-network/goCeler-oss/cnode/jobs"
-	"github.com/celer-network/goCeler-oss/common"
-	"github.com/celer-network/goCeler-oss/common/event"
-	"github.com/celer-network/goCeler-oss/common/intfs"
-	"github.com/celer-network/goCeler-oss/common/structs"
-	"github.com/celer-network/goCeler-oss/config"
-	"github.com/celer-network/goCeler-oss/ctype"
-	"github.com/celer-network/goCeler-oss/entity"
-	"github.com/celer-network/goCeler-oss/ledgerview"
-	"github.com/celer-network/goCeler-oss/metrics"
-	"github.com/celer-network/goCeler-oss/monitor"
-	"github.com/celer-network/goCeler-oss/rpc"
-	"github.com/celer-network/goCeler-oss/storage"
-	"github.com/celer-network/goCeler-oss/transactor"
+	"github.com/celer-network/goCeler/chain"
+	"github.com/celer-network/goCeler/chain/channel-eth-go/ledger"
+	"github.com/celer-network/goCeler/common"
+	"github.com/celer-network/goCeler/common/event"
+	"github.com/celer-network/goCeler/common/intfs"
+	"github.com/celer-network/goCeler/common/structs"
+	"github.com/celer-network/goCeler/config"
+	"github.com/celer-network/goCeler/ctype"
+	"github.com/celer-network/goCeler/entity"
+	"github.com/celer-network/goCeler/ledgerview"
+	"github.com/celer-network/goCeler/metrics"
+	"github.com/celer-network/goCeler/monitor"
+	"github.com/celer-network/goCeler/rpc"
+	"github.com/celer-network/goCeler/storage"
+	"github.com/celer-network/goCeler/transactor"
+	"github.com/celer-network/goutils/log"
 	"github.com/ethereum/go-ethereum/core/types"
 	"golang.org/x/crypto/sha3"
 )
 
-type utils interface {
-	GetCurrentBlockNumber() *big.Int
-}
-
 type Processor struct {
-	selfAddress       string
-	signer            common.Crypto
+	nodeConfig        common.GlobalNodeConfig
+	selfAddress       ctype.Addr
+	signer            common.Signer
 	transactorPool    *transactor.Pool
 	connectionManager *rpc.ConnectionManager
 	monitorService    intfs.MonitorService
 	dal               *storage.DAL
-	ledger            *chain.BoundContract
 	streamWriter      common.StreamWriter
 	callbacks         map[string]Callback
 	callbacksLock     sync.Mutex
 	initLock          sync.Mutex
 	runningJobs       map[string]bool
 	runningJobsLock   sync.Mutex
-	utils             utils
-	eventMonitorName  string
 	enableJobs        bool
 }
 
 func StartProcessor(
-	selfAddress string,
-	signer common.Crypto,
+	nodeConfig common.GlobalNodeConfig,
+	selfAddress ctype.Addr,
+	signer common.Signer,
 	transactorPool *transactor.Pool,
 	connectionManager *rpc.ConnectionManager,
 	monitorService intfs.MonitorService,
 	dal *storage.DAL,
 	streamWriter common.StreamWriter,
-	ledger *chain.BoundContract,
-	utils utils,
 	keepMonitor bool,
 	enableJobs bool) (*Processor, error) {
 	p := &Processor{
+		nodeConfig:        nodeConfig,
 		selfAddress:       selfAddress,
 		signer:            signer,
 		transactorPool:    transactorPool,
@@ -74,61 +67,55 @@ func StartProcessor(
 		monitorService:    monitorService,
 		dal:               dal,
 		streamWriter:      streamWriter,
-		ledger:            ledger,
 		callbacks:         make(map[string]Callback),
 		runningJobs:       make(map[string]bool),
-		utils:             utils,
-		eventMonitorName: fmt.Sprintf(
-			"%s-%s", ctype.Addr2Hex(ledger.GetAddr()), event.CooperativeWithdraw),
-		enableJobs: enableJobs,
+		enableJobs:        enableJobs,
 	}
 	if keepMonitor {
-		p.monitorEvent()
+		p.monitorOnAllLedgers()
 	} else {
 		// Restore event monitoring
-		has, err := p.dal.HasEventMonitorBit(p.eventMonitorName)
+		ledgerAddrs, err := p.dal.GetMonitorAddrsByEventAndRestart(event.CooperativeWithdraw, true /*restart*/)
 		if err != nil {
 			return nil, err
 		}
-		if has {
-			p.monitorSingleEvent(false)
+
+		for _, ledgerAddr := range ledgerAddrs {
+			contract := p.nodeConfig.GetLedgerContractOn(ledgerAddr)
+			if contract != nil {
+				p.monitorSingleEvent(contract, false /*reset*/)
+			}
 		}
 	}
 
 	return p, nil
 }
 
-func (p *Processor) generateWithdrawHash(cid ctype.CidType, seqNum uint64) string {
+func (p *Processor) generateWithdrawHash(cid ctype.CidType, ledgerAddr ctype.Addr, seqNum uint64) string {
 	seqNumBytes := make([]byte, 8)
 	binary.LittleEndian.PutUint64(seqNumBytes, seqNum)
-	hashBytes :=
-		sha3.Sum256(append(p.ledger.GetAddr().Bytes(), append(cid[:], seqNumBytes...)...))
+	hashBytes := sha3.Sum256(append(ledgerAddr.Bytes(), append(cid[:], seqNumBytes...)...))
 	return ctype.Bytes2Hex(hashBytes[:])
 }
 
 func (p *Processor) maybeHandleEvent(eLog *types.Log) bool {
 	e := &ledger.CelerLedgerCooperativeWithdraw{}
-	err := p.ledger.ParseEvent(event.CooperativeWithdraw, *eLog, e)
+	err := p.nodeConfig.GetLedgerContract().ParseEvent(event.CooperativeWithdraw, *eLog, e)
 	if err != nil {
 		log.Error(err)
 		return false
 	}
 	cid := ctype.CidType(e.ChannelId)
-	exists, err := p.dal.HasPeer(cid)
+	peer, found, err := p.dal.GetChanPeer(cid)
 	if err != nil {
-		log.Error(err)
-		return false
-	} else if !exists {
+		log.Error(err, cid.Hex())
 		return false
 	}
-	self := ctype.Hex2Addr(p.selfAddress)
-	peerStr, err := p.dal.GetPeer(cid)
-	if err != nil {
-		log.Error(err)
+	if !found {
 		return false
 	}
-	peer := ctype.Hex2Addr(peerStr)
 	receiver := e.Receiver
+	self := p.selfAddress
 	if receiver != self && receiver != peer {
 		return false
 	}
@@ -138,18 +125,28 @@ func (p *Processor) maybeHandleEvent(eLog *types.Log) bool {
 	metrics.IncCoopWithdrawEventCnt()
 	p.updateOnChainBalance(
 		cid,
-		ctype.Addr2Hex(self),
-		ctype.Addr2Hex(peer),
+		self,
+		peer,
 		e,
 		txHash)
 	return true
 }
 
-func (p *Processor) monitorEvent() {
+func (p *Processor) monitorOnAllLedgers() {
+	ledgers := p.nodeConfig.GetAllLedgerContracts()
+
+	for _, contract := range ledgers {
+		if contract != nil {
+			p.monitorEvent(contract)
+		}
+	}
+}
+
+func (p *Processor) monitorEvent(ledgerContract chain.Contract) {
 	_, err := p.monitorService.Monitor(
 		event.CooperativeWithdraw,
-		p.ledger,
-		p.utils.GetCurrentBlockNumber(),
+		ledgerContract,
+		p.monitorService.GetCurrentBlockNumber(),
 		nil,   /* endBlock */
 		false, /* quickCatch */
 		false, /* reset */
@@ -161,14 +158,14 @@ func (p *Processor) monitorEvent() {
 	}
 }
 
-func (p *Processor) monitorSingleEvent(reset bool) {
-	startBlock := p.utils.GetCurrentBlockNumber()
+func (p *Processor) monitorSingleEvent(ledgerContract chain.Contract, reset bool) {
+	startBlock := p.monitorService.GetCurrentBlockNumber()
 	duration := new(big.Int)
 	duration.SetUint64(config.CooperativeWithdrawTimeout)
 	endBlock := new(big.Int).Add(startBlock, duration)
 	_, err := p.monitorService.Monitor(
 		event.CooperativeWithdraw,
-		p.ledger,
+		ledgerContract,
 		startBlock,
 		endBlock,
 		false, /* quickCatch */
@@ -176,7 +173,7 @@ func (p *Processor) monitorSingleEvent(reset bool) {
 		func(id monitor.CallbackID, eLog types.Log) {
 			if p.maybeHandleEvent(&eLog) {
 				p.monitorService.RemoveEvent(id)
-				p.dal.DeleteEventMonitorBit(p.eventMonitorName)
+				p.dal.UpsertMonitorRestart(monitor.NewEventStr(ledgerContract.GetAddr(), event.CooperativeWithdraw), false)
 			}
 		})
 	if err != nil {
@@ -186,8 +183,8 @@ func (p *Processor) monitorSingleEvent(reset bool) {
 
 func (p *Processor) updateOnChainBalance(
 	cid ctype.CidType,
-	self string,
-	peer string,
+	self ctype.Addr,
+	peer ctype.Addr,
 	e *ledger.CelerLedgerCooperativeWithdraw,
 	txHash string) {
 	if len(e.Deposits) != 2 || len(e.Withdrawals) != 2 {
@@ -195,7 +192,7 @@ func (p *Processor) updateOnChainBalance(
 		return
 	}
 	var myIndex int
-	if strings.Compare(self, peer) < 0 {
+	if bytes.Compare(self.Bytes(), peer.Bytes()) < 0 {
 		myIndex = 0
 	} else {
 		myIndex = 1
@@ -207,7 +204,7 @@ func (p *Processor) updateOnChainBalance(
 		PeerWithdrawal: e.Withdrawals[1-myIndex],
 		// overwrite pendingWithrawal with empty struct on withdraw event
 	}
-	if err := p.dal.PutOnChainBalance(cid, onChainBalance); err != nil {
+	if err := p.dal.UpdateOnChainBalance(cid, onChainBalance); err != nil {
 		log.Error(err)
 	}
 
@@ -215,7 +212,12 @@ func (p *Processor) updateOnChainBalance(
 		return
 	}
 
-	withdrawHash := p.generateWithdrawHash(cid, e.SeqNum.Uint64())
+	chanLedger := p.nodeConfig.GetLedgerContractOf(cid)
+	if chanLedger == nil {
+		log.Errorf("Fail to get ledger for channel: %x", cid)
+		return
+	}
+	withdrawHash := p.generateWithdrawHash(cid, chanLedger.GetAddr(), e.SeqNum.Uint64())
 	has, err := p.dal.HasCooperativeWithdrawJob(withdrawHash)
 	if err != nil {
 		log.Error(err)
@@ -230,7 +232,7 @@ func (p *Processor) updateOnChainBalance(
 		p.maybeFireErrCallbackWithWithdrawHash(withdrawHash, errMsg)
 		return
 	}
-	job.State = jobs.CooperativeWithdrawSucceeded
+	job.State = structs.CooperativeWithdrawSucceeded
 	err = p.dal.PutCooperativeWithdrawJob(withdrawHash, job)
 	if err != nil {
 		log.Error(err)
@@ -242,7 +244,7 @@ func (p *Processor) updateOnChainBalance(
 func (p *Processor) checkWithdrawBalanceTx(tx *storage.DALTx, args ...interface{}) error {
 	cid := args[0].(ctype.CidType)
 	withdrawInfo := args[1].(*entity.CooperativeWithdrawInfo)
-	blkNum := p.utils.GetCurrentBlockNumber().Uint64()
+	blkNum := p.monitorService.GetCurrentBlockNumber().Uint64()
 	balance, err := ledgerview.GetBalanceTx(tx, cid, p.selfAddress, blkNum)
 	if err != nil {
 		log.Error(err)
@@ -250,10 +252,13 @@ func (p *Processor) checkWithdrawBalanceTx(tx *storage.DALTx, args ...interface{
 	}
 
 	// verify no pending withdraw
-	onChainBalance, err := tx.GetOnChainBalance(cid)
+	onChainBalance, found, err := tx.GetOnChainBalance(cid)
 	if err != nil {
 		log.Error(err)
 		return err
+	}
+	if !found {
+		return common.ErrChannelNotFound
 	}
 	if blkNum <= onChainBalance.PendingWithdrawal.Deadline+config.WithdrawTimeoutSafeMargin {
 		log.Errorln("previous withdraw still pending", onChainBalance.PendingWithdrawal)
@@ -267,7 +272,7 @@ func (p *Processor) checkWithdrawBalanceTx(tx *storage.DALTx, args ...interface{
 	onChainBalance.PendingWithdrawal.Deadline = blkNum + config.CooperativeWithdrawTimeout
 	onChainBalance.PendingWithdrawal.Receiver = receiver
 	var freeBalance *big.Int
-	if receiver == ctype.Hex2Addr(p.selfAddress) {
+	if receiver == p.selfAddress {
 		freeBalance = balance.MyFree
 	} else {
 		freeBalance = balance.PeerFree
@@ -280,7 +285,7 @@ func (p *Processor) checkWithdrawBalanceTx(tx *storage.DALTx, args ...interface{
 	}
 
 	// update storage
-	err = tx.PutOnChainBalance(cid, onChainBalance)
+	err = tx.UpdateOnChainBalance(cid, onChainBalance)
 	if err != nil {
 		log.Error(err)
 		return err

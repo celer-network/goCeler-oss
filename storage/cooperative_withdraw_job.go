@@ -1,20 +1,20 @@
-// Copyright 2018-2019 Celer Network
+// Copyright 2018-2020 Celer Network
 
 package storage
 
-import "github.com/celer-network/goCeler-oss/cnode/jobs"
+import "github.com/celer-network/goCeler/common/structs"
 
 const cooperativeWithdrawJob = "cwj"
 
 func getCooperativeWithdrawJob(
-	st Storage, withdrawHash string) (*jobs.CooperativeWithdrawJob, error) {
-	var job jobs.CooperativeWithdrawJob
+	st Storage, withdrawHash string) (*structs.CooperativeWithdrawJob, error) {
+	var job structs.CooperativeWithdrawJob
 	err := st.Get(cooperativeWithdrawJob, withdrawHash, &job)
 	return &job, err
 }
 
 func putCooperativeWithdrawJob(
-	st Storage, withdrawHash string, job *jobs.CooperativeWithdrawJob) error {
+	st Storage, withdrawHash string, job *structs.CooperativeWithdrawJob) error {
 	return st.Put(cooperativeWithdrawJob, withdrawHash, job)
 }
 
@@ -30,12 +30,12 @@ func getAllCooperativeWithdrawJobKeys(st Storage) ([]string, error) {
 	return st.GetKeysByPrefix(cooperativeWithdrawJob, "")
 }
 
-func (d *DAL) GetCooperativeWithdrawJob(withdrawHash string) (*jobs.CooperativeWithdrawJob, error) {
+func (d *DAL) GetCooperativeWithdrawJob(withdrawHash string) (*structs.CooperativeWithdrawJob, error) {
 	return getCooperativeWithdrawJob(d.st, withdrawHash)
 }
 
 func (d *DAL) PutCooperativeWithdrawJob(
-	withdrawHash string, job *jobs.CooperativeWithdrawJob) error {
+	withdrawHash string, job *structs.CooperativeWithdrawJob) error {
 	return putCooperativeWithdrawJob(d.st, withdrawHash, job)
 }
 
@@ -52,12 +52,12 @@ func (d *DAL) GetAllCooperativeWithdrawJobKeys() ([]string, error) {
 }
 
 func (dtx *DALTx) GetCooperativeWithdrawJob(
-	withdrawHash string) (*jobs.CooperativeWithdrawJob, error) {
+	withdrawHash string) (*structs.CooperativeWithdrawJob, error) {
 	return getCooperativeWithdrawJob(dtx.stx, withdrawHash)
 }
 
 func (dtx *DALTx) PutCooperativeWithdrawJob(
-	withdrawHash string, job *jobs.CooperativeWithdrawJob) error {
+	withdrawHash string, job *structs.CooperativeWithdrawJob) error {
 	return putCooperativeWithdrawJob(dtx.stx, withdrawHash, job)
 }
 

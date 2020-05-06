@@ -1,0 +1,62 @@
+// Copyright 2019 Celer Network
+//
+// Used for communication between servers in a multi-server setup.
+
+syntax = "proto3";
+
+option go_package = "github.com/celer-network/goCeler/rpc";
+
+package rpc;
+
+import "message.proto";
+
+// Interface exported by the server on an internal port (inter-server).
+service MultiServer {
+  rpc FwdMsg(FwdReq) returns (FwdReply) {}
+  rpc Ping(PingReq) returns (PingReply) {}
+  rpc PickServer(PickReq) returns (PickReply) {}
+  rpc BcastRoutingInfo(BcastRoutingRequest) returns (BcastRoutingReply) {}
+}
+
+// Next tag: 6
+message FwdReq {
+  string dest = 1;
+  CelerMsg message = 5;
+}
+
+// Next tag: 3
+message FwdReply {
+  bool accepted = 1;
+  string err = 2;
+}
+
+// Next tag: 1
+message PingReq {
+}
+
+// Next tag: 2
+message PingReply {
+  uint32 numclients = 1;
+}
+
+// Next tag: 2
+message PickReq {
+  string client = 1;
+}
+
+// Next tag: 2
+message PickReply {
+  string server = 1;
+}
+
+// Next tag: 3
+message BcastRoutingRequest {
+  // the routing request to broadcast
+  RoutingRequest req = 1;
+  // peer OSPs to send the request to
+  repeated string osps = 2;
+}
+
+// Next tag: 1
+message BcastRoutingReply {
+}

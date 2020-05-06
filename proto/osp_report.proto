@@ -1,0 +1,57 @@
+// Copyright 2020 Celer Network
+
+syntax = "proto3";
+option go_package = "github.com/celer-network/goCeler/route/ospreport";
+package ospreport;
+
+// OSP voluntarily periodically send OspReport to the Celer Explorer server
+message OspReport {
+    // serialized OspInfo
+    bytes osp_info = 1;
+    // signature of osp_info, signed by OSP eth address
+    bytes sig = 2;
+}
+
+message OspInfo {
+    // OSP eth address
+    string eth_addr = 1;
+    // UTC unix timestamp in second
+    uint64 timestamp = 2;
+    // server public rpc host:port
+    string rpc_host = 3;
+    repeated PeerBalances osp_peers = 4;
+    // number of payments processed
+    int64 payments = 5;
+    // accept anyone to connect
+    bool open_accept = 6;
+    // standard open channel configuration
+    repeated StdOpenChanConfig std_openchan_configs = 7;
+    AdminInfo admin_info = 8;
+}
+
+message PeerBalances {
+    string peer = 1;
+    repeated ChannelBalance balances = 2;
+}
+
+message ChannelBalance {
+    string cid = 1;
+    string token_addr = 2;
+    string self_balance = 3;
+    string peer_balance = 4;
+}
+
+// standard open channel config
+message StdOpenChanConfig {
+    string token_addr = 1;
+    string min_deposit = 2;
+    string max_deposit = 3;
+}
+
+message AdminInfo {
+    string name = 1;
+    string email = 2;
+    string organization = 3;
+    string address = 4;
+    string website = 5;
+}

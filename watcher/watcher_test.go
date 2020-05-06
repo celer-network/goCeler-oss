@@ -1,4 +1,4 @@
-// Copyright 2018 Celer Network
+// Copyright 2018-2020 Celer Network
 
 package watcher
 
@@ -9,14 +9,14 @@ import (
 	"math/rand"
 	"os"
 	"os/user"
-	"path"
+	"path/filepath"
 	"reflect"
 	"testing"
 	"time"
 
-	"github.com/celer-network/goCeler-oss/chain/channel-eth-go/ledger"
-	"github.com/celer-network/goCeler-oss/ctype"
-	"github.com/celer-network/goCeler-oss/storage"
+	"github.com/celer-network/goCeler/chain/channel-eth-go/ledger"
+	"github.com/celer-network/goCeler/ctype"
+	"github.com/celer-network/goCeler/storage"
 	ethereum "github.com/ethereum/go-ethereum"
 	ethcommon "github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -26,18 +26,19 @@ const (
 	perBlock = 3         // Number of log events per block
 	bigIndex = 999999999 // Testing a visible "Removed" log
 	errProb  = 10        // Random on-chain error probability 1/N
+	stDriver = "sqlite3"
 )
 
 func init() {
-	rand.Seed(time.Now().UTC().UnixNano())
+	rand.Seed(time.Now().UnixNano())
 }
 
-// Return a temporary store root directory for testing without creating it.
-func storeRootDir() string {
+// Return a temporary store file for testing without creating the file.
+func tempStoreFile() string {
 	user, _ := user.Current()
 	ts := time.Now().UnixNano() / 1000
-	dir := fmt.Sprintf("store-%s-%d", user.Username, ts)
-	return path.Join(os.TempDir(), dir)
+	dir := fmt.Sprintf("sql-store-%s-%d.db", user.Username, ts)
+	return filepath.Join(os.TempDir(), dir)
 }
 
 func fakeLog(pos int) types.Log {
@@ -176,10 +177,10 @@ func consumeSome(t *testing.T, w *Watch, num, start int) {
 }
 
 func TestWatcher(t *testing.T) {
-	dir := storeRootDir()
-	defer os.RemoveAll(dir)
+	stFile := tempStoreFile()
+	defer os.Remove(stFile)
 
-	st, _ := storage.NewKVStoreLocal(dir, false)
+	st, _ := storage.NewKVStoreSQL(stDriver, stFile)
 	defer st.Close()
 	dal := storage.NewDAL(st)
 
@@ -228,10 +229,10 @@ func TestWatcher(t *testing.T) {
 }
 
 func TestBadWatcher(t *testing.T) {
-	dir := storeRootDir()
-	defer os.RemoveAll(dir)
+	stFile := tempStoreFile()
+	defer os.Remove(stFile)
 
-	st, _ := storage.NewKVStoreLocal(dir, false)
+	st, _ := storage.NewKVStoreSQL(stDriver, stFile)
 	defer st.Close()
 	dal := storage.NewDAL(st)
 
@@ -331,10 +332,10 @@ func TestBadWatcher(t *testing.T) {
 }
 
 func TestWatcherRestart(t *testing.T) {
-	dir := storeRootDir()
-	defer os.RemoveAll(dir)
+	stFile := tempStoreFile()
+	defer os.Remove(stFile)
 
-	st, _ := storage.NewKVStoreLocal(dir, false)
+	st, _ := storage.NewKVStoreSQL(stDriver, stFile)
 	dal := storage.NewDAL(st)
 
 	polling := 20 // msec
@@ -358,7 +359,7 @@ func TestWatcherRestart(t *testing.T) {
 	st.Close()
 
 	// App restart.
-	st, _ = storage.NewKVStoreLocal(dir, false)
+	st, _ = storage.NewKVStoreSQL(stDriver, stFile)
 	dal = storage.NewDAL(st)
 	client = NewFakeClient(blkSleep, true)
 	ws = makeWatchService(client, dal, uint64(polling))
@@ -377,7 +378,8 @@ func TestWatcherRestart(t *testing.T) {
 	st.Close()
 
 	// App restart, this time ignore persistence and reset the subscription.
-	st, _ = storage.NewKVStoreLocal(dir, false)
+	st, _ = storage.NewKVStoreSQL(stDriver, stFile)
+	defer st.Close()
 	dal = storage.NewDAL(st)
 	client = NewFakeClient(blkSleep, true)
 	ws = makeWatchService(client, dal, uint64(polling))
@@ -391,10 +393,10 @@ func TestWatcherRestart(t *testing.T) {
 }
 
 func TestWatcherServiceClose(t *testing.T) {
-	dir := storeRootDir()
-	defer os.RemoveAll(dir)
+	stFile := tempStoreFile()
+	defer os.Remove(stFile)
 
-	st, _ := storage.NewKVStoreLocal(dir, false)
+	st, _ := storage.NewKVStoreSQL(stDriver, stFile)
 	dal := storage.NewDAL(st)
 
 	polling := 20 // msec
@@ -429,10 +431,10 @@ func TestMakeFilterQuery(t *testing.T) {
 	peer := "5963e46cf9f9700e70d4d1bc09210711ab4a20b4"
 	abi := ledger.CelerLedgerABI
 
-	dir := storeRootDir()
-	defer os.RemoveAll(dir)
+	stFile := tempStoreFile()
+	defer os.Remove(stFile)
 
-	st, _ := storage.NewKVStoreLocal(dir, false)
+	st, _ := storage.NewKVStoreSQL(stDriver, stFile)
 	defer st.Close()
 	dal := storage.NewDAL(st)
 
@@ -452,7 +454,7 @@ func TestMakeFilterQuery(t *testing.T) {
 	if err != nil {
 		t.Errorf("Cannot create FilterQuery for %s: %v", name, err)
 	}
-	expAddr := []ethcommon.Address{addr}
+	expAddr := []ctype.Addr{addr}
 	if q.FromBlock.Cmp(startBlock) != 0 {
 		t.Errorf("Wrong start block: %v != %v", q.FromBlock, startBlock)
 	}

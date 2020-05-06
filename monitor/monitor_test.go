@@ -1,4 +1,4 @@
-// Copyright 2018 Celer Network
+// Copyright 2018-2020 Celer Network
 
 package monitor_test
 
@@ -9,16 +9,17 @@ import (
 	"io/ioutil"
 	"math/big"
 	"os"
+	"path/filepath"
 	"sync/atomic"
 	"testing"
 	"time"
 
-	"github.com/celer-network/goCeler-oss/chain/channel-eth-go/ledger"
-	log "github.com/celer-network/goCeler-oss/clog"
-	"github.com/celer-network/goCeler-oss/ctype"
-	"github.com/celer-network/goCeler-oss/monitor"
-	"github.com/celer-network/goCeler-oss/storage"
-	"github.com/celer-network/goCeler-oss/watcher"
+	"github.com/celer-network/goCeler/chain/channel-eth-go/ledger"
+	"github.com/celer-network/goCeler/ctype"
+	"github.com/celer-network/goCeler/monitor"
+	"github.com/celer-network/goCeler/storage"
+	"github.com/celer-network/goCeler/watcher"
+	"github.com/celer-network/goutils/log"
 	ethereum "github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/core/types"
 )
@@ -79,7 +80,9 @@ func watchService() (*watcher.WatchService, *fakeClient, string, error) {
 	if err != nil {
 		return nil, nil, "", err
 	}
-	st, err := storage.NewKVStoreLocal(dir, false)
+	stFile := filepath.Join(dir, "sql-store.db")
+
+	st, err := storage.NewKVStoreSQL("sqlite3", stFile)
 	if err != nil {
 		return nil, nil, "", err
 	}

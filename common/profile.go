@@ -1,4 +1,4 @@
-// Copyright 2018-2019 Celer Network
+// Copyright 2018-2020 Celer Network
 
 package common
 
@@ -22,17 +22,18 @@ type ProfileJSON struct {
 }
 
 type ProfileEthereum struct {
-	Gateway                                  string
-	ChainId, BlockIntervalSec, BlockDelayNum uint64
-	Contracts                                ProfileContracts
+	Gateway                                                  string
+	ChainId, BlockIntervalSec, BlockDelayNum, DisputeTimeout uint64
+	Contracts                                                ProfileContracts
 }
 
 type ProfileContracts struct {
 	Wallet, Ledger, VirtResolver, EthPool, PayResolver, PayRegistry, RouterRegistry string
+	Ledgers                                                                         map[string]string
 }
 
 type ProfileOsp struct {
-	Host, Address string
+	Host, Address, ExplorerUrl string
 }
 
 func (pj *ProfileJSON) ToCProfile() *CProfile {
@@ -41,6 +42,7 @@ func (pj *ProfileJSON) ToCProfile() *CProfile {
 		ETHInstance:        pj.Ethereum.Gateway,
 		BlockDelayNum:      pj.Ethereum.BlockDelayNum,
 		PollingInterval:    pj.Ethereum.BlockIntervalSec,
+		DisputeTimeout:     pj.Ethereum.DisputeTimeout,
 		WalletAddr:         pj.Ethereum.Contracts.Wallet,
 		LedgerAddr:         pj.Ethereum.Contracts.Ledger,
 		VirtResolverAddr:   pj.Ethereum.Contracts.VirtResolver,
@@ -48,8 +50,10 @@ func (pj *ProfileJSON) ToCProfile() *CProfile {
 		PayResolverAddr:    pj.Ethereum.Contracts.PayResolver,
 		PayRegistryAddr:    pj.Ethereum.Contracts.PayRegistry,
 		RouterRegistryAddr: pj.Ethereum.Contracts.RouterRegistry,
+		Ledgers:            pj.Ethereum.Contracts.Ledgers,
 		SvrETHAddr:         pj.Osp.Address,
 		SvrRPC:             pj.Osp.Host,
+		ExplorerUrl:        pj.Osp.ExplorerUrl,
 	}
 	return cp
 }
@@ -59,6 +63,13 @@ func (pj *ProfileJSON) ToCProfile() *CProfile {
 func ParseProfile(path string) *CProfile {
 	raw, _ := ioutil.ReadFile(path)
 	return Bytes2Profile(raw)
+}
+
+func ParseProfileJSON(path string) *ProfileJSON {
+	raw, _ := ioutil.ReadFile(path)
+	pj := new(ProfileJSON)
+	json.Unmarshal(raw, pj)
+	return pj
 }
 
 // Bytes2Profile does json.Unmarshal and return CProfile

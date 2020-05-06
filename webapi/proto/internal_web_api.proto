@@ -1,0 +1,16 @@
+// Copyright 2018-2020 Celer Network
+
+syntax = "proto3";
+
+option go_package = "github.com/celer-network/goCeler/webapi/rpc";
+
+package webrpc;
+
+import "web_api.proto";
+
+service InternalWebApi {
+  rpc OpenTrustedPaymentChannel(OpenPaymentChannelRequest) returns (ChannelID) {}
+  rpc InstantiateTrustedPaymentChannel(TokenInfo) returns (ChannelID) {}
+  rpc DepositNonBlocking(DepositOrWithdrawRequest) returns (DepositOrWithdrawJob) {}
+  rpc CooperativeWithdrawNonBlocking(DepositOrWithdrawRequest) returns (DepositOrWithdrawJob) {}
+}

@@ -1,15 +1,14 @@
 
 syntax = "proto3";
 
-option go_package = "github.com/celer-network/goCeler-oss/pem";
+option go_package = "github.com/celer-network/goCeler/pem";
 
 // To compile, run: protoc -I. -I../../proto  --go_out=plugins=grpc:$GOPATH/src pem.proto
 // assuming proto dir and goCeler dir are in same parent dir.
-import "entity.proto";
 import "message.proto";
 package pem;
 
-// Next tag: 17
+// Next tag: 18
 enum PayMessageType {
     UNDEFINED_TYPE = 0;
     COND_PAY_REQUEST = 1;
@@ -28,6 +27,8 @@ enum PayMessageType {
     SETTLE_ON_CHAIN_RESOLVED_PAY_API = 14;
     WITHDRAW_REQUEST = 15;
     WITHDRAW_RESPONSE = 16;
+    CONFIRM_BOOLEAN_PAY_API = 17;
+    ROUTING_REQUEST = 18;
 }
 // Next tag: 27
 message PayEventMessage {
@@ -76,6 +77,8 @@ message PayEventMessage {
     repeated PayEventMessage resend = 25;
     // event is part of a direct-payment
     bool direct_pay = 26;
+    // When filled, it means the node tries to delegate receiving the pay. This field logs delegation description
+    rpc.DelegationDescription delegation_description = 27;
 }
 
 message SimplexSeqNums {

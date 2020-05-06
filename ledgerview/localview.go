@@ -1,24 +1,24 @@
-// Copyright 2018-2019 Celer Network
+// Copyright 2018-2020 Celer Network
 
 package ledgerview
 
 import (
-	"errors"
 	"fmt"
 	"math/big"
 
-	log "github.com/celer-network/goCeler-oss/clog"
-	"github.com/celer-network/goCeler-oss/common"
-	"github.com/celer-network/goCeler-oss/config"
-	"github.com/celer-network/goCeler-oss/ctype"
-	"github.com/celer-network/goCeler-oss/entity"
-	"github.com/celer-network/goCeler-oss/rpc"
-	"github.com/celer-network/goCeler-oss/storage"
-	"github.com/celer-network/goCeler-oss/utils"
+	"github.com/celer-network/goCeler/common"
+	"github.com/celer-network/goCeler/common/structs"
+	"github.com/celer-network/goCeler/config"
+	"github.com/celer-network/goCeler/ctype"
+	"github.com/celer-network/goCeler/entity"
+	"github.com/celer-network/goCeler/rpc"
+	"github.com/celer-network/goCeler/storage"
+	"github.com/celer-network/goCeler/utils"
+	"github.com/celer-network/goutils/log"
 	"github.com/golang/protobuf/proto"
 )
 
-func GetBalance(dal *storage.DAL, cid ctype.CidType, myAddr string, blkNum uint64) (*common.ChannelBalance, error) {
+func GetBalance(dal *storage.DAL, cid ctype.CidType, myAddr ctype.Addr, blkNum uint64) (*common.ChannelBalance, error) {
 	var balance *common.ChannelBalance
 	err := dal.Transactional(getBalanceTx, cid, myAddr, blkNum, &balance)
 	return balance, err
@@ -26,7 +26,7 @@ func GetBalance(dal *storage.DAL, cid ctype.CidType, myAddr string, blkNum uint6
 
 func getBalanceTx(tx *storage.DALTx, args ...interface{}) error {
 	cid := args[0].(ctype.CidType)
-	myAddr := args[1].(string)
+	myAddr := args[1].(ctype.Addr)
 	blkNum := args[2].(uint64)
 	balance := args[3].(**common.ChannelBalance)
 	bal, err := GetBalanceTx(tx, cid, myAddr, blkNum)
@@ -34,34 +34,64 @@ func getBalanceTx(tx *storage.DALTx, args ...interface{}) error {
 	return err
 }
 
-func GetBalanceTx(tx *storage.DALTx, cid ctype.CidType, myAddr string, blkNum uint64) (*common.ChannelBalance, error) {
-	peerAddr, err := tx.GetPeer(cid)
+func GetBalanceTx(tx *storage.DALTx, cid ctype.CidType, myAddr ctype.Addr, blkNum uint64) (*common.ChannelBalance, error) {
+	peer, onChainBalance, baseSeq, lastAckedSeq, selfSimplex, peerSimplex, found, err := tx.GetChanForBalance(cid)
 	if err != nil {
-		log.Errorln("GetBalanceTx: GetPeer:", err, "cid", cid.Hex())
-		return nil, err
+		return nil, fmt.Errorf("GetChanForBalance err: %w", err)
+	}
+	if !found {
+		return nil, common.ErrChannelNotFound
+	}
+	mySimplex, err := GetBaseSimplex(tx, cid, selfSimplex, baseSeq, lastAckedSeq)
+	if err != nil {
+		return nil, fmt.Errorf("GetBaseSimplex err: %w", err)
 	}
 
-	mySimplex, _, err := GetBaseSimplexChannel(tx, cid, myAddr)
-	if err != nil {
-		log.Errorln("GetBalanceTx: mySimplex:", err, "cid", cid.Hex())
-		return nil, err
-	}
-	myLockedAmt := new(big.Int).SetBytes(mySimplex.TotalPendingAmount)
-	toPeerAmt := utils.BytesToBigInt(mySimplex.TransferToPeer.Receiver.Amt)
+	balance := ComputeBalance(mySimplex, peerSimplex, onChainBalance, myAddr, peer, blkNum)
+	return balance, nil
+}
 
-	peerSimplex, _, err := tx.GetSimplexPaymentChannel(cid, peerAddr)
-	if err != nil {
-		log.Errorln("GetBalanceTx: peerSimplex:", err, "cid", cid.Hex())
-		return nil, err
+func GetBaseSimplex(
+	tx *storage.DALTx,
+	cid ctype.CidType,
+	selfSimplex *entity.SimplexPaymentChannel,
+	baseSeq, lastAckedSeq uint64) (*entity.SimplexPaymentChannel, error) {
+
+	if baseSeq > lastAckedSeq {
+		msg, found, err := tx.GetChanMessage(cid, baseSeq)
+		if err != nil || !found {
+			return nil, fmt.Errorf("GetChanMessage failed: cid %x, seq %d, err %w", cid, baseSeq, err)
+		}
+		var simplexChannel entity.SimplexPaymentChannel
+		var simplexState *rpc.SignedSimplexState
+		if msg.GetCondPayRequest() != nil {
+			simplexState = msg.GetCondPayRequest().GetStateOnlyPeerFromSig()
+		} else if msg.GetPaymentSettleRequest() != nil {
+			simplexState = msg.GetPaymentSettleRequest().GetStateOnlyPeerFromSig()
+		} else {
+			log.Errorln(common.ErrInvalidMsgType, msg)
+			return nil, common.ErrInvalidMsgType
+		}
+		err = proto.Unmarshal(simplexState.GetSimplexState(), &simplexChannel)
+		if err != nil {
+			return nil, err
+		}
+		return &simplexChannel, nil
 	}
+	return selfSimplex, nil
+}
+
+func ComputeBalance(
+	selfSimplex, peerSimplex *entity.SimplexPaymentChannel,
+	onChainBalance *structs.OnChainBalance,
+	myAddr, peerAddr ctype.Addr,
+	blkNum uint64) *common.ChannelBalance {
+
+	myLockedAmt := new(big.Int).SetBytes(selfSimplex.TotalPendingAmount)
+	toPeerAmt := utils.BytesToBigInt(selfSimplex.TransferToPeer.Receiver.Amt)
+
 	peerLockedAmt := new(big.Int).SetBytes(peerSimplex.TotalPendingAmount)
 	fromPeerAmt := utils.BytesToBigInt(peerSimplex.TransferToPeer.Receiver.Amt)
-
-	onChainBalance, err := tx.GetOnChainBalance(cid)
-	if err != nil {
-		log.Errorln("GetBalanceTx: on-chain balance:", err, "cid", cid.Hex())
-		return nil, err
-	}
 
 	// myFree = myDeposit + fromPeerAmt - myWithdrawal - toPeerAmt - myLockedAmt - myPendingWithdrawal
 	myFree := new(big.Int).Add(onChainBalance.MyDeposit, fromPeerAmt)
@@ -76,7 +106,7 @@ func GetBalanceTx(tx *storage.DALTx, cid ctype.CidType, myAddr string, blkNum ui
 	peerFree.Sub(peerFree, peerLockedAmt)
 
 	if blkNum <= onChainBalance.PendingWithdrawal.Deadline+config.WithdrawTimeoutSafeMargin {
-		if onChainBalance.PendingWithdrawal.Receiver == ctype.Hex2Addr(myAddr) {
+		if onChainBalance.PendingWithdrawal.Receiver == myAddr {
 			myFree.Sub(myFree, onChainBalance.PendingWithdrawal.Amount)
 		} else {
 			peerFree.Sub(peerFree, onChainBalance.PendingWithdrawal.Amount)
@@ -91,71 +121,5 @@ func GetBalanceTx(tx *storage.DALTx, cid ctype.CidType, myAddr string, blkNum ui
 		PeerFree:   peerFree,
 		PeerLocked: peerLockedAmt,
 	}
-	return balance, nil
-}
-
-func GetBaseSimplexChannel(
-	tx *storage.DALTx,
-	cid ctype.CidType,
-	myAddr string) (*entity.SimplexPaymentChannel, *common.ChannelSeqNums, error) {
-
-	seqNums, err := tx.GetChannelSeqNums(cid)
-	if err != nil {
-		// new peer or newly upgraded code
-		return GetChannelSeqNumsFromSimplexState(tx, cid, myAddr)
-	}
-	if seqNums.Base > seqNums.LastAcked {
-		msg, err2 := tx.GetChannelMessage(cid, seqNums.Base)
-		if err2 != nil {
-			err3 := fmt.Errorf("GetChannelMessage failed: %s cid %x, seq %d", err2.Error(), cid, seqNums.Base)
-			return nil, seqNums, err3
-		}
-		var simplexChannel entity.SimplexPaymentChannel
-		var simplexState *rpc.SignedSimplexState
-		if msg.GetCondPayRequest() != nil {
-			simplexState = msg.GetCondPayRequest().GetStateOnlyPeerFromSig()
-		} else if msg.GetPaymentSettleRequest() != nil {
-			simplexState = msg.GetPaymentSettleRequest().GetStateOnlyPeerFromSig()
-		} else {
-			log.Errorln(common.ErrInvalidMsgType, msg)
-			return nil, seqNums, common.ErrInvalidMsgType
-		}
-		err2 = proto.Unmarshal(simplexState.GetSimplexState(), &simplexChannel)
-		if err2 != nil {
-			return nil, seqNums, err2
-		}
-		return &simplexChannel, seqNums, nil
-	}
-	cosignedSimplex, _, err2 := tx.GetSimplexPaymentChannel(cid, myAddr)
-	if err2 != nil {
-		return nil, seqNums, common.ErrSimplexStateNotFound
-	}
-	return cosignedSimplex, seqNums, nil
-}
-
-func GetChannelSeqNumsFromSimplexState(
-	tx *storage.DALTx,
-	cid ctype.CidType,
-	myAddr string) (*entity.SimplexPaymentChannel, *common.ChannelSeqNums, error) {
-	exist, err := tx.HasChannelSeqNums(cid)
-	if err != nil {
-		return nil, nil, err
-	}
-	if exist {
-		return nil, nil, errors.New("ChannelSeqNums table already exist")
-	}
-
-	simplex, _, err := tx.GetSimplexPaymentChannel(cid, myAddr)
-	if err != nil {
-		log.Errorln("GetChannelSeqNumsFromSimplexState err", err, cid.Hex())
-		return nil, nil, common.ErrSimplexStateNotFound
-	}
-	seqnum := simplex.GetSeqNum()
-	seqNums := common.ChannelSeqNums{
-		LastAcked: seqnum,
-		LastUsed:  seqnum,
-		Base:      seqnum,
-	}
-
-	return simplex, &seqNums, nil
+	return balance
 }

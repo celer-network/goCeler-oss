@@ -1,4 +1,4 @@
-// Copyright 2018 Celer Network
+// Copyright 2018-2020 Celer Network
 
 package monitor
 
@@ -10,11 +10,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/celer-network/goCeler-oss/chain"
-	log "github.com/celer-network/goCeler-oss/clog"
-	"github.com/celer-network/goCeler-oss/config"
-	"github.com/celer-network/goCeler-oss/watcher"
-	ethcommon "github.com/ethereum/go-ethereum/common"
+	"github.com/celer-network/goCeler/chain"
+	"github.com/celer-network/goCeler/config"
+	"github.com/celer-network/goCeler/ctype"
+	"github.com/celer-network/goCeler/watcher"
+	"github.com/celer-network/goutils/log"
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
 )
 
@@ -58,7 +58,7 @@ func (dq *DeadlineQueue) Top() (top interface{}) {
 
 // Event is the metadata for an event
 type Event struct {
-	Addr       ethcommon.Address
+	Addr       ctype.Addr
 	RawAbi     string
 	Name       string
 	WatchName  string
@@ -104,6 +104,13 @@ func NewService(
 func (s *Service) Init() {
 	heap.Init(&s.deadlineQueue)
 	go s.monitorDeadlines() // start monitoring deadlines
+}
+
+// Close only set events map to empty map so all monitorEvent will exit due to isEventRemoved is true
+func (s *Service) Close() {
+	s.mu.Lock()
+	s.events = make(map[CallbackID]Event)
+	s.mu.Unlock()
 }
 
 func (s *Service) GetCurrentBlockNumber() *big.Int {
@@ -289,6 +296,7 @@ func (s *Service) monitorEvent(e Event, id CallbackID) {
 		}
 
 		// When event log is removed due to chain re-org, just ignore it
+		// TODO: emit error msg and properly roll back upon catching removed event log
 		if eventLog.Removed {
 			log.Warnf("Receive removed %s event log", e.Name)
 			if err = e.watch.Ack(); err != nil {
@@ -300,6 +308,7 @@ func (s *Service) monitorEvent(e Event, id CallbackID) {
 		}
 
 		// Stop watching if the event was removed
+		// TODO(mzhou): Also stop monitoring if timeout has passed
 		if s.isEventRemoved(id) {
 			e.watch.Close()
 			return
@@ -338,4 +347,9 @@ func (s *Service) RemoveEvent(id CallbackID) {
 		e.watch.Close()
 		delete(s.events, id)
 	}
+}
+
+// NewEventStr generates the event using contract address and event name in format "<addr>-<name>"
+func NewEventStr(ledgerAddr ctype.Addr, eventName string) string {
+	return fmt.Sprintf("%s-%s", ctype.Addr2Hex(ledgerAddr), eventName)
 }

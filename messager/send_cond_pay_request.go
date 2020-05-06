@@ -1,45 +1,113 @@
-// Copyright 2018-2019 Celer Network
+// Copyright 2018-2020 Celer Network
 
 package messager
 
 import (
+	"errors"
+	"fmt"
 	"math/big"
 
-	log "github.com/celer-network/goCeler-oss/clog"
-	"github.com/celer-network/goCeler-oss/common"
-	"github.com/celer-network/goCeler-oss/ctype"
-	"github.com/celer-network/goCeler-oss/entity"
-	"github.com/celer-network/goCeler-oss/fsm"
-	"github.com/celer-network/goCeler-oss/ledgerview"
-	"github.com/celer-network/goCeler-oss/pem"
-	"github.com/celer-network/goCeler-oss/rpc"
-	"github.com/celer-network/goCeler-oss/rtconfig"
-	"github.com/celer-network/goCeler-oss/storage"
-	"github.com/celer-network/goCeler-oss/utils"
-	"github.com/celer-network/goCeler-oss/utils/hashlist"
+	"github.com/celer-network/goCeler/common"
+	enums "github.com/celer-network/goCeler/common/structs"
+	"github.com/celer-network/goCeler/ctype"
+	"github.com/celer-network/goCeler/delegate"
+	"github.com/celer-network/goCeler/entity"
+	"github.com/celer-network/goCeler/fsm"
+	"github.com/celer-network/goCeler/ledgerview"
+	"github.com/celer-network/goCeler/pem"
+	"github.com/celer-network/goCeler/rpc"
+	"github.com/celer-network/goCeler/rtconfig"
+	"github.com/celer-network/goCeler/storage"
+	"github.com/celer-network/goCeler/utils"
+	"github.com/celer-network/goCeler/utils/hashlist"
+	"github.com/celer-network/goutils/log"
 	"github.com/golang/protobuf/proto"
+	"github.com/golang/protobuf/ptypes"
 	"github.com/golang/protobuf/ptypes/any"
 )
 
-func (m *Messager) SendCondPayRequest(pay *entity.ConditionalPay, note *any.Any, logEntry *pem.PayEventMessage) error {
-	payBytes, err := proto.Marshal(pay)
+func (m *Messager) SendCondPayRequest(payBytes []byte, note *any.Any, logEntry *pem.PayEventMessage) error {
+	pay, cid, peer, celerMsg, directPay, err := m.getPayNextHopAndCelerMsg(payBytes, note, logEntry)
 	if err != nil {
 		return err
 	}
 
+	isLocalPeer, err := m.serverForwarder(peer, true, celerMsg)
+	if !isLocalPeer {
+		if err == nil {
+			return nil // handled by another server
+		} else if !directPay {
+			return err // must retry when peer reconnects
+		}
+	}
+	// It's either meant to a local peer or it's a failed forwarding
+	// of a direct-pay.  In both cases handle it locally which puts
+	// the message in the queue for delivery (now or later).
+	return m.sendCondPayRequest(payBytes, pay, note, cid, peer, logEntry)
+}
+
+func (m *Messager) ForwardCondPayRequest(payBytes []byte, note *any.Any, delegable bool, logEntry *pem.PayEventMessage) error {
+	pay, cid, peer, celerMsg, _, err := m.getPayNextHopAndCelerMsg(payBytes, note, logEntry)
+	if err != nil {
+		return err
+	}
+	// if delegable, do not retry on multiserver forward failure
+	isLocalPeer, err := m.serverForwarder(peer, !delegable, celerMsg)
+	if err != nil {
+		return err
+	}
+	if isLocalPeer {
+		return m.sendCondPayRequest(payBytes, pay, note, cid, peer, logEntry)
+	}
+
+	return nil
+}
+
+func (m *Messager) ForwardCondPayRequestMsg(frame *common.MsgFrame) error {
+	msg := frame.Message
+	logEntry := frame.LogEntry
+	payBytes := msg.GetCondPayRequest().GetCondPay()
+
+	pay, cid, peer, _, err := m.getPayNextHop(payBytes, logEntry)
+	if err != nil {
+		return err
+	}
+
+	logEntry.PayId = ctype.PayID2Hex(ctype.Pay2PayID(pay))
+	logEntry.Dst = ctype.Bytes2Hex(pay.GetDest())
+
+	return m.sendCondPayRequest(payBytes, pay, msg.GetCondPayRequest().GetNote(), cid, peer, logEntry)
+}
+
+func (m *Messager) getPayNextHop(payBytes []byte, logEntry *pem.PayEventMessage) (
+	*entity.ConditionalPay, ctype.CidType, ctype.Addr, bool, error) {
+
+	var pay entity.ConditionalPay
+	err := proto.Unmarshal(payBytes, &pay)
+	if err != nil {
+		return nil, ctype.ZeroCid, ctype.ZeroAddr, false, err
+	}
 	token := pay.GetTransferFunc().GetMaxTransfer().GetToken()
-	cid, peer, err := m.channelRouter.LookupNextChannelOnToken(
-		ctype.Bytes2Hex(pay.GetDest()), utils.GetTokenAddrStr(token))
+	cid, peer, err := m.routeForwarder.LookupNextChannelOnToken(
+		ctype.Bytes2Addr(pay.GetDest()), utils.GetTokenAddr(token))
 	if err != nil {
-		log.Error(err)
-		return err
-	}
-	if cid == ctype.ZeroCid {
-		log.Errorln(common.ErrRouteNotFound, "dst", ctype.Bytes2Hex(pay.GetDest()), "src", ctype.Bytes2Hex(pay.GetSrc()))
-		return common.ErrRouteNotFound
+		return nil, ctype.ZeroCid, ctype.ZeroAddr, false, err
 	}
 
-	directPay := m.IsDirectPay(pay, peer)
+	directPay := m.IsDirectPay(&pay, peer)
+	logEntry.MsgTo = ctype.Addr2Hex(peer)
+	logEntry.ToCid = ctype.Cid2Hex(cid)
+	logEntry.DirectPay = directPay
+
+	return &pay, cid, peer, directPay, nil
+}
+
+func (m *Messager) getPayNextHopAndCelerMsg(payBytes []byte, note *any.Any, logEntry *pem.PayEventMessage) (
+	*entity.ConditionalPay, ctype.CidType, ctype.Addr, *rpc.CelerMsg, bool, error) {
+	pay, cid, peer, directPay, err := m.getPayNextHop(payBytes, logEntry)
+	if err != nil {
+		return nil, ctype.ZeroCid, ctype.ZeroAddr, nil, false, err
+	}
 	celerMsg := &rpc.CelerMsg{
 		Message: &rpc.CelerMsg_CondPayRequest{
 			CondPayRequest: &rpc.CondPayRequest{
@@ -49,85 +117,39 @@ func (m *Messager) SendCondPayRequest(pay *entity.ConditionalPay, note *any.Any,
 			},
 		},
 	}
-
-	logEntry.MsgTo = peer
-	logEntry.ToCid = ctype.Cid2Hex(cid)
-	logEntry.DirectPay = directPay
-
-	if isLocalPeer, errf := m.serverForwarder(peer, celerMsg); errf != nil {
-		log.Errorln(errf)
-		err = errf
-	} else if isLocalPeer {
-		err = m.sendCondPayRequest(pay, note, cid, peer, logEntry)
-	}
-	return err
-}
-
-func (m *Messager) ForwardCondPayRequestMsg(frame *common.MsgFrame) error {
-	msg := frame.Message
-	logEntry := frame.LogEntry
-	var pay entity.ConditionalPay
-	err := proto.Unmarshal(msg.GetCondPayRequest().GetCondPay(), &pay)
-	if err != nil {
-		log.Error(err)
-		return err
-	}
-	logEntry.PayId = ctype.PayID2Hex(ctype.Pay2PayID(&pay))
-	logEntry.Dst = ctype.Bytes2Hex(pay.GetDest())
-	cid, peer, err := m.channelRouter.LookupNextChannelOnToken(
-		ctype.Bytes2Hex(pay.Dest), utils.GetTokenAddrStr(pay.TransferFunc.MaxTransfer.Token))
-	if err != nil {
-		log.Error(err)
-		return err
-	}
-
-	directPay := m.IsDirectPay(&pay, peer)
-	logEntry.MsgTo = peer
-	logEntry.ToCid = ctype.Cid2Hex(cid)
-	logEntry.DirectPay = directPay
-
-	err = m.sendCondPayRequest(&pay, msg.GetCondPayRequest().GetNote(), cid, peer, logEntry)
-	return err
+	return pay, cid, peer, celerMsg, directPay, nil
 }
 
 func (m *Messager) sendCondPayRequest(
-	pay *entity.ConditionalPay, note *any.Any, cidNextHop ctype.CidType, peerTo string, logEntry *pem.PayEventMessage) error {
+	payBytes []byte, pay *entity.ConditionalPay, note *any.Any, cid ctype.CidType, peerTo ctype.Addr, logEntry *pem.PayEventMessage) error {
 
 	payID := ctype.Pay2PayID(pay)
 	directPay := m.IsDirectPay(pay, peerTo)
 	log.Debugf("Send pay request %x, src %x, dst %x, direct %t", payID, pay.GetSrc(), pay.GetDest(), directPay)
-	payBytes, err := proto.Marshal(pay)
-	if err != nil {
-		return err
-	}
 
 	// verify pay destination
-	if ctype.Bytes2Addr(pay.GetDest()) == ctype.Hex2Addr(m.nodeConfig.GetOnChainAddr()) {
-		log.Errorln(common.ErrInvalidPayDst, utils.PrintConditionalPay(pay))
+	if ctype.Bytes2Addr(pay.GetDest()) == m.nodeConfig.GetOnChainAddr() {
 		return common.ErrInvalidPayDst
 	}
 
 	// verify payment deadline is within limit
-	if pay.GetResolveDeadline() >
-		m.monitorService.GetCurrentBlockNumber().Uint64()+rtconfig.GetMaxPaymentTimeout() {
-		log.Errorln(common.ErrInvalidPayDeadline,
-			pay.GetResolveDeadline(), m.monitorService.GetCurrentBlockNumber().Uint64())
-		return common.ErrInvalidPayDeadline
+	blknum := m.monitorService.GetCurrentBlockNumber().Uint64()
+	if pay.GetResolveDeadline() > blknum+rtconfig.GetMaxPaymentTimeout() {
+		return fmt.Errorf("%w, deadline %d current %d", common.ErrInvalidPayDeadline, pay.GetResolveDeadline(), blknum)
 	}
 
 	var seqnum uint64
 	var celerMsg *rpc.CelerMsg
-
-	err = m.dal.Transactional(m.runCondPayTx, cidNextHop, payID, pay, payBytes, note, directPay, &seqnum, &celerMsg)
+	err := m.dal.Transactional(m.runCondPayTx, cid, payID, pay, payBytes, note, directPay, &seqnum, &celerMsg)
 	if err != nil {
 		return err
 	}
-	err = m.msgQueue.AddMsg(peerTo, cidNextHop, seqnum, celerMsg)
+	err = m.msgQueue.AddMsg(peerTo, cid, seqnum, celerMsg)
 	if err != nil {
-		// this can only happen when peer got disconnected after sendCondPayRequest() is called
-		// not return AddMsg, as db has been updated and rolling back is complicated
-		// the msg will be sent out when the peer reconnected, though the msg itself might be outdated.
-		log.Warnln(err, cidNextHop.Hex())
+		// This can only happen when peer got disconnected after sendCondPayRequest() is called.
+		// We do not return AddMsg error, as db has been updated and rolling back is complicated.
+		// The msg will be sent out when the peer reconnected, though the pay itself might be expired.
+		log.Warnln(err, cid.Hex())
 	}
 	logEntry.SeqNums.Out = seqnum
 	logEntry.SeqNums.OutBase = celerMsg.GetCondPayRequest().GetBaseSeq()
@@ -136,85 +158,95 @@ func (m *Messager) sendCondPayRequest(
 }
 
 func (m *Messager) runCondPayTx(tx *storage.DALTx, args ...interface{}) error {
-	cidNextHop := args[0].(ctype.CidType)
+	cid := args[0].(ctype.CidType)
 	payID := args[1].(ctype.PayIDType)
-	condPay := args[2].(*entity.ConditionalPay)
+	pay := args[2].(*entity.ConditionalPay)
 	payBytes := args[3].([]byte)
 	note := args[4].(*any.Any)
 	directPay := args[5].(bool)
 	retSeqNum := args[6].(*uint64)
 	retCelerMgr := args[7].(**rpc.CelerMsg)
 
-	// channel state machine
-	err := fsm.OnPscUpdateSimplex(tx, cidNextHop)
+	peer, chanState, onChainBalance, baseSeq, lastUsedSeq, lastAckedSeq,
+		selfSimplex, peerSimplex, found, err := tx.GetChanForSendCondPayRequest(cid)
 	if err != nil {
-		log.Error(err)
-		return err
+		return fmt.Errorf("GetChanForSendCondPayRequest err %w", err)
+	}
+	if !found {
+		return common.ErrChannelNotFound
+	}
+	err = fsm.OnChannelUpdate(cid, chanState)
+	if err != nil {
+		return fmt.Errorf("OnChannelUpdate err %w", err)
 	}
 
-	// payment state machine
-	if directPay {
-		_, _, err = fsm.OnPayEgressDirectOneSigPaid(tx, payID, cidNextHop)
-	} else {
-		_, _, err = fsm.OnPayEgressOneSigPending(tx, payID, cidNextHop)
-	}
+	workingSimplex, err := ledgerview.GetBaseSimplex(tx, cid, selfSimplex, baseSeq, lastAckedSeq)
 	if err != nil {
-		log.Error(err)
-		return err
+		return fmt.Errorf("GetBaseSimplex err %w", err)
 	}
 
 	blkNum := m.monitorService.GetCurrentBlockNumber().Uint64()
-	balance, err := ledgerview.GetBalanceTx(tx, cidNextHop, m.nodeConfig.GetOnChainAddr(), blkNum)
-	if err != nil {
-		log.Errorln(err, "unabled to find balance for cidNextHop", cidNextHop.Hex())
-		return err
+	balance := ledgerview.ComputeBalance(
+		workingSimplex, peerSimplex, onChainBalance, m.nodeConfig.GetOnChainAddr(), peer, blkNum)
+	sendAmt := new(big.Int).SetBytes(pay.GetTransferFunc().GetMaxTransfer().GetReceiver().GetAmt())
+	// OSP refill if free balance is below threshold
+	if m.isOSP && chanState == enums.ChanState_OPENED {
+		tokenAddr := utils.GetTokenAddrStr(pay.TransferFunc.MaxTransfer.Token)
+		refillThreshold := rtconfig.GetRefillThreshold(tokenAddr)
+		newMyFree := new(big.Int).Sub(balance.MyFree, sendAmt)
+		if refillThreshold.Cmp(newMyFree) == 1 {
+			warnMsg := fmt.Sprintf("cid %x balance %s below refill threshold %s", cid, newMyFree, refillThreshold)
+			refillAmount, maxWait := rtconfig.GetRefillAmountAndMaxWait(tokenAddr)
+			depositID, err2 := m.depositProcessor.RequestRefillTx(tx, cid, refillAmount, maxWait)
+			if err2 == nil {
+				log.Warnln(warnMsg, "triggered by pay", ctype.PayID2Hex(payID), "refill", refillAmount, "job ID:", depositID)
+			} else if errors.Is(err2, common.ErrPendingRefill) {
+				log.Warnln(warnMsg, "triggered by pay", ctype.PayID2Hex(payID), "refill pending")
+			} else {
+				return fmt.Errorf("refill err %w", err2)
+			}
+		}
 	}
-	sendAmt := new(big.Int).SetBytes(condPay.GetTransferFunc().GetMaxTransfer().GetReceiver().GetAmt())
 	if sendAmt.Cmp(balance.MyFree) == 1 {
 		// No enough sending capacity to send the new pay.
-		log.Errorln("Not enough balance to send on", cidNextHop.Hex(), "need:", sendAmt, "have:", balance.MyFree)
-		return common.ErrNoEnoughBalance
+		return fmt.Errorf("%w, need %s free %s", common.ErrNoEnoughBalance, sendAmt.String(), balance.MyFree.String())
 	}
 
-	workingSimplex, seqNums, err :=
-		ledgerview.GetBaseSimplexChannel(tx, cidNextHop, m.nodeConfig.GetOnChainAddr())
-	if err != nil {
-		log.Errorln("GetSimplexPaymentChannel", err, cidNextHop.Hex())
-		return err
-	}
-
-	baseSeq := workingSimplex.SeqNum
-	workingSimplex.SeqNum = seqNums.LastUsed + 1
-	seqNums.LastUsed = workingSimplex.SeqNum
-	seqNums.Base = seqNums.LastUsed
+	baseSeq = workingSimplex.SeqNum
+	workingSimplex.SeqNum = lastUsedSeq + 1
+	lastUsedSeq = workingSimplex.SeqNum
 
 	if directPay {
 		amt := new(big.Int).SetBytes(workingSimplex.TransferToPeer.Receiver.Amt)
 		workingSimplex.TransferToPeer.Receiver.Amt = amt.Add(amt, sendAmt).Bytes()
 	} else {
 		if hashlist.Exist(workingSimplex.PendingPayIds.PayIds, payID[:]) {
-			log.Errorln(common.ErrPayAlreadyPending, payID.Hex())
 			return common.ErrPayAlreadyPending
 		}
 		workingSimplex.PendingPayIds.PayIds = append(workingSimplex.PendingPayIds.PayIds, payID[:])
 
 		// verify number of pending pays is within limit
 		if len(workingSimplex.PendingPayIds.PayIds) > int(rtconfig.GetMaxNumPendingPays()) {
-			log.Errorln(common.ErrTooManyPendingPays, len(workingSimplex.PendingPayIds.PayIds))
-			return common.ErrTooManyPendingPays
+			return fmt.Errorf("%w: %d", common.ErrTooManyPendingPays, len(workingSimplex.PendingPayIds.PayIds))
 		}
 
 		totalPendingAmt := new(big.Int).SetBytes(workingSimplex.TotalPendingAmount)
 		workingSimplex.TotalPendingAmount = totalPendingAmt.Add(totalPendingAmt, sendAmt).Bytes()
 
-		if condPay.GetResolveDeadline() > workingSimplex.GetLastPayResolveDeadline() {
-			workingSimplex.LastPayResolveDeadline = condPay.ResolveDeadline
+		if pay.GetResolveDeadline() > workingSimplex.GetLastPayResolveDeadline() {
+			workingSimplex.LastPayResolveDeadline = pay.ResolveDeadline
 		}
 	}
 
 	var workingSimplexState rpc.SignedSimplexState
-	workingSimplexState.SimplexState, _ = proto.Marshal(workingSimplex)
-	workingSimplexState.SigOfPeerFrom, _ = m.signer.Sign(workingSimplexState.SimplexState)
+	workingSimplexState.SimplexState, err = proto.Marshal(workingSimplex)
+	if err != nil {
+		return fmt.Errorf("marshal simplex state err %w", err)
+	}
+	workingSimplexState.SigOfPeerFrom, err = m.signer.SignEthMessage(workingSimplexState.SimplexState)
+	if err != nil {
+		return fmt.Errorf("sign simplex state err %w", err)
+	}
 
 	request := &rpc.CondPayRequest{
 		CondPay:              payBytes,
@@ -231,10 +263,51 @@ func (m *Messager) runCondPayTx(tx *storage.DALTx, args ...interface{}) error {
 	*retSeqNum = workingSimplex.SeqNum
 	*retCelerMgr = celerMsg
 
-	err = tx.PutChannelSeqNums(cidNextHop, seqNums)
+	err = tx.InsertChanMessage(cid, *retSeqNum, celerMsg)
 	if err != nil {
-		log.Error(err)
-		return err
+		return fmt.Errorf("InsertChanMessage err %w", err)
 	}
-	return tx.PutChannelMessage(cidNextHop, *retSeqNum, celerMsg)
+
+	err = tx.UpdateChanForSendRequest(cid, lastUsedSeq, lastUsedSeq)
+	if err != nil {
+		return fmt.Errorf("UpdateChanForSendRequest err %w", err)
+	}
+
+	err = m.updateDelegatedPay(tx, payID, pay, note)
+	if err != nil {
+		return fmt.Errorf("updateDelegatedPay err %w", err)
+	}
+
+	found, egstate, err := fsm.OnCondPayRequestSent(tx, payID, cid, directPay)
+	if err != nil {
+		return fmt.Errorf("OnCondPayRequestSent err %w", err)
+	}
+	if !found {
+		err = tx.InsertPayment(payID, payBytes, pay, note, ctype.ZeroCid, enums.PayState_NULL, cid, egstate)
+		if err != nil {
+			return fmt.Errorf("InsertPayment err %w", err)
+		}
+	}
+	return nil
+}
+
+func (m *Messager) updateDelegatedPay(tx *storage.DALTx, payID ctype.PayIDType, pay *entity.ConditionalPay, note *any.Any) error {
+	dnote := &delegate.PayOriginNote{}
+	if ptypes.Is(note, dnote) && ctype.Bytes2Addr(pay.GetSrc()) == m.nodeConfig.GetOnChainAddr() {
+		err := ptypes.UnmarshalAny(note, dnote)
+		if err != nil {
+			return fmt.Errorf("UnmarshalAny err %w", err)
+		}
+		if !dnote.GetIsRefund() {
+			// TODO: make this API take an array of payIDs and update all in a single SQL statement (batch)
+			for _, op := range dnote.GetOriginalPays() {
+				pid := ctype.Bytes2PayID(op.GetPayId())
+				err = tx.UpdateSendingDelegatedPay(pid, payID)
+				if err != nil {
+					return fmt.Errorf("sending delegated pay error %x: %w", pid, err)
+				}
+			}
+		}
+	}
+	return nil
 }

@@ -1,4 +1,4 @@
-// Copyright 2018-2019 Celer Network
+// Copyright 2018-2020 Celer Network
 
 package dispute
 
@@ -6,79 +6,72 @@ import (
 	"bytes"
 	"fmt"
 	"math/big"
+	"time"
 
-	"github.com/celer-network/goCeler-oss/chain/channel-eth-go/ledger"
-	"github.com/celer-network/goCeler-oss/chain"
-	log "github.com/celer-network/goCeler-oss/clog"
-	"github.com/celer-network/goCeler-oss/common"
-	"github.com/celer-network/goCeler-oss/common/event"
-	"github.com/celer-network/goCeler-oss/ctype"
-	"github.com/celer-network/goCeler-oss/entity"
-	"github.com/celer-network/goCeler-oss/fsm"
-	"github.com/celer-network/goCeler-oss/metrics"
-	"github.com/celer-network/goCeler-oss/monitor"
-	"github.com/celer-network/goCeler-oss/storage"
+	"github.com/celer-network/goCeler/chain"
+	"github.com/celer-network/goCeler/chain/channel-eth-go/ledger"
+	"github.com/celer-network/goCeler/common"
+	"github.com/celer-network/goCeler/common/event"
+	enums "github.com/celer-network/goCeler/common/structs"
+	"github.com/celer-network/goCeler/ctype"
+	"github.com/celer-network/goCeler/fsm"
+	"github.com/celer-network/goCeler/ledgerview"
+	"github.com/celer-network/goCeler/metrics"
+	"github.com/celer-network/goCeler/monitor"
+	"github.com/celer-network/goCeler/storage"
+	"github.com/celer-network/goCeler/transactor"
+	"github.com/celer-network/goutils/log"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/golang/protobuf/proto"
 )
 
-func (p *Processor) IntendSettlePaymentChannel(cid ctype.CidType) error {
+type txMethod func(transactor bind.ContractTransactor, opts *bind.TransactOpts) (*types.Transaction, error)
+
+func (p *Processor) IntendSettlePaymentChannel(cid ctype.CidType, waitMined bool) error {
 	log.Infoln("Intend settle payment channel", cid.Hex())
-	err := p.dal.Transactional(fsm.OnPscIntendSettle, cid)
+	err := p.dal.Transactional(fsm.OnChannelIntendSettle, cid)
 	if err != nil {
 		log.Error(err)
 		return err
 	}
-	self := p.nodeConfig.GetOnChainAddr()
-	peer, err := p.dal.GetPeer(cid)
+
+	_, selfSimplex, _, peerSimplex, found, err := p.dal.GetDuplexChannel(cid)
 	if err != nil {
-		return fmt.Errorf("IntendSettle get channel peer failed %s", err)
+		log.Errorln("GetDuplexChannel failed:", err, cid.Hex())
+		return err
+	}
+	if !found {
+		log.Errorln("GetDuplexChannel not found:", cid.Hex())
+		return common.ErrChannelNotFound
 	}
 
 	var stateArray chain.SignedSimplexStateArray
-	simplexSelf, stateSelf, err := p.dal.GetSimplexPaymentChannel(cid, self)
-	if err == nil {
-		if len(stateSelf.SigOfPeerFrom) > 0 && len(stateSelf.SigOfPeerTo) > 0 {
-			sigSortedStateSelf, err2 := SigSortedSimplexState(stateSelf)
-			if err2 == nil {
-				stateArray.SignedSimplexStates = append(stateArray.SignedSimplexStates, sigSortedStateSelf)
-			} else {
-				log.Error(err2, "cid", cid.Hex())
-				return err2
-			}
+	if len(selfSimplex.SigOfPeerFrom) > 0 && len(selfSimplex.SigOfPeerTo) > 0 {
+		sigSortedStateSelf, err2 := SigSortedSimplexState(selfSimplex)
+		if err2 == nil {
+			stateArray.SignedSimplexStates = append(stateArray.SignedSimplexStates, sigSortedStateSelf)
+		} else {
+			log.Error(err2, "cid", cid.Hex())
+			return err2
 		}
-	} else {
-		log.Error(err, "cid", cid.Hex())
-		return err
 	}
-	_, statePeer, err := p.dal.GetSimplexPaymentChannel(cid, peer)
-	if err == nil {
-		if len(statePeer.SigOfPeerFrom) > 0 && len(statePeer.SigOfPeerTo) > 0 {
-			sigSortedStatePeer, err2 := SigSortedSimplexState(statePeer)
-			if err2 == nil {
-				stateArray.SignedSimplexStates = append(stateArray.SignedSimplexStates, sigSortedStatePeer)
-			} else {
-				log.Error(err2, "cid", cid.Hex())
-				return err2
-			}
+	if len(peerSimplex.SigOfPeerFrom) > 0 && len(peerSimplex.SigOfPeerTo) > 0 {
+		sigSortedStatePeer, err2 := SigSortedSimplexState(peerSimplex)
+		if err2 == nil {
+			stateArray.SignedSimplexStates = append(stateArray.SignedSimplexStates, sigSortedStatePeer)
+		} else {
+			log.Error(err2, "cid", cid.Hex())
+			return err2
 		}
-	} else {
-		log.Error(err, "cid", cid.Hex())
-		return err
 	}
 
 	// handle empty channel state
 	if len(stateArray.SignedSimplexStates) == 0 {
-		simplexByte, err2 := proto.Marshal(simplexSelf)
-		if err2 != nil {
-			log.Error(err2, "cid", cid.Hex())
-			return err2
-		}
 		simplexState := &chain.SignedSimplexState{
-			SimplexState: simplexByte,
+			SimplexState: selfSimplex.GetSimplexState(),
 		}
-		simplexState.Sigs = append(simplexState.Sigs, stateSelf.SigOfPeerFrom)
+		simplexState.Sigs = append(simplexState.Sigs, selfSimplex.SigOfPeerFrom)
 		stateArray.SignedSimplexStates = append(stateArray.SignedSimplexStates, simplexState)
 	}
 
@@ -87,78 +80,173 @@ func (p *Processor) IntendSettlePaymentChannel(cid ctype.CidType) error {
 		log.Error(err, "cid", cid.Hex())
 		return err
 	}
-	_, err = p.transactorPool.SubmitAndWaitMinedWithGenericHandler(
-		"intend settle payment channel",
-		big.NewInt(0),
-		func(transactor bind.ContractTransactor, opts *bind.TransactOpts) (*types.Transaction, error) {
-			contract, err2 :=
-				ledger.NewCelerLedgerTransactor(p.nodeConfig.GetLedgerContract().GetAddr(), transactor)
-			if err2 != nil {
-				return nil, err2
-			}
-			return contract.IntendSettle(opts, stateArrayBytes)
-		})
-	if err != nil {
-		log.Errorln("intend settle payment channel error", err, "cid", cid.Hex())
-		return err
+	if waitMined {
+		return p.intendSettleAndWaitMined(cid, stateArrayBytes)
 	}
-	return err
+	return p.intendSettle(cid, stateArrayBytes)
 }
 
-func (p *Processor) ConfirmSettlePaymentChannel(cid ctype.CidType) error {
+func (p *Processor) intendSettleAndWaitMined(cid ctype.CidType, stateArrayBytes []byte) error {
+	_, err := p.transactorPool.SubmitAndWaitMinedWithGenericHandler(
+		"intend settle payment channel",
+		big.NewInt(0),
+		p.intendSettleTxMethod(cid, stateArrayBytes))
+	if err != nil {
+		log.Errorf("intend settle payment channel error %s, cid %x", err, cid)
+		return err
+	}
+	return nil
+}
+
+func (p *Processor) intendSettle(cid ctype.CidType, stateArrayBytes []byte) error {
+	tx, err := p.transactorPool.Submit(
+		newGenericTransactionHandler("intend settle", cid),
+		big.NewInt(0),
+		p.intendSettleTxMethod(cid, stateArrayBytes))
+	if err != nil {
+		log.Errorf("intend settle payment channel error %s, cid %x", err, cid)
+		return err
+	}
+	log.Infof("sent intend settle tx %x for cid %x", tx.Hash(), cid)
+	return nil
+}
+
+func (p *Processor) ConfirmSettlePaymentChannel(cid ctype.CidType, waitMined bool) error {
 	log.Infoln("Confirm settle payment channel", cid.Hex())
+	state, found, err := p.dal.GetChanState(cid)
+	if !found {
+		return common.ErrChannelNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("GetChanState %x err: %w", cid, err)
+	}
+	if state != enums.ChanState_SETTLING {
+		return fmt.Errorf("invalid channel %x state %s", cid, fsm.ChanStateName(state))
+	}
+	blkNum := p.monitorService.GetCurrentBlockNumber()
+	finalizedBlknum, err := ledgerview.GetOnChainSettleFinalizedTime(cid, p.nodeConfig)
+	if err != nil {
+		return fmt.Errorf("GetOnChainSettleFinalizedTime err: %w", err)
+	}
+	if blkNum.Uint64() < finalizedBlknum.Uint64() {
+		return fmt.Errorf("channel %x not finalized yet", cid)
+	}
+	if waitMined {
+		return p.confirmSettleAndWaitMined(cid)
+	}
+	return p.confirmSettle(cid)
+}
+
+func (p *Processor) confirmSettleAndWaitMined(cid ctype.CidType) error {
 	_, err := p.transactorPool.SubmitAndWaitMinedWithGenericHandler(
 		"confirm settle payment channel",
 		big.NewInt(0),
-		func(transactor bind.ContractTransactor, opts *bind.TransactOpts) (*types.Transaction, error) {
-			contract, err2 :=
-				ledger.NewCelerLedgerTransactor(p.nodeConfig.GetLedgerContract().GetAddr(), transactor)
-			if err2 != nil {
-				return nil, err2
-			}
-			return contract.ConfirmSettle(opts, cid)
-		})
+		p.confirmSettleTxMethod(cid))
 	if err != nil {
-		log.Errorln("confirm settle payment channel error", err, "cid", cid.Hex())
+		log.Errorf("confirm settle payment channel error %s, cid %x", err, cid)
 		return err
 	}
 
-	err = p.dal.Transactional(p.HandleConfirmSettleEventTx, cid)
-	if err != nil {
-		log.Error(err, "cid", cid)
+	if p.isOSP {
+		// OSP event monitor will call HandleConfirmSettleEventTx
+		return nil
 	}
-	return err
+	return p.dal.Transactional(p.HandleConfirmSettleEventTx, cid)
+}
+
+func (p *Processor) confirmSettle(cid ctype.CidType) error {
+	tx, err := p.transactorPool.Submit(
+		newGenericTransactionHandler("confirm settle", cid),
+		big.NewInt(0),
+		p.confirmSettleTxMethod(cid))
+	if err != nil {
+		log.Errorf("confirm settle payment channel error %s, cid %x", err, cid)
+		return err
+	}
+	log.Infof("sent confirm settle tx %x for cid %x", tx.Hash(), cid)
+	return nil
+}
+
+func newGenericTransactionHandler(description string, cid ctype.CidType) *transactor.TransactionMinedHandler {
+	return &transactor.TransactionMinedHandler{
+		OnMined: func(receipt *types.Receipt) {
+			if receipt.Status == types.ReceiptStatusSuccessful {
+				log.Infof("%s transaction %x succeeded, cid %x", description, receipt.TxHash, cid)
+			} else {
+				log.Errorf("%s transaction %x failed, cid %x", description, receipt.TxHash, cid)
+			}
+		},
+	}
+}
+
+func (p *Processor) intendSettleTxMethod(cid ctype.CidType, stateArrayBytes []byte) txMethod {
+	return func(transactor bind.ContractTransactor, opts *bind.TransactOpts) (*types.Transaction, error) {
+		chanLedger := p.nodeConfig.GetLedgerContractOf(cid)
+		if chanLedger == nil {
+			return nil, fmt.Errorf("Fail to get ledger for channel: %x", cid)
+		}
+		contract, err2 := ledger.NewCelerLedgerTransactor(chanLedger.GetAddr(), transactor)
+		if err2 != nil {
+			return nil, err2
+		}
+		return contract.IntendSettle(opts, stateArrayBytes)
+	}
+}
+
+func (p *Processor) confirmSettleTxMethod(cid ctype.CidType) txMethod {
+	return func(transactor bind.ContractTransactor, opts *bind.TransactOpts) (*types.Transaction, error) {
+		chanLedger := p.nodeConfig.GetLedgerContractOf(cid)
+		if chanLedger == nil {
+			return nil, fmt.Errorf("Fail to get ledger for channel: %x", cid)
+		}
+		contract, err2 := ledger.NewCelerLedgerTransactor(chanLedger.GetAddr(), transactor)
+		if err2 != nil {
+			return nil, err2
+		}
+		return contract.ConfirmSettle(opts, cid)
+	}
 }
 
 func (p *Processor) HandleConfirmSettleEventTx(tx *storage.DALTx, args ...interface{}) error {
 	cid := args[0].(ctype.CidType)
-	err := fsm.OnPscConfirmSettle(tx, cid)
+	_, found, err := tx.GetChanState(cid)
 	if err != nil {
-		// err includes cid, we don't repeat in Errorln.
-		log.Errorln("confirm settle:", err)
+		return fmt.Errorf("%x GetChanState err: %w", cid, err)
+	}
+	if !found {
+		return nil
+	}
+
+	err = fsm.OnChannelConfirmSettle(tx, cid)
+	if err != nil {
+		log.Errorln("fsm OnChannelConfirmSettle err:", err)
 		return err
 	}
-	peer, err := tx.GetPeer(cid)
+	peer, token, opents, found, err := tx.GetChanForClose(cid)
 	if err != nil {
-		log.Errorln("get peer:", err, "cid:", cid.Hex())
+		log.Errorln("GetChanPeerToken:", err, "cid:", cid.Hex())
 		return err
 	}
-	simplex, _, err := tx.GetSimplexPaymentChannel(cid, peer)
+	if !found {
+		log.Errorln("GetChanPeerToken channel not found:", cid.Hex())
+		return common.ErrChannelNotFound
+	}
+	err = tx.DeleteChan(cid)
 	if err != nil {
-		log.Errorln("get simplex:", err, "cid:", cid.Hex())
+		log.Errorln(err, cid.Hex())
 		return err
 	}
-	token := simplex.GetTransferToPeer().GetToken()
-	tokenAddr := ctype.Bytes2Hex(token.GetTokenAddress())
-	if token.GetTokenType() == entity.TokenType_ETH {
-		tokenAddr = common.EthContractAddr
-	}
-	err = tx.DeleteRoute(peer, tokenAddr)
+	err = tx.InsertClosedChan(cid, peer, token, opents, time.Now().UTC())
 	if err != nil {
-		log.Errorln("delete route:", err, "cid:", cid.Hex())
+		log.Errorln(err, cid.Hex())
 		return err
 	}
-	return tx.PutCidForPeerAndToken(ctype.Hex2Bytes(peer), token, ctype.ZeroCid)
+	err = tx.DeleteRouting(peer, token)
+	if storage.IsDbError(err) {
+		log.Errorln(err, cid.Hex(), ctype.Addr2Hex(peer), ctype.Bytes2Hex(token.GetTokenAddress()))
+		return err
+	}
+	return nil
 }
 
 func (p *Processor) handleIntendSettleEventTx(tx *storage.DALTx, args ...interface{}) error {
@@ -166,105 +254,79 @@ func (p *Processor) handleIntendSettleEventTx(tx *storage.DALTx, args ...interfa
 	seqNums := args[1].([2]*big.Int)
 	needRespond := args[2].(*bool)
 	*needRespond = false
-	hasState, err := tx.HasChannelState(cid)
+
+	peer, state, selfSimplex, peerSimplex, found, err := tx.GetChanForIntendSettle(cid)
 	if err != nil {
-		log.Errorln("IntendSettle unrecognized channel:", cid.Hex())
+		log.Error(err, cid.Hex())
 		return err
 	}
-	if !hasState {
+	if !found {
 		// For case of not having state, we do want to return nil as it's a valid case.
 		// That means th event is about channel opened with OSP with different address.
-		log.Debugln("IntendSettle for other OSP addr. cid:", cid.Hex())
+		log.Debugf("IntendSettle for other OSP addr. cid %x", cid)
 		return nil
 	}
-	state, _, err := tx.GetChannelState(cid)
-	if err != nil {
-		log.Errorln(err, "Can't get state", cid.Hex())
-		return err
-	}
-	if state != fsm.PscOpen {
+	if state != enums.ChanState_OPENED {
 		// For setup of multi-server osp listening separately where several servers may get this event and try to respond.
 		// Thanks to transaction, we can avoid respond twice by checking the state.
-		log.Debugln("psc", cid.Hex(), "is not in open state")
+		log.Debugf("cid %x is not in open or migrating state", cid)
 		return nil
 	}
-	err = fsm.OnPscIntendSettle(tx, cid)
+	err = tx.UpdateChanState(cid, enums.ChanState_SETTLING)
 	if err != nil {
-		log.Errorln("intend settle:", err, "cid:", cid.Hex())
+		log.Errorf("UpdateChanState err %s, cid %x", err, cid)
 		return err
 	}
 
-	peer, err := tx.GetPeer(cid)
-	if err != nil {
-		log.Errorln(err, "handle intend settle cid:", cid.Hex())
-		return err
-	}
 	// Figure out which (seqNum, addr) pair, seqNums are sorted by addr.
-	peerAddr := ctype.Hex2Bytes(peer)
-	myAddr := p.nodeConfig.GetOnChainAddrBytes()
-
-	var peerSimplexSeq, mySimplexSeq *big.Int
-	if bytes.Compare(peerAddr, myAddr) == -1 {
-		peerSimplexSeq, mySimplexSeq = seqNums[0], seqNums[1]
+	var peerSimplexSeq, selfSimplexSeq *big.Int
+	if bytes.Compare(peer.Bytes(), p.nodeConfig.GetOnChainAddr().Bytes()) == -1 {
+		peerSimplexSeq, selfSimplexSeq = seqNums[0], seqNums[1]
 	} else {
-		mySimplexSeq, peerSimplexSeq = seqNums[0], seqNums[1]
-	}
-	// Verify seqNums are correct for every simplex so that we need to send tx to respond.
-	peerSimplex, _, err := tx.GetSimplexPaymentChannel(cid, peer)
-	if err != nil {
-		log.Errorln(err, "Can't get peer simplex cid:", cid.Hex(), "peer:", peer)
-		return err
-	}
-	mySimplex, _, err := tx.GetSimplexPaymentChannel(cid, p.nodeConfig.GetOnChainAddr())
-	if err != nil {
-		log.Errorln(err, "Can't get my simplex cid:", cid.Hex(), "peer:", peer)
-		return err
+		selfSimplexSeq, peerSimplexSeq = seqNums[0], seqNums[1]
 	}
 	if peerSimplex.SeqNum > uint64(peerSimplexSeq.Int64()) {
 		*needRespond = true
 	}
-	if mySimplex.SeqNum > uint64(mySimplexSeq.Int64()) {
+	if selfSimplex.SeqNum > uint64(selfSimplexSeq.Int64()) {
 		*needRespond = true
 	}
 	return nil
 }
 
-func (p *Processor) monitorPaymentChannelSettleEvent() {
+func (p *Processor) monitorPaymentChannelSettleEvent(ledgerContract chain.Contract) {
 	_, monErr := p.monitorService.Monitor(
 		event.IntendSettle,
-		p.nodeConfig.GetLedgerContract(),
+		ledgerContract,
 		p.monitorService.GetCurrentBlockNumber(),
 		nil,   /*endBlock*/
 		false, /*quickCatch*/
 		false, /*reset*/
 		func(id monitor.CallbackID, eLog types.Log) {
+			// CAVEAT!!!: suppose we have the same struct of event.
+			// If event struct changes, this monitor does not work.
 			e := &ledger.CelerLedgerIntendSettle{}
-			if err := p.nodeConfig.GetLedgerContract().ParseEvent(event.IntendSettle, eLog, e); err != nil {
+			if err := ledgerContract.ParseEvent(event.IntendSettle, eLog, e); err != nil {
 				log.Error(err)
 				return
 			}
 			cid := ctype.CidType(e.ChannelId)
-			txHash := fmt.Sprintf("%x", eLog.TxHash)
-			log.Infoln("Seeing IntendSettle event, cid:", cid.Hex(), "tx hash:", txHash, "callback id:", id, "blkNum:", eLog.BlockNumber)
+			log.Infof("Seeing IntendSettle event, cid %x txhash %x blknum %d ", cid, eLog.TxHash, eLog.BlockNumber)
 			needRespond := false
 			err := p.dal.Transactional(p.handleIntendSettleEventTx, cid, e.SeqNums, &needRespond)
 			if err != nil {
-				log.Errorln(err, "cid", cid.Hex())
 				return
 			}
 			// Update data of routing table calculation
-			if p.rtBuilder != nil {
-				p.rtBuilder.RemoveEdge(cid)
+			if p.routeController != nil {
+				p.routeController.RemoveEdge(cid)
 			}
 			if !needRespond {
 				log.Debugln("No need to respond IntendSettle cid:", cid.Hex())
 				return
 			}
 			log.Debugln("Responding IntendSettle cid:", cid.Hex())
-			err = p.IntendSettlePaymentChannel(cid)
-			if err != nil {
-				log.Errorln(err, "Can't IntendSettlePaymentChannel cid:", cid.Hex())
-			}
+			p.IntendSettlePaymentChannel(cid, false) // errs logged within func
 			metrics.IncDisputeSettleEventCnt(event.IntendSettle)
 		})
 	if monErr != nil {
@@ -273,19 +335,21 @@ func (p *Processor) monitorPaymentChannelSettleEvent() {
 
 	_, monErr = p.monitorService.Monitor(
 		event.ConfirmSettle,
-		p.nodeConfig.GetLedgerContract(),
+		ledgerContract,
 		p.monitorService.GetCurrentBlockNumber(),
 		nil,   /*endBlock*/
 		false, /*quickCatch*/
 		false, /*reset*/
 		func(id monitor.CallbackID, eLog types.Log) {
+			// CAVEAT!!!: suppose we have the same struct of event.
+			// If event struct changes, this monitor does not work.
 			e := &ledger.CelerLedgerConfirmSettle{}
-			if err := p.nodeConfig.GetLedgerContract().ParseEvent(event.ConfirmSettle, eLog, e); err != nil {
+			if err := ledgerContract.ParseEvent(event.ConfirmSettle, eLog, e); err != nil {
 				log.Error(err)
 				return
 			}
 			cid := ctype.CidType(e.ChannelId)
-			hasState, err := p.dal.HasChannelState(cid)
+			_, hasState, err := p.dal.GetChanState(cid)
 			if err != nil {
 				log.Error(err, "cid", cid.Hex())
 			}

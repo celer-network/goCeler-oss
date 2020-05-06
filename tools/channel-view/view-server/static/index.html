@@ -1,0 +1,74 @@
+<html>
+
+<title>OSP Channel View</title>
+
+<body>
+	<div>
+		<h1>Off-chain View</h1>
+		<div>
+			<h2>Channel</h2>
+			<form action="/db/channel" method="GET">
+				peer : <input type="text" name="peer"><br>
+				token : <input type="text" name="token"><br>
+				<input type="submit" value="Submit">
+			</form>
+		</div>
+		<div>
+			<h2>Channel-Cid</h2>
+			<form action="/db/channel-cid" method="GET">
+				channel id : <input type="text" name="cid"><br>
+				<input type="submit" value="Submit">
+			</form>
+		</div>
+		<div>
+			<h2>Pay</h2>
+			<form action="/db/pay" method="GET">
+				pay id : <input type="text" name="payid"><br>
+				<input type="submit" value="Submit">
+			</form>
+		</div>
+		<div>
+			<h2>Deposit-JobId</h2>
+			<form action="/db/deposit-id" method="GET">
+				deposit id : <input type="text" name="depositid"><br>
+				<input type="submit" value="Submit">
+			</form>
+		</div>
+		<div>
+			<h2>Deposits-Cid</h2>
+			<form action="/db/deposits-cid" method="GET">
+				channel id : <input type="text" name="cid"><br>
+				<input type="submit" value="Submit">
+			</form>
+		</div>
+	</div>
+	<div>
+		<h1>On-chain view</h1>
+		<div>
+			<h2>Channel</h2>
+			<form action="/onchain/channel" method="GET">
+				channel id : <input type="text" name="cid"><br>
+				<input type="submit" value="Submit">
+			</form>
+		</div>
+		<div>
+			<h2>Pay</h2>
+			<form action="/onchain/pay" method="GET">
+				pay id : <input type="text" name="payid"><br>
+				<input type="submit" value="Submit">
+			</form>
+		</div>
+		<div>
+			<h2>App</h2>
+			<form action="/onchain/app" method="GET">
+				app addr : <input type="text" name="app_addr"><br>
+				arg outcome : <input type="text" name="arg_outcome"><br>
+				arg finalize : <input type="text" name="arg_finalize"><br>
+				<input type="submit" value="Submit">
+			</form>
+		</div>
+
+	</div>
+</body>
+
+</html>

@@ -1,0 +1,45 @@
+syntax = "proto3";
+
+package celerx.fee.interface;
+import "github.com/celer-network/proto/entity.proto";
+import "google/protobuf/any.proto";
+import "google/protobuf/empty.proto";
+import "google/api/annotations.proto";
+
+// --------------------------- OSP-facing service -----------------------------
+// Next Tag: 2
+message NewHopStreamEvent {
+    string addr = 1;
+}
+
+// FeeEvent to be renamed to PayEvent to be use-case neutral and to be moved to proto repo.
+// This message is now the API osp published for pay event.
+// Next Tag: 6
+message FeeEvent {
+    entity.ConditionalPay pay = 1;
+    google.protobuf.Any note = 2 [deprecated = true];
+    bool send_success = 3;
+    bytes pay_id = 4;
+    string note_pb_string = 5;
+}
+
+service OspSubscriber {
+    rpc NotifyNewStream(NewHopStreamEvent) returns (google.protobuf.Empty) {
+        option (google.api.http) = {
+          post: "/notify/osp/newstream"
+          body: "*"
+        };
+    }
+    rpc NotifyFeeReceived(FeeEvent) returns (google.protobuf.Empty) {
+        option (google.api.http) = {
+          post: "/notify/osp/feereceived"
+          body: "*"
+        };
+    }
+    rpc NotifyFeeSendComplete(FeeEvent) returns (google.protobuf.Empty) {
+        option (google.api.http) = {
+          post: "/notify/osp/sendcomplete"
+          body: "*"
+        };
+    }
+}

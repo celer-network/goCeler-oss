@@ -1,0 +1,23 @@
+{
+    "Version": "0.1",
+    "Ethereum": {
+        "Gateway": "http://127.0.0.1:8545",
+        "ChainId": 883,
+        "BlockIntervalSec": 1,
+        "BlockDelayNum": 0,
+        "DisputeTimeout": 10,
+        "Contracts": {
+            "Wallet": "8555ae269b34db4317074962ef4e4aed84d5aa2e",
+            "Ledger": "ef52b3484db84c8f976dd5b8540e2b83aecea37c",
+            "VirtResolver": "307a710ee4e311cc788d11d54cf071575172fb64",
+            "EthPool": "1db16b1d27b10edb9282df6650f48cf8576a84e7",
+            "PayResolver": "8517f998dfbbcc1b8fe914c050634fa65f093bf8",
+            "PayRegistry": "7d7a910a6e7f93750f0151a49cd3dd1011072699",
+            "RouterRegistry": "0120812110a089b49bdc5a68d61ee7213a2e2c94"
+        }
+    },
+    "Osp": {
+        "Host": "localhost:10001",
+        "Address": "6a6d2a97da1c453a4e099e8054865a0a59728863"
+    }
+}

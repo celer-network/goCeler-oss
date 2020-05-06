@@ -1,11 +1,11 @@
-// Copyright 2018-2019 Celer Network
+// Copyright 2018-2020 Celer Network
 
 package main
 
 import (
 	"flag"
 
-	"github.com/celer-network/goCeler-oss/webproxy"
+	"github.com/celer-network/goCeler/webproxy"
 )
 
 var (

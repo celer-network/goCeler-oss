@@ -1,4 +1,4 @@
-// Copyright 2018 Celer Network
+// Copyright 2018-2020 Celer Network
 
 package cnode
 
@@ -10,25 +10,29 @@ import (
 	"sync"
 	"time"
 
-	"github.com/celer-network/goCeler-oss/chain/channel-eth-go/ledger"
-	"github.com/celer-network/goCeler-oss/chain"
-	log "github.com/celer-network/goCeler-oss/clog"
-	"github.com/celer-network/goCeler-oss/cnode/openchannelts"
-	"github.com/celer-network/goCeler-oss/common"
-	"github.com/celer-network/goCeler-oss/common/event"
-	"github.com/celer-network/goCeler-oss/common/intfs"
-	"github.com/celer-network/goCeler-oss/common/structs"
-	"github.com/celer-network/goCeler-oss/config"
-	"github.com/celer-network/goCeler-oss/ctype"
-	"github.com/celer-network/goCeler-oss/entity"
-	"github.com/celer-network/goCeler-oss/fsm"
-	"github.com/celer-network/goCeler-oss/metrics"
-	"github.com/celer-network/goCeler-oss/monitor"
-	"github.com/celer-network/goCeler-oss/rpc"
-	"github.com/celer-network/goCeler-oss/rtconfig"
-	"github.com/celer-network/goCeler-oss/storage"
-	"github.com/celer-network/goCeler-oss/transactor"
-	"github.com/celer-network/goCeler-oss/utils"
+	"github.com/celer-network/goCeler/chain"
+	"github.com/celer-network/goCeler/chain/channel-eth-go/ledger"
+	"github.com/celer-network/goCeler/cnode/openchannelts"
+	"github.com/celer-network/goCeler/common"
+	"github.com/celer-network/goCeler/common/event"
+	"github.com/celer-network/goCeler/common/intfs"
+	"github.com/celer-network/goCeler/common/structs"
+	"github.com/celer-network/goCeler/config"
+	"github.com/celer-network/goCeler/ctype"
+	"github.com/celer-network/goCeler/deposit"
+	"github.com/celer-network/goCeler/entity"
+	"github.com/celer-network/goCeler/fsm"
+	"github.com/celer-network/goCeler/ledgerview"
+	"github.com/celer-network/goCeler/metrics"
+	"github.com/celer-network/goCeler/monitor"
+	"github.com/celer-network/goCeler/pem"
+	"github.com/celer-network/goCeler/route"
+	"github.com/celer-network/goCeler/rpc"
+	"github.com/celer-network/goCeler/rtconfig"
+	"github.com/celer-network/goCeler/storage"
+	"github.com/celer-network/goCeler/transactor"
+	"github.com/celer-network/goCeler/utils"
+	"github.com/celer-network/goutils/log"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	ethcommon "github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -44,26 +48,21 @@ const (
 	maxOpenChannelTimeoutMinutes = 10.0
 )
 
-type routingTableBuilder interface {
-	AddEdge(p1 ctype.Addr, p2 ctype.Addr, cid ctype.CidType, tokenAddr ctype.Addr) error
-	GetOspInfo() map[ctype.Addr]uint64
-	Build(tokenAddr ctype.Addr) (map[ctype.Addr]ctype.CidType, error)
-}
+var zeroAmtBytes = []byte{0}
+
 type openChannelProcessor struct {
 	nodeConfig          common.GlobalNodeConfig
-	signer              common.Crypto
+	signer              common.Signer
 	transactor          *transactor.Transactor
 	dal                 *storage.DAL
-	ledger              *chain.BoundContract
 	connectionManager   *rpc.ConnectionManager
 	monitorService      intfs.MonitorService
 	callbacks           map[string]event.OpenChannelCallback // TokenAddr to OpenChannelEvent callback
 	callbacksLock       sync.Mutex
-	utils               openChannelUtils
-	eventMonitorName    string
 	masterLock          sync.Mutex
 	lockPerTokenPerPeer map[string]*sync.Mutex
-	routeBuilder        routingTableBuilder
+	routeController     *route.Controller
+	depositProcessor    *deposit.Processor
 	// keepMonitor describes whether this instance is constantly monitoring on-chain open channel event.
 	// clients only monitors open channel when they initialize the process while OSP is constantly monitoring.
 	// There is a monitor bit to persist if a client was in monitoring state before crash or restart.
@@ -71,47 +70,44 @@ type openChannelProcessor struct {
 	keepMonitor bool
 }
 
-type openChannelUtils interface {
-	GetCurrentBlockNumber() *big.Int
-}
-
 func startOpenChannelProcessor(
 	nodeConfig common.GlobalNodeConfig,
-	signer common.Crypto,
+	signer common.Signer,
 	transactor *transactor.Transactor,
 	dal *storage.DAL,
-	ledger *chain.BoundContract,
 	connectionManager *rpc.ConnectionManager,
 	monitorService intfs.MonitorService,
-	utils openChannelUtils,
-	routeBuilder routingTableBuilder,
+	routeController *route.Controller,
+	depositProcessor *deposit.Processor,
 	keepMonitor bool) (*openChannelProcessor, error) {
 	p := &openChannelProcessor{
-		nodeConfig:        nodeConfig,
-		signer:            signer,
-		transactor:        transactor,
-		dal:               dal,
-		ledger:            ledger,
-		connectionManager: connectionManager,
-		monitorService:    monitorService,
-		callbacks:         make(map[string]event.OpenChannelCallback),
-		utils:             utils,
-		routeBuilder:      routeBuilder,
-		eventMonitorName: fmt.Sprintf(
-			"%s-%s", ctype.Addr2Hex(ledger.GetAddr()), event.OpenChannel),
+		nodeConfig:          nodeConfig,
+		signer:              signer,
+		transactor:          transactor,
+		dal:                 dal,
+		connectionManager:   connectionManager,
+		monitorService:      monitorService,
+		callbacks:           make(map[string]event.OpenChannelCallback),
+		routeController:     routeController,
+		depositProcessor:    depositProcessor,
 		lockPerTokenPerPeer: make(map[string]*sync.Mutex),
 		keepMonitor:         keepMonitor,
 	}
 	if keepMonitor {
-		p.monitorEvent()
+		// Monitor on all ledgers
+		p.monitorOnAllLedgers()
 	} else {
 		// Restore event monitoring
-		has, err := p.dal.HasEventMonitorBit(p.eventMonitorName)
+		ledgerAddrs, err := p.dal.GetMonitorAddrsByEventAndRestart(event.OpenChannel, true /*restart*/)
 		if err != nil {
 			return nil, err
 		}
-		if has {
-			p.monitorSingleEvent(false)
+
+		for _, ledgerAddr := range ledgerAddrs {
+			contract := p.nodeConfig.GetLedgerContractOn(ledgerAddr)
+			if contract != nil {
+				p.monitorSingleEvent(contract, false /*reset*/)
+			}
 		}
 	}
 	return p, nil
@@ -130,7 +126,8 @@ func (p *openChannelProcessor) prepareChannelInitializer(
 	amtPeer *big.Int,
 	tokenInfo *entity.TokenInfo,
 ) (*entity.PaymentChannelInitializer, error) {
-	if tokenInfo.TokenType == entity.TokenType_ERC20 && !ethcommon.IsHexAddress(ctype.Bytes2Hex(tokenInfo.TokenAddress)) {
+	if tokenInfo.GetTokenType() == entity.TokenType_ERC20 &&
+		!ethcommon.IsHexAddress(ctype.Bytes2Hex(tokenInfo.GetTokenAddress())) {
 		log.Errorln(common.ErrInvalidTokenAddress.Error())
 		return nil, common.ErrInvalidTokenAddress
 	}
@@ -139,7 +136,7 @@ func (p *openChannelProcessor) prepareChannelInitializer(
 		return nil, common.ErrInvalidAmount
 	}
 
-	selfAddress := p.transactor.Address().Bytes()
+	selfAddress := p.nodeConfig.GetOnChainAddr().Bytes()
 	// Construct request
 	msgValueReceiver := uint64(0)
 	lowAddrDist := &entity.AccountAmtPair{
@@ -168,37 +165,132 @@ func (p *openChannelProcessor) prepareChannelInitializer(
 	return initializer, nil
 }
 
-func (p *openChannelProcessor) openChannel(
+// https://docs.google.com/document/d/1ho-FHUkgvWa2Rmr_qFbPRa9rUb6WW8zHQECPKxF-y7Y/edit#
+// PRD: https://docs.google.com/document/d/1ltS2YwtAMdRoESeyBpx52fr4puIKactCwQYS1eKknEo/edit?usp=drive_web&ouid=115746433510597393504
+func (p *openChannelProcessor) tcbOpenChannel(
 	peer ctype.Addr,
-	amtSelf *big.Int,
 	amtPeer *big.Int,
 	tokenInfo *entity.TokenInfo,
-	ospToOspOpen bool,
-	openCallback event.OpenChannelCallback) error {
-	initializer, err := p.prepareChannelInitializer(peer, amtSelf, amtPeer, tokenInfo)
+	openCallback event.OpenChannelCallback,
+	ocem *pem.OpenChannelEventMessage) error {
+	initializer, err := p.prepareChannelInitializer(peer, big.NewInt(0) /*amtSelf*/, amtPeer, tokenInfo)
+	tokenAddr := utils.GetTokenAddr(tokenInfo)
+	ocem.Peer = ctype.Addr2Hex(peer)
+	ocem.TokenAddr = ctype.Addr2Hex(tokenAddr)
 	if err != nil {
 		invokeErrorCallback(openCallback, &common.E{Reason: err.Error(), Code: 1})
 		return err
 	}
 	// Record call back
 	if openCallback != nil {
-		tokenAddr := common.EthContractAddr
-		if tokenInfo.GetTokenType() == entity.TokenType_ERC20 {
-			tokenAddr = ctype.Bytes2Hex(tokenInfo.GetTokenAddress())
-		}
 		p.callbacksLock.Lock()
-		p.callbacks[tokenAddr] = openCallback
+		p.callbacks[ctype.Addr2Hex(tokenAddr)] = openCallback
 		p.callbacksLock.Unlock()
 	}
-	initializer.OpenDeadline = p.utils.GetCurrentBlockNumber().Uint64() + config.OpenChannelTimeout
+	// deadline according to CORE-622
+	initializer.OpenDeadline = p.monitorService.GetCurrentBlockNumber().Uint64() + config.TcbTimeoutInBlockNumber
+	ocem.ReadableInitializer = utils.PrintChannelInitializer(initializer)
 	initializerBytes, err := proto.Marshal(initializer)
 	if err != nil {
-		p.processOpenError(openCallback, err)
+		openCallback.HandleOpenChannelErr(&common.E{Reason: err.Error()})
 		return err
 	}
-	sig, err := p.signer.Sign(initializerBytes)
+	sig, err := p.signer.SignEthMessage(initializerBytes)
 	if err != nil {
-		p.processOpenError(openCallback, err)
+		openCallback.HandleOpenChannelErr(&common.E{Reason: err.Error()})
+		return err
+	}
+	tcbReq := &rpc.OpenChannelRequest{
+		ChannelInitializer: initializerBytes,
+		RequesterSig:       sig,
+	}
+	cid, cidErr := p.computePscID(initializerBytes, p.nodeConfig.GetLedgerContract().GetAddr(), p.nodeConfig.GetWalletContract().GetAddr())
+	if cidErr != nil {
+		log.Errorln("Can't compute cid", cidErr)
+		openCallback.HandleOpenChannelErr(&common.E{Reason: cidErr.Error()})
+		return cidErr
+	}
+	rc, err := p.connectionManager.GetClient(peer)
+	if err != nil {
+		openCallback.HandleOpenChannelErr(&common.E{Reason: err.Error()})
+		return err
+	}
+	rpcDeadline := time.Now().Add(time.Duration(openChannelRpcDeadlineSec) * time.Second)
+	ctx, _ := context.WithDeadline(context.Background(), rpcDeadline)
+	tcbResp, err := rc.CelerOpenTcbChannel(ctx, tcbReq)
+	if err != nil {
+		log.Errorln("CelerOpenTcbChannel rpc error", err)
+		openCallback.HandleOpenChannelErr(&common.E{Reason: err.Error()})
+		return err
+	}
+	log.Debugln("OpenTcbChannelResponse status", tcbResp.Status)
+	if tcbResp.Status != rpc.OpenChannelStatus_OPEN_CHANNEL_TCB_OPENED {
+		errMsg := fmt.Sprintf("Wrong Status in TcbResponse: %d", tcbResp.Status)
+		log.Errorln(errMsg)
+		openCallback.HandleOpenChannelErr(&common.E{Reason: errMsg})
+		return err
+	}
+	if bytes.Compare(cid.Bytes(), tcbResp.GetPaymentChannelId()) != 0 {
+		errMsg := fmt.Sprintf("Wrong Channel ID in TcbResponse: %x, expected %x", tcbResp.GetPaymentChannelId(), cid.Bytes())
+		openCallback.HandleOpenChannelErr(&common.E{Reason: errMsg})
+		return errors.New(errMsg)
+	}
+	// internal initialization
+	var selfAddr ctype.Addr
+	selfAddr = p.nodeConfig.GetOnChainAddr()
+
+	// Internal initialization
+	channelDescriptor := &openedChannelDescriptor{
+		cid:          cid,
+		tokenType:    tokenInfo.GetTokenType(),
+		tokenAddress: tokenAddr,
+		participants: [2]ctype.Addr{peer, selfAddr},
+		initDeposits: [2]*big.Int{amtPeer, big.NewInt(0)},
+	}
+	p.maybeHandleEvent(channelDescriptor, structs.ChanState_TRUST_OPENED, ocem)
+	err = p.dal.UpdateChanOpenResp(cid, tcbResp)
+	if err != nil {
+		log.Errorln("tcbOpenChannel:", err, "can't save initializer", cid.Hex())
+		ocem.Error = append(ocem.Error, err.Error())
+	}
+	return nil
+}
+
+func (p *openChannelProcessor) openChannel(
+	peer ctype.Addr,
+	amtSelf *big.Int,
+	amtPeer *big.Int,
+	tokenInfo *entity.TokenInfo,
+	ospToOspOpen bool,
+	openCallback event.OpenChannelCallback,
+	ocem *pem.OpenChannelEventMessage) error {
+
+	latestLedger := p.nodeConfig.GetLedgerContract()
+	latestLedgerAddr := latestLedger.GetAddr()
+	initializer, err := p.prepareChannelInitializer(peer, amtSelf, amtPeer, tokenInfo)
+	ocem.Peer = ctype.Addr2Hex(peer)
+	tokenAddr := utils.GetTokenAddr(tokenInfo)
+	ocem.TokenAddr = ctype.Addr2Hex(tokenAddr)
+	if err != nil {
+		invokeErrorCallback(openCallback, &common.E{Reason: err.Error(), Code: 1})
+		return err
+	}
+	// Record call back
+	if openCallback != nil {
+		p.callbacksLock.Lock()
+		p.callbacks[ctype.Addr2Hex(tokenAddr)] = openCallback
+		p.callbacksLock.Unlock()
+	}
+	initializer.OpenDeadline = p.monitorService.GetCurrentBlockNumber().Uint64() + config.OpenChannelTimeout
+	ocem.ReadableInitializer = utils.PrintChannelInitializer(initializer)
+	initializerBytes, err := proto.Marshal(initializer)
+	if err != nil {
+		p.processOpenError(openCallback, latestLedgerAddr, err)
+		return err
+	}
+	sig, err := p.signer.SignEthMessage(initializerBytes)
+	if err != nil {
+		p.processOpenError(openCallback, latestLedgerAddr, err)
 		return err
 	}
 	openBy := rpc.OpenChannelBy_OPEN_CHANNEL_PROPOSER
@@ -214,56 +306,61 @@ func (p *openChannelProcessor) openChannel(
 		OspToOsp:           ospToOspOpen,
 	}
 
-	rc, err := p.connectionManager.GetClient(ctype.Addr2Hex(peer))
+	rc, err := p.connectionManager.GetClient(peer)
 	if err != nil {
-		p.processOpenError(openCallback, err)
+		p.processOpenError(openCallback, latestLedgerAddr, err)
 		return err
 	}
 
 	if !p.keepMonitor {
 		// If the open-channel monitor (watcher) was auto-restarted after
 		// a crash, there is nothing left to do.
-		has, hasBitErr := p.dal.HasEventMonitorBit(p.eventMonitorName)
+		has, found, hasBitErr := p.dal.GetMonitorRestart(monitor.NewEventStr(latestLedgerAddr, event.OpenChannel))
 		if hasBitErr != nil {
 			log.Debugln("CelerOpenChannel cannot check event monitor bit:", hasBitErr)
-			p.processOpenError(openCallback, hasBitErr)
+			p.processOpenError(openCallback, latestLedgerAddr, hasBitErr)
 			return hasBitErr
-		} else if has {
+		} else if found && has {
 			log.Debugln("CelerOpenChannel event monitor already running")
 			return nil
 		}
 
 		// Before sending the request, start monitoring until config.OpenChannelTimeout
-		p.monitorSingleEvent(true)
-		putBitErr := p.dal.PutEventMonitorBit(p.eventMonitorName)
+		p.monitorSingleEvent(latestLedger, true)
+		putBitErr := p.dal.UpsertMonitorRestart(monitor.NewEventStr(latestLedgerAddr, event.OpenChannel), true)
 		if putBitErr != nil {
 			log.Debugln("CelerOpenChannel cannot put event monitor bit:", putBitErr)
-			p.processOpenError(openCallback, putBitErr)
+			p.processOpenError(openCallback, latestLedgerAddr, putBitErr)
 			return putBitErr
 		}
 	}
 	resp, err := rc.CelerOpenChannel(context.Background(), req)
 	if err != nil {
 		log.Debugln("CelerOpenChannel rpc error", err)
-		p.processOpenError(openCallback, err)
+		p.processOpenError(openCallback, latestLedgerAddr, err)
 		return err
 	}
 	log.Debugln("OpenChannelResponse status", resp.Status)
 	switch resp.Status {
 	case rpc.OpenChannelStatus_UNDEFINED_OPEN_CHANNEL_STATUS:
 		undefinedStatusErr := errors.New("Status undefined in response")
-		p.processOpenError(openCallback, undefinedStatusErr)
+		p.processOpenError(openCallback, latestLedgerAddr, undefinedStatusErr)
 		return undefinedStatusErr
 	case rpc.OpenChannelStatus_OPEN_CHANNEL_TX_SUBMITTED:
 		return nil
 	case rpc.OpenChannelStatus_OPEN_CHANNEL_APPROVED:
 		// Approved, send transaction
+	case rpc.OpenChannelStatus_OPEN_CHANNEL_TCB_OPENED:
+		wrongTcbErr := errors.New("Wrong TCB status")
+		p.processOpenError(openCallback, latestLedgerAddr, wrongTcbErr)
+		return wrongTcbErr
 	}
+	ocem.Cid = ctype.Bytes2Hex(resp.GetPaymentChannelId())
 	txValue := amtSelf
-	if tokenInfo.TokenType == entity.TokenType_ERC20 {
-		approveErr := p.approveErc20Allowance(amtSelf, tokenInfo, openCallback)
+	if tokenInfo.GetTokenType() == entity.TokenType_ERC20 {
+		approveErr := p.approveErc20Allowance(latestLedgerAddr, amtSelf, tokenInfo, openCallback)
 		if approveErr != nil {
-			p.processOpenError(openCallback, approveErr)
+			p.processOpenError(openCallback, latestLedgerAddr, approveErr)
 			return approveErr
 		}
 		txValue = ctype.ZeroBigInt
@@ -271,22 +368,22 @@ func (p *openChannelProcessor) openChannel(
 
 	log.Debug("Sending OpenChannel tx")
 	return p.sendOpenChannelTransaction(
-		resp, p.transactor.Address().Bytes(), peer.Bytes(), txValue, openCallback)
+		latestLedgerAddr, resp, p.nodeConfig.GetOnChainAddr().Bytes(), peer.Bytes(), txValue, openCallback)
 }
-func (p *openChannelProcessor) approveErc20Allowance(amtSelf *big.Int, tokenInfo *entity.TokenInfo, openCallback event.OpenChannelCallback) error {
+func (p *openChannelProcessor) approveErc20Allowance(ledgerAddr ctype.Addr, amtSelf *big.Int, tokenInfo *entity.TokenInfo, openCallback event.OpenChannelCallback) error {
 	// Deposit ERC20
-	tokenAddress := ctype.Bytes2Addr(tokenInfo.TokenAddress)
+	tokenAddress := utils.GetTokenAddr(tokenInfo)
 	log.Debugln("Token address:", ctype.Addr2Hex(tokenAddress))
 	erc20, err := chain.NewERC20Caller(tokenAddress, p.transactor.ContractCaller())
 	if err != nil {
-		p.processOpenError(openCallback, err)
+		p.processOpenError(openCallback, ledgerAddr, err)
 		return err
 	}
-	owner := p.transactor.Address()
+	owner := p.nodeConfig.GetOnChainAddr()
 	spender := p.nodeConfig.GetLedgerContract().GetAddr()
 	allowance, err := erc20.Allowance(&bind.CallOpts{}, owner, spender)
 	if err != nil {
-		p.processOpenError(openCallback, err)
+		p.processOpenError(openCallback, ledgerAddr, err)
 		return err
 	}
 	if allowance.Cmp(amtSelf) < 0 {
@@ -315,7 +412,7 @@ func (p *openChannelProcessor) approveErc20Allowance(amtSelf *big.Int, tokenInfo
 			errMsg := fmt.Sprintf("Approve transaction 0x%x failed", approveTxHash)
 			log.Error(errMsg)
 			approveErr := errors.New(errMsg)
-			p.processOpenError(openCallback, approveErr)
+			p.processOpenError(openCallback, ledgerAddr, approveErr)
 			return approveErr
 		}
 	}
@@ -323,6 +420,7 @@ func (p *openChannelProcessor) approveErc20Allowance(amtSelf *big.Int, tokenInfo
 }
 
 func (p *openChannelProcessor) sendOpenChannelTransaction(
+	ledgerAddr ctype.Addr,
 	peerResponse *rpc.OpenChannelResponse,
 	requesterAddr []byte,
 	approverAddr []byte,
@@ -340,7 +438,7 @@ func (p *openChannelProcessor) sendOpenChannelTransaction(
 	reqBytes, err := proto.Marshal(req)
 	if err != nil {
 		log.Debugln("Marshal OpenChannelRequest error", err)
-		p.processOpenError(openCallback, err)
+		p.processOpenError(openCallback, ledgerAddr, err)
 		return err
 	}
 	initializer := &entity.PaymentChannelInitializer{}
@@ -350,20 +448,26 @@ func (p *openChannelProcessor) sendOpenChannelTransaction(
 		return marshalErr
 	}
 	log.Infoln("Sending OpenChannel:", utils.PrintChannelInitializer(initializer))
+	cid := ctype.Bytes2Cid(peerResponse.GetPaymentChannelId())
 	_, err = p.transactor.Transact(
 		&transactor.TransactionMinedHandler{
 			OnMined: func(receipt *types.Receipt) {
 				txHash := receipt.TxHash
-				tokenAddr := initializer.InitDistribution.Token.TokenAddress
+				tokenAddr := utils.GetTokenAddr(initializer.GetInitDistribution().GetToken())
 				if receipt.Status == types.ReceiptStatusSuccessful {
 					log.Debugf("OpenChannel transaction 0x%x succeeded, addr 0x%x, token 0x%x", txHash, requesterAddr, tokenAddr)
 				} else {
 					errMsg := fmt.Sprintf("OpenChannel transaction 0x%x failed, addr 0x%x, token 0x%x", txHash, requesterAddr, tokenAddr)
 					log.Error(errMsg)
 					openErr := errors.New(errMsg)
-					p.processOpenError(openCallback, openErr)
+					p.processOpenError(openCallback, ledgerAddr, openErr)
+					chState, _, _ := p.dal.GetChanState(cid)
+					// reset ch state back to tcb if instantiating failed
+					if chState == structs.ChanState_INSTANTIATING {
+						p.dal.UpdateChanState(cid, structs.ChanState_TRUST_OPENED)
+					}
 					recordErr := p.dal.Transactional(
-						p.recordOpenChannelFinishTx, ctype.Bytes2Addr(requesterAddr), ctype.Bytes2Addr(tokenAddr))
+						p.recordOpenChannelFinishTx, ctype.Bytes2Addr(requesterAddr), tokenAddr)
 					if recordErr != nil {
 						log.Errorln(recordErr, ctype.Bytes2Hex(requesterAddr))
 					}
@@ -374,20 +478,132 @@ func (p *openChannelProcessor) sendOpenChannelTransaction(
 		func(
 			transactor bind.ContractTransactor,
 			opts *bind.TransactOpts) (*types.Transaction, error) {
-			contract, err2 := ledger.NewCelerLedgerTransactor(p.ledger.GetAddr(), transactor)
+			contract, err2 := ledger.NewCelerLedgerTransactor(ledgerAddr, transactor)
 			if err2 != nil {
-				p.processOpenError(openCallback, err2)
+				p.processOpenError(openCallback, ledgerAddr, err2)
 				return nil, err2
 			}
 			return contract.OpenChannel(opts, reqBytes)
 		})
 	if err != nil {
 		log.Errorf("%s, Can't open channel for 0x%x", err, requesterAddr)
-		p.processOpenError(openCallback, err)
+		p.processOpenError(openCallback, ledgerAddr, err)
 	}
 	return err
 }
 
+func (p *openChannelProcessor) processTcbRequest(in *rpc.OpenChannelRequest, ocem *pem.OpenChannelEventMessage) (*rpc.OpenChannelResponse, error) {
+	// openchannel state for metrics
+	// deferred function would use the most recent value of it when returning
+	stat := metrics.CNodeOpenChanErr
+	defer func() {
+		metrics.IncCNodeOpenChanEventCnt(metrics.CNodeTcbChan, stat)
+	}()
+
+	errTcbResponse := &rpc.OpenChannelResponse{
+		Status: rpc.OpenChannelStatus_UNDEFINED_OPEN_CHANNEL_STATUS,
+	}
+	pscInitializer := &entity.PaymentChannelInitializer{}
+	err := proto.Unmarshal(in.GetChannelInitializer(), pscInitializer)
+	if err != nil {
+		return errTcbResponse, status.Error(codes.InvalidArgument, "channel initializer not parsable")
+	}
+	ocem.ReadableInitializer = utils.PrintChannelInitializer(pscInitializer)
+	log.Infoln("process tcb openchannel request", utils.PrintChannelInitializer(pscInitializer))
+	tokenInfo := pscInitializer.GetInitDistribution().GetToken()
+	tokenAddr := utils.GetTokenAddr(tokenInfo)
+	ocem.TokenAddr = ctype.Addr2Hex(tokenAddr)
+	dist := pscInitializer.GetInitDistribution().GetDistribution()
+	addr0 := ctype.Bytes2Addr(dist[0].GetAccount())
+	addr1 := ctype.Bytes2Addr(dist[1].GetAccount())
+	myAddr := p.nodeConfig.GetOnChainAddr()
+	var peerAddr ctype.Addr
+	// Figure out peer addr
+	if addr0 == myAddr {
+		peerAddr = addr1
+	} else if addr1 == myAddr {
+		peerAddr = addr0
+	} else {
+		return errTcbResponse, status.Error(codes.InvalidArgument, "account list wrong")
+	}
+	ocem.Peer = ctype.Addr2Hex(peerAddr)
+
+	// Critical section to open channel (for each requester, token pair).
+	existingCid, exist, err := p.dal.GetCidByPeerToken(peerAddr, tokenInfo)
+	if err != nil {
+		return errTcbResponse, status.Error(codes.Internal, err.Error())
+	}
+	if exist {
+		return errTcbResponse, status.Error(codes.AlreadyExists, "cid="+existingCid.Hex())
+	}
+	// dedup inflight requests.
+	allowToOpen := false
+	err = p.dal.Transactional(p.recordInflightOpenChannelTx, peerAddr, tokenAddr, &allowToOpen)
+	if err != nil {
+		return errTcbResponse, status.Error(codes.Internal, err.Error())
+	}
+	if !allowToOpen {
+		return errTcbResponse, status.Error(codes.AlreadyExists, "more than one inflight open channel request.")
+	}
+
+	cid, cidErr := p.computePscID(in.GetChannelInitializer(), p.nodeConfig.GetLedgerContract().GetAddr(), p.nodeConfig.GetWalletContract().GetAddr())
+	if cidErr != nil {
+		revertErr := p.dal.Transactional(p.revertInflightOpenChannelTx, peerAddr, tokenAddr)
+		if revertErr != nil {
+			log.Errorln(revertErr, peerAddr.Hex())
+		}
+		return errTcbResponse, status.Error(codes.Internal, "can't compute cid")
+	}
+	ocem.Cid = ctype.Cid2Hex(cid)
+	// Internal initialization
+	channelDescriptor := &openedChannelDescriptor{
+		cid:          cid,
+		tokenType:    tokenInfo.GetTokenType(),
+		tokenAddress: tokenAddr,
+		participants: [2]ctype.Addr{addr0, addr1},
+		initDeposits: [2]*big.Int{new(big.Int).SetBytes(dist[0].GetAmt()), new(big.Int).SetBytes(dist[1].GetAmt())},
+	}
+	mySig, signErr := p.signer.SignEthMessage(in.GetChannelInitializer())
+	if signErr != nil {
+		revertErr := p.dal.Transactional(p.revertInflightOpenChannelTx, peerAddr, tokenAddr)
+		if revertErr != nil {
+			log.Errorln(revertErr, peerAddr.Hex())
+		}
+		return errTcbResponse, status.Error(codes.Internal, "can't sign initializer")
+	}
+	policy, err := RequestTcbDeposit(p.dal, p.nodeConfig, pscInitializer)
+	if err != nil {
+		ocem.Error = append(ocem.Error, err.Error())
+	}
+	if policy&AllowTcbOpenChannel == 0 {
+		revertErr := p.dal.Transactional(p.revertInflightOpenChannelTx, peerAddr, tokenAddr)
+		if revertErr != nil {
+			log.Errorln(revertErr, peerAddr.Hex())
+		}
+		return errTcbResponse, status.Error(codes.InvalidArgument, "policy not allowed for this initializer set up")
+	}
+	p.maybeHandleEvent(channelDescriptor, structs.ChanState_TRUST_OPENED, ocem)
+	resp := &rpc.OpenChannelResponse{
+		ChannelInitializer: in.GetChannelInitializer(),
+		RequesterSig:       in.GetRequesterSig(),
+		ApproverSig:        mySig,
+		Status:             rpc.OpenChannelStatus_OPEN_CHANNEL_TCB_OPENED,
+		PaymentChannelId:   cid.Bytes(),
+	}
+	err = p.dal.UpdateChanOpenResp(cid, resp)
+	if err != nil {
+		// If failed, recycle balance and stop approving the tcb.
+		log.Errorln("processTcbRequest:", err, "can't save response", cid.Hex())
+		p.dal.Transactional(RecycleInstantiatedTcbDepositTx, channelDescriptor, p.nodeConfig.GetOnChainAddr())
+		revertErr := p.dal.Transactional(p.revertInflightOpenChannelTx, peerAddr, tokenAddr)
+		if revertErr != nil {
+			log.Errorln(revertErr, peerAddr.Hex())
+		}
+		return errTcbResponse, status.Error(codes.Internal, "approver can't save response")
+	}
+	stat = metrics.CNodeOpenChanOK
+	return resp, nil
+}
 func (p *openChannelProcessor) revertInflightOpenChannelTx(tx *storage.DALTx, args ...interface{}) error {
 	peerAddr := args[0].(ctype.Addr)
 	tokenAddr := args[1].(ctype.Addr)
@@ -398,20 +614,20 @@ func (p *openChannelProcessor) recordOpenChannelFinishTx(tx *storage.DALTx, args
 	tokenAddr := args[1].(ctype.Addr)
 	hasTs, err := tx.HasOpenChannelTs(peerAddr, tokenAddr)
 	if err != nil {
-		log.Errorln(err, "checking pending open channel for peer:", peerAddr.Hex(), "token:", tokenAddr)
+		log.Errorln(err, "checking pending open channel for peer:", peerAddr.Hex(), "token:", ctype.Addr2Hex(tokenAddr))
 		return err
 	}
 	if hasTs {
 		timeNow := time.Now()
 		ts, getErr := tx.GetOpenChannelTs(peerAddr, tokenAddr)
 		if getErr != nil {
-			log.Errorln(err, "getting open channel for peer:", peerAddr.Hex(), "token:", tokenAddr)
+			log.Errorln(err, "getting open channel for peer:", peerAddr.Hex(), "token:", ctype.Addr2Hex(tokenAddr))
 			return err
 		}
 		ts.FinishTs = &timeNow
 		err = tx.PutOpenChannelTs(peerAddr, tokenAddr, ts)
 		if err != nil {
-			log.Errorln(err, "recording open channel for peer:", peerAddr.Hex(), "token:", tokenAddr)
+			log.Errorln(err, "recording open channel for peer:", peerAddr.Hex(), "token:", ctype.Addr2Hex(tokenAddr))
 			return err
 		}
 	}
@@ -426,20 +642,20 @@ func (p *openChannelProcessor) recordInflightOpenChannelTx(tx *storage.DALTx, ar
 	timeNow := time.Now()
 	hasTs, err := tx.HasOpenChannelTs(peerAddr, tokenAddr)
 	if err != nil {
-		log.Errorln(err, "checking pending open channel for peer:", peerAddr.Hex(), "token:", tokenAddr)
+		log.Errorln(err, "checking pending open channel for peer:", peerAddr.Hex(), "token:", ctype.Addr2Hex(tokenAddr))
 		return err
 	}
 	if hasTs {
 		ts, getErr := tx.GetOpenChannelTs(peerAddr, tokenAddr)
 		if getErr != nil {
-			log.Errorln(getErr, "checking pending open channel for peer:", peerAddr.Hex(), "token:", tokenAddr)
+			log.Errorln(getErr, "checking pending open channel for peer:", peerAddr.Hex(), "token:", ctype.Addr2Hex(tokenAddr))
 			return err
 		}
 		// No route on (peer, token) but FinishTs set, which means channel has been closed, allow.
 		if ts.FinishTs != nil {
 			err = tx.PutOpenChannelTs(peerAddr, tokenAddr, &openchannelts.OpenChannelTs{RequestTs: &timeNow})
 			if err != nil {
-				log.Errorln(err, "recording open channel for peer:", peerAddr.Hex(), "token:", tokenAddr)
+				log.Errorln(err, "recording open channel for peer:", peerAddr.Hex(), "token:", ctype.Addr2Hex(tokenAddr))
 				return err
 			}
 			*allow = true
@@ -450,7 +666,7 @@ func (p *openChannelProcessor) recordInflightOpenChannelTx(tx *storage.DALTx, ar
 		if timeNow.Sub(*ts.RequestTs).Minutes() > maxOpenChannelTimeoutMinutes {
 			err = tx.PutOpenChannelTs(peerAddr, tokenAddr, &openchannelts.OpenChannelTs{RequestTs: &timeNow})
 			if err != nil {
-				log.Errorln(err, "recording open channel for peer:", peerAddr.Hex(), "token:", tokenAddr)
+				log.Errorln(err, "recording open channel for peer:", peerAddr.Hex(), "token:", ctype.Addr2Hex(tokenAddr))
 				return err
 			}
 			*allow = true
@@ -461,139 +677,143 @@ func (p *openChannelProcessor) recordInflightOpenChannelTx(tx *storage.DALTx, ar
 	// No ts set, definitely allow.
 	err = tx.PutOpenChannelTs(peerAddr, tokenAddr, &openchannelts.OpenChannelTs{RequestTs: &timeNow})
 	if err != nil {
-		log.Errorln(err, "recording open channel for peer:", peerAddr.Hex(), "token:", tokenAddr)
+		log.Errorln(err, "recording open channel for peer:", peerAddr.Hex(), "token:", ctype.Addr2Hex(tokenAddr))
 		return err
 	}
 	*allow = true
 	return nil
 }
-func (p *openChannelProcessor) processOpenChannelRequest(req *rpc.OpenChannelRequest) (*rpc.OpenChannelResponse, error) {
-	if req != nil {
-		var initializer entity.PaymentChannelInitializer
-		err := proto.Unmarshal(req.ChannelInitializer, &initializer)
-		errResp := &rpc.OpenChannelResponse{
-			Status: rpc.OpenChannelStatus_UNDEFINED_OPEN_CHANNEL_STATUS,
-		}
+func (p *openChannelProcessor) processOpenChannelRequest(req *rpc.OpenChannelRequest, ocem *pem.OpenChannelEventMessage) (*rpc.OpenChannelResponse, error) {
+	var initializer entity.PaymentChannelInitializer
+	err := proto.Unmarshal(req.ChannelInitializer, &initializer)
+	errResp := &rpc.OpenChannelResponse{
+		Status: rpc.OpenChannelStatus_UNDEFINED_OPEN_CHANNEL_STATUS,
+	}
 
-		if err != nil {
-			log.Error("Cannot parse channel initializer")
-			return errResp, status.Error(codes.InvalidArgument, "channel initializer not parsable")
-		}
-		log.Infoln("process openchannel request", utils.PrintChannelInitializer(&initializer))
-		// distribution is sorted based on address. So we need to figure out who's requester.
-		accnt0 := initializer.InitDistribution.Distribution[0].Account
-		accnt1 := initializer.InitDistribution.Distribution[1].Account
-		myAddr := p.transactor.Address().Bytes()
-		if bytes.Compare(accnt0, accnt1) != -1 {
-			return errResp, status.Error(codes.InvalidArgument, "wrong distribution address order")
-		}
-		if bytes.Compare(myAddr, accnt0) != 0 && bytes.Compare(myAddr, accnt1) != 0 {
-			return errResp, status.Error(codes.InvalidArgument, "wrong channel peers")
-		}
-		if RequestStandardDeposit(p.utils.GetCurrentBlockNumber().Uint64(), p.transactor.Address(), &initializer, req.GetOspToOsp())&AllowStandardOpenChannel == 0 {
-			return errResp, status.Error(codes.InvalidArgument, "distribution breaks policy")
-		}
-		if initializer.DisputeTimeout > rtconfig.GetMaxDisputeTimeout() || initializer.DisputeTimeout < rtconfig.GetMinDisputeTimeout() {
-			return errResp, status.Error(codes.InvalidArgument, "dipspute timeout breaks policy")
-		}
-		requester := initializer.InitDistribution.Distribution[0].Account
-		approver := initializer.InitDistribution.Distribution[1].Account
-		if bytes.Compare(requester, myAddr) == 0 {
-			requester, approver = approver, requester
-		}
-		tokenAddr := initializer.InitDistribution.Token.TokenAddress
+	if err != nil {
+		log.Error("Cannot parse channel initializer")
+		return errResp, status.Error(codes.InvalidArgument, "channel initializer not parsable")
+	}
+	ocem.ReadableInitializer = utils.PrintChannelInitializer(&initializer)
+	log.Infoln("process openchannel request", utils.PrintChannelInitializer(&initializer))
+	// distribution is sorted based on address. So we need to figure out who's requester.
+	accnt0 := initializer.InitDistribution.Distribution[0].Account
+	accnt1 := initializer.InitDistribution.Distribution[1].Account
+	myAddr := p.nodeConfig.GetOnChainAddr().Bytes()
+	if bytes.Compare(accnt0, accnt1) != -1 {
+		return errResp, status.Error(codes.InvalidArgument, "wrong distribution address order")
+	}
+	if bytes.Compare(myAddr, accnt0) != 0 && bytes.Compare(myAddr, accnt1) != 0 {
+		return errResp, status.Error(codes.InvalidArgument, "wrong channel peers")
+	}
+	ocem.OspToOsp = req.GetOspToOsp()
+	policy, policyErr := RequestStandardDeposit(
+		p.monitorService.GetCurrentBlockNumber().Uint64(), p.nodeConfig.GetOnChainAddr(), &initializer, req.GetOspToOsp(), ocem)
+	if policy&AllowStandardOpenChannel == 0 {
+		return errResp, status.Error(codes.InvalidArgument, "breaks policy:"+policyErr.Error())
+	}
+	requester := initializer.InitDistribution.Distribution[0].Account
+	approver := initializer.InitDistribution.Distribution[1].Account
+	if bytes.Compare(requester, myAddr) == 0 {
+		requester, approver = approver, requester
+	}
+	ocem.Peer = ctype.Bytes2Hex(requester)
+	tokenInfo := initializer.GetInitDistribution().GetToken()
+	tokenAddr := utils.GetTokenAddr(tokenInfo)
+	ocem.TokenAddr = ctype.Addr2Hex(tokenAddr)
 
-		tokenInfo := utils.GetTokenInfoFromAddress(ctype.Bytes2Addr(tokenAddr))
-		// Critical section to open channel (for each requester, token pair).
-		existingCid, exist, errCidByPeerToken := p.dal.GetCidByPeerAndTokenWithErr(requester, tokenInfo)
-		if errCidByPeerToken != nil {
-			return errResp, status.Error(codes.Internal, errCidByPeerToken.Error())
-		}
-		if exist && existingCid != ctype.ZeroCid {
-			// Note that we don't delete the entry when a channel is closed. We set it to ZeroCid.
-			// Getting a closed channel will not return error but the value will be zero.
-			return errResp, status.Error(codes.AlreadyExists, "cid="+existingCid.Hex())
-		}
-		allowToOpen := false
-		err = p.dal.Transactional(p.recordInflightOpenChannelTx, ctype.Bytes2Addr(requester), ctype.Bytes2Addr(tokenAddr), &allowToOpen)
-		if err != nil {
-			return errResp, status.Error(codes.Internal, err.Error())
-		}
-		if !allowToOpen {
-			return errResp, status.Error(codes.AlreadyExists, "more than one inflight open channel request.")
-		}
+	// Critical section to open channel (for each requester, token pair).
+	existingCid, exist, err := p.dal.GetCidByPeerToken(ctype.Bytes2Addr(requester), tokenInfo)
+	if err != nil {
+		return errResp, status.Error(codes.Internal, err.Error())
+	}
+	if exist {
+		return errResp, status.Error(codes.AlreadyExists, "cid="+existingCid.Hex())
+	}
+	allowToOpen := false
+	err = p.dal.Transactional(p.recordInflightOpenChannelTx, ctype.Bytes2Addr(requester), tokenAddr, &allowToOpen)
+	if err != nil {
+		return errResp, status.Error(codes.Internal, err.Error())
+	}
+	if !allowToOpen {
+		return errResp, status.Error(codes.AlreadyExists, "more than one inflight open channel request.")
+	}
 
-		mySig, err := p.signer.Sign(req.ChannelInitializer)
+	mySig, err := p.signer.SignEthMessage(req.ChannelInitializer)
+	if err != nil {
+		revertErr := p.dal.Transactional(p.revertInflightOpenChannelTx, ctype.Bytes2Addr(requester), tokenAddr)
+		if revertErr != nil {
+			log.Errorln(revertErr, ctype.Bytes2Hex(requester), ctype.Bytes2Hex(approver))
+		}
+		return errResp, status.Error(
+			codes.InvalidArgument, "failed to sign channel initializer")
+	}
+	latestLedgerAddr := p.nodeConfig.GetLedgerContract().GetAddr()
+	cid, cidErr := p.computePscID(req.GetChannelInitializer(), latestLedgerAddr, p.nodeConfig.GetWalletContract().GetAddr())
+	if cidErr == nil {
+		ocem.Cid = ctype.Cid2Hex(cid)
+	}
+
+	resp := &rpc.OpenChannelResponse{
+		ChannelInitializer: req.ChannelInitializer,
+		RequesterSig:       req.RequesterSig,
+		ApproverSig:        mySig,
+	}
+	switch req.OpenBy {
+	case rpc.OpenChannelBy_OPEN_CHANNEL_PROPOSER:
+		resp.Status = rpc.OpenChannelStatus_OPEN_CHANNEL_APPROVED
+		return &rpc.OpenChannelResponse{
+			ChannelInitializer: req.GetChannelInitializer(),
+			RequesterSig:       req.GetRequesterSig(),
+			ApproverSig:        mySig,
+			Status:             rpc.OpenChannelStatus_OPEN_CHANNEL_APPROVED,
+		}, nil
+	case rpc.OpenChannelBy_OPEN_CHANNEL_APPROVER:
+		resp.Status = rpc.OpenChannelStatus_OPEN_CHANNEL_TX_SUBMITTED
+		err := p.sendOpenChannelTransaction(
+			latestLedgerAddr, resp, requester, approver, big.NewInt(0) /*txValue*/, nil /*openCallback*/)
 		if err != nil {
-			revertErr := p.dal.Transactional(p.revertInflightOpenChannelTx, ctype.Bytes2Addr(requester), ctype.Bytes2Addr(tokenAddr))
+			revertErr := p.dal.Transactional(p.revertInflightOpenChannelTx, ctype.Bytes2Addr(requester), tokenAddr)
 			if revertErr != nil {
 				log.Errorln(revertErr, ctype.Bytes2Hex(requester), ctype.Bytes2Hex(approver))
 			}
-			return errResp, status.Error(
-				codes.InvalidArgument, "failed to sign channel initializer")
+			return errResp, status.Error(codes.Internal, "Can't send open channel tx on-chain.")
 		}
-		resp := &rpc.OpenChannelResponse{
-			ChannelInitializer: req.ChannelInitializer,
-			RequesterSig:       req.RequesterSig,
-			ApproverSig:        mySig,
-		}
-		switch req.OpenBy {
-		case rpc.OpenChannelBy_OPEN_CHANNEL_PROPOSER:
-			resp.Status = rpc.OpenChannelStatus_OPEN_CHANNEL_APPROVED
-			return &rpc.OpenChannelResponse{
-				ChannelInitializer: req.GetChannelInitializer(),
-				RequesterSig:       req.GetRequesterSig(),
-				ApproverSig:        mySig,
-				Status:             rpc.OpenChannelStatus_OPEN_CHANNEL_APPROVED,
-			}, nil
-		case rpc.OpenChannelBy_OPEN_CHANNEL_APPROVER:
-			resp.Status = rpc.OpenChannelStatus_OPEN_CHANNEL_TX_SUBMITTED
-			err := p.sendOpenChannelTransaction(
-				resp, requester, approver, big.NewInt(0) /*txValue*/, nil /*openCallback*/)
-			if err != nil {
-				revertErr := p.dal.Transactional(p.revertInflightOpenChannelTx, ctype.Bytes2Addr(requester), ctype.Bytes2Addr(tokenAddr))
-				if revertErr != nil {
-					log.Errorln(revertErr, ctype.Bytes2Hex(requester), ctype.Bytes2Hex(approver))
-				}
-				return errResp, status.Error(codes.Internal, "Can't send open channel tx on-chain.")
-			}
-			return resp, nil
-		default:
-			return errResp, status.Error(codes.InvalidArgument, "OpenBy not set")
-		}
+		return resp, nil
+	default:
+		return errResp, status.Error(codes.InvalidArgument, "OpenBy not set")
 	}
-	return nil, nil
 }
 func (p *openChannelProcessor) computePscID(
-	channelInitializerBytes []byte, ledgerAdr, walletAddr ethcommon.Address) (ctype.CidType, error) {
+	channelInitializerBytes []byte, ledgerAdr, walletAddr ctype.Addr) (ctype.CidType, error) {
 	nonce := crypto.Keccak256(channelInitializerBytes)
 	// Does same thing as abi.encodePack in solidity.
 	packed := make([]byte, 0, len(walletAddr.Bytes())+len(ledgerAdr.Bytes())+len(nonce))
 	packed = append(packed, walletAddr.Bytes()...)
 	packed = append(packed, ledgerAdr.Bytes()...)
 	packed = append(packed, nonce...)
-	walledID := crypto.Keccak256(packed)
-	return ctype.Bytes2Cid(walledID), nil
+	walletID := crypto.Keccak256(packed)
+	return ctype.Bytes2Cid(walletID), nil
 }
 
 type openedChannelDescriptor struct {
 	cid          ctype.CidType
-	participants [2]ethcommon.Address
+	participants [2]ctype.Addr
 	initDeposits [2]*big.Int
 	tokenType    entity.TokenType
-	tokenAddress ethcommon.Address
+	tokenAddress ctype.Addr
 }
 
-func (p *openChannelProcessor) maybeHandleEvent(descriptor *openedChannelDescriptor,
-	channelFsmTransfer func(tx *storage.DALTx, args ...interface{}) error) bool {
+func (p *openChannelProcessor) maybeHandleEvent(descriptor *openedChannelDescriptor, chanState int, ocem *pem.OpenChannelEventMessage) bool {
 	cid := descriptor.cid
-	log.Infoln("Handle open channel", cid.Hex())
+	ocem.Cid = ctype.Cid2Hex(cid)
+	log.Infoln("Handle open channel", cid.Hex(), fsm.ChanStateName(chanState))
 
 	if len(descriptor.participants) != 2 || len(descriptor.initDeposits) != 2 {
 		log.Error("on chain balances length not match")
 		return false
 	}
-	self := p.transactor.Address()
+	self := p.nodeConfig.GetOnChainAddr()
 	var myIndex int
 	if descriptor.participants[0] == self {
 		myIndex = 0
@@ -603,6 +823,9 @@ func (p *openChannelProcessor) maybeHandleEvent(descriptor *openedChannelDescrip
 		return false
 	}
 	peer := descriptor.participants[1-myIndex]
+	ocem.Peer = ctype.Addr2Hex(peer)
+	ocem.TokenAddr = ctype.Addr2Hex(descriptor.tokenAddress)
+
 	onChainBalance := &structs.OnChainBalance{
 		MyDeposit:      descriptor.initDeposits[myIndex],
 		MyWithdrawal:   big.NewInt(0),
@@ -610,104 +833,65 @@ func (p *openChannelProcessor) maybeHandleEvent(descriptor *openedChannelDescrip
 		PeerWithdrawal: big.NewInt(0),
 	}
 
-	p.dal.PutTokenContractAddr(cid, ctype.Addr2Hex(descriptor.tokenAddress))
-	tokenAddr := ctype.Addr2Hex(descriptor.tokenAddress)
-
-	selfStr := ctype.Addr2Hex(self)
-	peerStr := ctype.Addr2Hex(peer)
 	txBody := func(tx *storage.DALTx, args ...interface{}) error {
-		err := tx.PutCidForPeerAndToken(
-			peer.Bytes(), utils.GetTokenInfoFromAddress(descriptor.tokenAddress), cid)
+		currState, found, err := tx.GetChanState(cid)
 		if err != nil {
-			log.Error(err)
 			return err
 		}
-		hasCState, err := tx.HasChannelState(cid)
-		if err != nil {
-			log.Errorf("%s, can't get channel state %s", err, cid.Hex())
-			return err
-		}
-		if hasCState {
-			log.Errorf("Receiving open event with existing state, cid %s", cid.Hex())
+		// If channel state exists, it has to be trust open, new state cannot be trust open
+		if found {
+			if chanState == structs.ChanState_TRUST_OPENED {
+				return common.ErrOpenEventOnWrongState
+			}
+			if currState == structs.ChanState_TRUST_OPENED || currState == structs.ChanState_INSTANTIATING {
+				log.Debugln("channle was TCB opened", cid.Hex())
+				err = tx.UpdateChanState(cid, chanState)
+				if err != nil {
+					return err
+				}
+				recycleErr := RecycleInstantiatedTcbDepositTx(tx, descriptor, p.nodeConfig.GetOnChainAddr())
+				if recycleErr != nil {
+					log.Warnln(recycleErr, "it's fine if it's proposer of open channel")
+				}
+				return nil
+			}
+			log.Errorf("Receiving open event on state %s, cid %s", fsm.ChanStateName(currState), cid.Hex())
 			return common.ErrOpenEventOnWrongState
 		}
 
-		if exist, err := tx.HasPeer(cid); err != nil {
+		token := utils.GetTokenInfoFromAddress(descriptor.tokenAddress)
+		selfSimplex, err2 := p.emptySimplex(descriptor, self)
+		if err2 != nil {
+			return err2
+		}
+		peerSimplex, err2 := p.emptySimplex(descriptor, peer)
+		if err2 != nil {
+			return err2
+		}
+		ledgerAddr := p.nodeConfig.GetLedgerContract().GetAddr()
+		err = tx.InsertChan(cid, peer, token, ledgerAddr, chanState, nil /*openResp*/, onChainBalance, 0 /*baseSeqNum*/, 0 /*lastUsedSeqNum*/, 0 /*lastAckedSeqNum*/, 0 /*lastNackedSeqNum*/, selfSimplex, peerSimplex)
+		if err != nil {
 			return err
-		} else if !exist {
-			if err := tx.PutPeer(cid, peerStr); err != nil {
-				return err
-			}
 		}
-		mySimplex, _, _ := tx.GetSimplexPaymentChannel(cid, selfStr)
-		if mySimplex == nil {
-			emptySimplex := &entity.SimplexPaymentChannel{
-				ChannelId: descriptor.cid[:],
-				PeerFrom:  self.Bytes(),
-				SeqNum:    0,
-				TransferToPeer: &entity.TokenTransfer{
-					Token: &entity.TokenInfo{
-						TokenType:    descriptor.tokenType,
-						TokenAddress: descriptor.tokenAddress.Bytes(),
-					},
-					Receiver: &entity.AccountAmtPair{
-						Amt:     []byte{0},
-						Account: peer.Bytes(),
-					},
-				},
-				PendingPayIds:          &entity.PayIdList{},
-				LastPayResolveDeadline: 0,
-				TotalPendingAmount:     []byte{0},
-			}
-			emptySimplexByte, _ := proto.Marshal(emptySimplex)
-			mySig, _ := p.signer.Sign(emptySimplexByte)
-			simplexState := &rpc.SignedSimplexState{
-				SimplexState:  emptySimplexByte,
-				SigOfPeerFrom: mySig,
-			}
-			tx.PutSimplexState(cid, selfStr, simplexState)
-		}
-		peerSimplex, _, _ := tx.GetSimplexPaymentChannel(cid, peerStr)
-		if peerSimplex == nil {
-			emptySimplex := &entity.SimplexPaymentChannel{
-				ChannelId: descriptor.cid[:],
-				PeerFrom:  peer.Bytes(),
-				SeqNum:    0,
-				TransferToPeer: &entity.TokenTransfer{
-					Token: &entity.TokenInfo{
-						TokenType:    descriptor.tokenType,
-						TokenAddress: descriptor.tokenAddress.Bytes(),
-					},
-					Receiver: &entity.AccountAmtPair{
-						Amt:     []byte{0},
-						Account: self.Bytes(),
-					},
-				},
-				PendingPayIds:          &entity.PayIdList{},
-				LastPayResolveDeadline: 0,
-				TotalPendingAmount:     []byte{0},
-			}
-			emptySimplexByte, _ := proto.Marshal(emptySimplex)
-			mySig, _ := p.signer.Sign(emptySimplexByte)
-			simplexState := &rpc.SignedSimplexState{
-				SimplexState: emptySimplexByte,
-				SigOfPeerTo:  mySig,
-			}
-			tx.PutSimplexState(cid, peerStr, simplexState)
-		}
-		return tx.PutOnChainBalance(cid, onChainBalance)
+		return tx.UpdatePeerCid(peer, cid, true) // add cid
 	}
 	if err := p.dal.Transactional(txBody); err != nil {
+		ocem.Error = append(ocem.Error, err.Error()+":Initializing Simplex")
 		log.Error(err)
 		return false
 	}
-	if err := p.dal.Transactional(channelFsmTransfer, cid); err != nil {
-		log.Debug(err)
-		return false
+
+	tokenAddr := ctype.Addr2Hex(descriptor.tokenAddress)
+	// OSP checks if refill is needed
+	if p.keepMonitor && chanState == structs.ChanState_OPENED {
+		if err := p.checkBalanceRefill(cid, tokenAddr); err != nil {
+			ocem.Error = append(ocem.Error, err.Error()+":refilleWarn")
+		}
 	}
 	recordErr := p.dal.Transactional(
 		p.recordOpenChannelFinishTx, peer, descriptor.tokenAddress)
 	if recordErr != nil {
+		ocem.Error = append(ocem.Error, recordErr.Error()+":recording finish")
 		log.Errorln(recordErr, peer)
 	}
 	// Non-blocking notification.
@@ -721,17 +905,91 @@ func (p *openChannelProcessor) maybeHandleEvent(descriptor *openedChannelDescrip
 	return true
 }
 
-func (p *openChannelProcessor) monitorEvent() {
+func (p *openChannelProcessor) emptySimplex(
+	descriptor *openedChannelDescriptor, peerFrom ctype.Addr) (*rpc.SignedSimplexState, error) {
+	self := p.nodeConfig.GetOnChainAddr()
+	emptySimplex := &entity.SimplexPaymentChannel{
+		ChannelId: descriptor.cid[:],
+		PeerFrom:  peerFrom.Bytes(),
+		SeqNum:    0,
+		TransferToPeer: &entity.TokenTransfer{
+			Token: &entity.TokenInfo{
+				TokenType:    descriptor.tokenType,
+				TokenAddress: descriptor.tokenAddress.Bytes(),
+			},
+			Receiver: &entity.AccountAmtPair{Amt: zeroAmtBytes},
+		},
+		PendingPayIds:          &entity.PayIdList{},
+		LastPayResolveDeadline: 0,
+		TotalPendingAmount:     zeroAmtBytes,
+	}
+	emptySimplexByte, err := proto.Marshal(emptySimplex)
+	if err != nil {
+		return nil, err
+	}
+	mySig, err := p.signer.SignEthMessage(emptySimplexByte)
+	if err != nil {
+		return nil, err
+	}
+	if self == peerFrom {
+		return &rpc.SignedSimplexState{
+			SimplexState:  emptySimplexByte,
+			SigOfPeerFrom: mySig,
+		}, nil
+	}
+	return &rpc.SignedSimplexState{
+		SimplexState: emptySimplexByte,
+		SigOfPeerTo:  mySig,
+	}, nil
+}
+
+func (p *openChannelProcessor) checkBalanceRefill(cid ctype.CidType, tokenAddr string) error {
+	refillThreshold := rtconfig.GetRefillThreshold(tokenAddr)
+	blkNum := p.monitorService.GetCurrentBlockNumber().Uint64()
+	balance, err := ledgerview.GetBalance(p.dal, cid, p.nodeConfig.GetOnChainAddr(), blkNum)
+	if err != nil {
+		log.Errorln(err, "unabled to find balance for cid", cid.Hex())
+		return err
+	}
+	if refillThreshold.Cmp(balance.MyFree) == 1 {
+		warnMsg := fmt.Sprintf("cid %x balance %s below refill threshold %s", cid, balance.MyFree, refillThreshold)
+		refillAmount, maxWait := rtconfig.GetRefillAmountAndMaxWait(tokenAddr)
+		depositID, err := p.depositProcessor.RequestRefill(cid, refillAmount, maxWait)
+		if err == nil {
+			log.Warnln(warnMsg, "refill", refillAmount, "job ID:", depositID)
+		} else if errors.Is(err, common.ErrPendingRefill) {
+			log.Warn(warnMsg)
+		} else {
+			log.Errorln(warnMsg, "refill error", err)
+			return err
+		}
+	}
+	return nil
+}
+
+func (p *openChannelProcessor) monitorOnAllLedgers() {
+	ledgers := p.nodeConfig.GetAllLedgerContracts()
+
+	for _, contract := range ledgers {
+		if contract != nil {
+			p.monitorEvent(contract)
+		}
+	}
+}
+
+func (p *openChannelProcessor) monitorEvent(ledgerContract chain.Contract) {
 	_, err := p.monitorService.Monitor(
 		event.OpenChannel,
-		p.ledger,
-		p.utils.GetCurrentBlockNumber(),
+		ledgerContract,
+		p.monitorService.GetCurrentBlockNumber(),
 		nil,
 		false, /* quickCatch */
 		false,
 		func(id monitor.CallbackID, eLog types.Log) {
+			ocem := pem.NewOcem(p.nodeConfig.GetRPCAddr())
+			ocem.Type = pem.OpenChannelEventType_CHANNEL_MINED
 			e := &ledger.CelerLedgerOpenChannel{}
-			if err := p.ledger.ParseEvent(event.OpenChannel, eLog, e); err != nil {
+			if err := ledgerContract.ParseEvent(event.OpenChannel, eLog, e); err != nil {
 				log.Error(err)
 			}
 			channelDescriptor := &openedChannelDescriptor{
@@ -741,47 +999,40 @@ func (p *openChannelProcessor) monitorEvent() {
 				tokenAddress: e.TokenAddress,
 				tokenType:    entity.TokenType(e.TokenType.Int64()),
 			}
-			// set channel open state to err and maybe change it after event hanlded
+			// set channel open state to err and maybe change it after event handled
 			chanOpen := metrics.CNodeOpenChanErr
-			if p.maybeHandleEvent(channelDescriptor, fsm.OnPscAuthOpen) {
+			if p.maybeHandleEvent(channelDescriptor, structs.ChanState_OPENED, ocem) {
 				chanOpen = metrics.CNodeOpenChanOK
+				pem.CommitOcem(ocem)
 			}
-			if len(e.PeerAddrs) == 2 && p.routeBuilder != nil {
-				// check length to avoid seg fault if there is any unexpected PeerAddrs.
-				go func() {
-					p.routeBuilder.AddEdge(e.PeerAddrs[0], e.PeerAddrs[1], e.ChannelId, e.TokenAddress)
-					// trigger rt rebuild if the edge is between osps.
-					osps := p.routeBuilder.GetOspInfo()
-					_, p0IsOsp := osps[e.PeerAddrs[0]]
-					_, p1IsOsp := osps[e.PeerAddrs[1]]
-					if p0IsOsp && p1IsOsp {
-						p.routeBuilder.Build(e.TokenAddress)
-					}
-				}()
+			if len(e.PeerAddrs) == 2 && p.routeController != nil {
+				go p.routeController.AddEdge(e.PeerAddrs[0], e.PeerAddrs[1], e.ChannelId, e.TokenAddress)
 			}
 
-			metrics.IncCNodeOpenChanEventCnt(metrics.CNodeStandardChan, chanOpen)
+			metrics.IncCNodeOpenChanEventCnt(metrics.CNodeRegularChan, chanOpen)
 		})
 	if err != nil {
 		log.Error(err)
 	}
 }
 
-func (p *openChannelProcessor) monitorSingleEvent(reset bool) {
-	startBlock := p.utils.GetCurrentBlockNumber()
+func (p *openChannelProcessor) monitorSingleEvent(ledgerContract chain.Contract, reset bool) {
+	startBlock := p.monitorService.GetCurrentBlockNumber()
 	duration := new(big.Int)
 	duration.SetUint64(config.OpenChannelTimeout)
 	endBlock := new(big.Int).Add(startBlock, duration)
 	_, err := p.monitorService.Monitor(
 		event.OpenChannel,
-		p.ledger,
+		ledgerContract,
 		startBlock,
 		endBlock,
 		false, /* quickCatch */
 		reset,
 		func(id monitor.CallbackID, eLog types.Log) {
+			ocem := pem.NewOcem(p.nodeConfig.GetRPCAddr())
+			ocem.Type = pem.OpenChannelEventType_CHANNEL_MINED
 			e := &ledger.CelerLedgerOpenChannel{}
-			if err := p.ledger.ParseEvent(event.OpenChannel, eLog, e); err != nil {
+			if err := ledgerContract.ParseEvent(event.OpenChannel, eLog, e); err != nil {
 				log.Error(err)
 			}
 			channelDescriptor := &openedChannelDescriptor{
@@ -791,15 +1042,13 @@ func (p *openChannelProcessor) monitorSingleEvent(reset bool) {
 				tokenAddress: e.TokenAddress,
 				tokenType:    entity.TokenType(e.TokenType.Int64()),
 			}
-			if p.maybeHandleEvent(channelDescriptor, fsm.OnPscAuthOpen) {
-				go func() {
-					if len(e.PeerAddrs) == 2 && p.routeBuilder != nil {
-						// check length to avoid seg fault if there is any unexpected PeerAddrs.
-						p.routeBuilder.AddEdge(e.PeerAddrs[0], e.PeerAddrs[1], e.ChannelId, e.TokenAddress)
-					}
-				}()
+			if p.maybeHandleEvent(channelDescriptor, structs.ChanState_OPENED, ocem) {
+				if len(e.PeerAddrs) == 2 && p.routeController != nil {
+					go p.routeController.AddEdge(e.PeerAddrs[0], e.PeerAddrs[1], e.ChannelId, e.TokenAddress)
+				}
 				p.monitorService.RemoveEvent(id)
-				p.dal.DeleteEventMonitorBit(p.eventMonitorName)
+				p.dal.UpsertMonitorRestart(monitor.NewEventStr(ledgerContract.GetAddr(), event.OpenChannel), false)
+				pem.CommitOcem(ocem)
 			}
 		})
 	if err != nil {
@@ -826,7 +1075,7 @@ func initDistributionBreaksPolicy(initDist *entity.TokenDistribution, myAddr []b
 		if tokenType == entity.TokenType_ETH {
 			myMax = rtconfig.GetEthColdBootstrapDeposit()
 		} else if tokenType == entity.TokenType_ERC20 {
-			myMax = rtconfig.GetErc20ColdBootstrapDeposit(initDist.Token.TokenAddress)
+			myMax = rtconfig.GetErc20ColdBootstrapDeposit(initDist.GetToken().GetTokenAddress())
 		}
 		if myMax.Cmp(myDeposit) == -1 {
 			return true
@@ -847,20 +1096,124 @@ func (c *CNode) OpenChannel(
 	tokenInfo *entity.TokenInfo,
 	ospToOspOpen bool,
 	openCallback event.OpenChannelCallback) error {
-	return c.openChannelProcessor.openChannel(peer, amtSelf, amtPeer, tokenInfo, ospToOspOpen, openCallback)
+	ocem := pem.NewOcem(c.nodeConfig.GetRPCAddr())
+	ocem.Type = pem.OpenChannelEventType_OPEN_CHANNEL_API
+	err := c.openChannelProcessor.openChannel(peer, amtSelf, amtPeer, tokenInfo, ospToOspOpen, openCallback, ocem)
+	if err != nil {
+		ocem.Error = append(ocem.Error, err.Error())
+	}
+	pem.CommitOcem(ocem)
+	return err
+}
+func (c *CNode) TcbOpenChannel(
+	peer ctype.Addr,
+	amtPeer *big.Int,
+	tokenInfo *entity.TokenInfo,
+	openCallback event.OpenChannelCallback) error {
+	ocem := pem.NewOcem(c.nodeConfig.GetRPCAddr())
+	ocem.Type = pem.OpenChannelEventType_TCB_API
+	err := c.openChannelProcessor.tcbOpenChannel(peer, amtPeer, tokenInfo, openCallback, ocem)
+	if err != nil {
+		ocem.Error = append(ocem.Error, err.Error())
+	}
+	pem.CommitOcem(ocem)
+	return err
 }
 
 func (c *CNode) ProcessOpenChannelRequest(in *rpc.OpenChannelRequest) (*rpc.OpenChannelResponse, error) {
-	response, err := c.openChannelProcessor.processOpenChannelRequest(in)
+	ocem := pem.NewOcem(c.nodeConfig.GetRPCAddr())
+	ocem.Type = pem.OpenChannelEventType_OPEN_CHANNEL_REQUEST
+	response, err := c.openChannelProcessor.processOpenChannelRequest(in, ocem)
 	if err != nil {
+		ocem.Error = append(ocem.Error, err.Error())
 		log.Error(err)
 	}
+	pem.CommitOcem(ocem)
 	return response, err
 }
 
-func (p *openChannelProcessor) processOpenError(openCallback event.OpenChannelCallback, err error) {
+func (c *CNode) ProcessTcbRequest(in *rpc.OpenChannelRequest) (*rpc.OpenChannelResponse, error) {
+	ocem := pem.NewOcem(c.nodeConfig.GetRPCAddr())
+	ocem.Type = pem.OpenChannelEventType_TCB_REQUEST
+	response, err := c.openChannelProcessor.processTcbRequest(in, ocem)
+	if err != nil {
+		log.Error(err)
+		ocem.Error = append(ocem.Error, err.Error())
+	}
+	pem.CommitOcem(ocem)
+	return response, err
+}
+
+func (c *CNode) InstantiateChannel(cid ctype.CidType, openCallback event.OpenChannelCallback) error {
+	log.Infoln("starting instantiating channel", cid.Hex())
+	err := c.openChannelProcessor.instantiateChannel(cid, openCallback)
+	log.Infoln(err, "finish instantiating channel", cid.Hex())
+	if err == nil {
+		// nil err means tx has been sent onchain, waiting for it to be mined,
+		// only set channel state to ChanState_INSTANTIATING now, and in openchan event handler
+		// channel state will be set to open. or it's set back to tcb if tx fail
+		return c.dal.UpdateChanState(cid, structs.ChanState_INSTANTIATING)
+	}
+	return err
+}
+func (p *openChannelProcessor) processOpenError(openCallback event.OpenChannelCallback, ledgerAddr ctype.Addr, err error) {
 	if !p.keepMonitor {
-		p.dal.DeleteEventMonitorBit(p.eventMonitorName)
+		p.dal.UpsertMonitorRestart(monitor.NewEventStr(ledgerAddr, event.OpenChannel), false)
 	}
 	invokeErrorCallback(openCallback, &common.E{Reason: err.Error(), Code: 1})
+}
+func (p *openChannelProcessor) instantiateChannel(cid ctype.CidType, openCallback event.OpenChannelCallback) error {
+	resp, found, err := p.dal.GetChanOpenResp(cid)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return common.ErrChannelNotFound
+	}
+	var initializer entity.PaymentChannelInitializer
+	err = proto.Unmarshal(resp.GetChannelInitializer(), &initializer)
+	if err != nil {
+		return err
+	}
+	tokenInfo := initializer.GetInitDistribution().GetToken()
+	depositMap := getDepositMap(initializer.GetInitDistribution().GetDistribution())
+	var peer ctype.Addr
+	myAddr := p.nodeConfig.GetOnChainAddr()
+	amtSelf := depositMap[myAddr]
+	for addr := range depositMap {
+		if addr != myAddr {
+			peer = addr
+			break
+		}
+	}
+	if openCallback != nil {
+		p.callbacksLock.Lock()
+		p.callbacks[utils.GetTokenAddrStr(tokenInfo)] = openCallback
+		p.callbacksLock.Unlock()
+	}
+	ledgerContract := p.nodeConfig.GetLedgerContractOf(cid)
+	if ledgerContract == nil {
+		return fmt.Errorf("Fail to find ledger contract for channel: %x", cid)
+	}
+	ledgerAddr := ledgerContract.GetAddr()
+	p.monitorSingleEvent(ledgerContract, true)
+	err = p.dal.UpsertMonitorRestart(monitor.NewEventStr(ledgerAddr, event.OpenChannel), true)
+	if err != nil {
+		log.Debugln("CelerOpenChannel cannot put event monitor bit:", err)
+		p.processOpenError(openCallback, ledgerAddr, err)
+		return err
+	}
+
+	txValue := amtSelf
+	if tokenInfo.GetTokenType() == entity.TokenType_ERC20 {
+		approveErr := p.approveErc20Allowance(ledgerAddr, amtSelf, tokenInfo, openCallback)
+		if approveErr != nil {
+			p.processOpenError(openCallback, ledgerAddr, approveErr)
+			return approveErr
+		}
+		txValue = ctype.ZeroBigInt
+	}
+	log.Debug("Instantiating Channel tx")
+	return p.sendOpenChannelTransaction(
+		ledgerAddr, resp, p.nodeConfig.GetOnChainAddr().Bytes(), peer.Bytes(), txValue, openCallback)
 }

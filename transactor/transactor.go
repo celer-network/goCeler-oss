@@ -1,27 +1,26 @@
-// Copyright 2018-2019 Celer Network
+// Copyright 2018-2020 Celer Network
 
 package transactor
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"math/big"
 	"strings"
 	"sync"
 
-	"github.com/celer-network/goCeler-oss/config"
-	"github.com/celer-network/goCeler-oss/ctype"
-	"github.com/celer-network/goCeler-oss/rtconfig"
-
-	log "github.com/celer-network/goCeler-oss/clog"
-	"github.com/celer-network/goCeler-oss/utils"
+	"github.com/celer-network/goCeler/common"
+	"github.com/celer-network/goCeler/common/cobj"
+	"github.com/celer-network/goCeler/config"
+	"github.com/celer-network/goCeler/ctype"
+	"github.com/celer-network/goCeler/rtconfig"
+	"github.com/celer-network/goCeler/utils"
+	"github.com/celer-network/goutils/log"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
-	"github.com/ethereum/go-ethereum/accounts/keystore"
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/ethereum/go-ethereum/rlp"
 )
 
 const (
@@ -29,16 +28,12 @@ const (
 )
 
 type Transactor struct {
-	address    common.Address
-	privKey    string
-	keyStore   string
-	passPhrase string
-	chainId    *big.Int
-	client     *ethclient.Client
-	blockDelay uint64
-	nonce      uint64
-	sentTx     bool
-	lock       sync.Mutex
+	address ctype.Addr
+	signer  common.Signer
+	client  *ethclient.Client
+	nonce   uint64
+	sentTx  bool
+	lock    sync.Mutex
 }
 
 type TransactionMinedHandler struct {
@@ -48,25 +43,31 @@ type TransactionMinedHandler struct {
 func NewTransactor(
 	keyStore string,
 	passPhrase string,
-	chainId *big.Int,
-	client *ethclient.Client,
-	blockDelay uint64,
-) (*Transactor, error) {
-	key, err := keystore.DecryptKey([]byte(keyStore), passPhrase)
+	client *ethclient.Client) (*Transactor, error) {
+	address, privKey, err := utils.GetAddrAndPrivKey(keyStore, passPhrase)
 	if err != nil {
 		return nil, err
 	}
-	addr := fmt.Sprintf("%x", key.Address)
-	privKey := ctype.Bytes2Hex(crypto.FromECDSA(key.PrivateKey))
+	signer, err := cobj.NewCelerSigner(privKey)
+	if err != nil {
+		return nil, err
+	}
 	return &Transactor{
-		address:    common.HexToAddress(addr),
-		privKey:    privKey,
-		keyStore:   keyStore,
-		passPhrase: passPhrase,
-		chainId:    chainId,
-		client:     client,
-		blockDelay: blockDelay,
+		address: address,
+		signer:  signer,
+		client:  client,
 	}, nil
+}
+
+func NewTransactorByExternalSigner(
+	address ctype.Addr,
+	signer common.Signer,
+	client *ethclient.Client) *Transactor {
+	return &Transactor{
+		address: address,
+		signer:  signer,
+		client:  client,
+	}
 }
 
 func (t *Transactor) Transact(
@@ -108,10 +109,7 @@ func (t *Transactor) transact(
 ) (*types.Transaction, error) {
 	t.lock.Lock()
 	defer t.lock.Unlock()
-	signer, err := newTransactOpts(strings.NewReader(t.keyStore), t.passPhrase, t.chainId)
-	if err != nil {
-		return nil, err
-	}
+	signer := t.newTransactOpts()
 	client := t.client
 	suggestedPrice, err := client.SuggestGasPrice(context.Background())
 	if err != nil {
@@ -133,6 +131,7 @@ func (t *Transactor) transact(
 		capPrice := new(big.Int).SetUint64(maxGas * 1e9) // 1e9 is 1G
 		// GasPrice is larger than allowed cap, set to cap
 		if capPrice.Cmp(signer.GasPrice) < 0 {
+			log.Warnf("suggested gas price %s larger than cap %s, set to cap", signer.GasPrice, capPrice)
 			signer.GasPrice = capPrice
 		}
 	}
@@ -167,7 +166,7 @@ func (t *Transactor) transact(
 				go func() {
 					txHash := tx.Hash().Hex()
 					log.Debugf("Waiting for tx %s to be mined", txHash)
-					blockDelay := t.blockDelay
+					blockDelay := config.BlockDelay
 					if quickCatch {
 						blockDelay = config.QuickCatchBlockDelay
 					}
@@ -194,24 +193,38 @@ func (t *Transactor) ContractCaller() bind.ContractCaller {
 	return t.client
 }
 
-func (t *Transactor) Address() common.Address {
+func (t *Transactor) Address() ctype.Addr {
 	return t.address
 }
 
 func (t *Transactor) WaitMined(txHash string) (*types.Receipt, error) {
-	return utils.WaitMinedWithTxHash(context.Background(), t.client, txHash, t.blockDelay)
+	return utils.WaitMinedWithTxHash(context.Background(), t.client, txHash, config.BlockDelay)
 }
 
-func NewGenericTransactionHandler(
-	description string, receiptChan chan *types.Receipt) *TransactionMinedHandler {
-	return &TransactionMinedHandler{
-		OnMined: func(receipt *types.Receipt) {
-			if receipt.Status == types.ReceiptStatusSuccessful {
-				log.Debugf("%s transaction %s succeeded", description, receipt.TxHash.String())
-			} else {
-				log.Errorf("%s transaction %s failed", description, receipt.TxHash.String())
+func (t *Transactor) newTransactOpts() *bind.TransactOpts {
+	return &bind.TransactOpts{
+		From: t.address,
+		// Ignore the passed in Signer to enforce EIP-155
+		Signer: func(
+			signer types.Signer,
+			address ctype.Addr,
+			tx *types.Transaction) (*types.Transaction, error) {
+			if address != t.address {
+				return nil, errors.New("not authorized to sign this account")
 			}
-			receiptChan <- receipt
+			rawTx, err := rlp.EncodeToBytes(tx)
+			if err != nil {
+				return nil, err
+			}
+			rawTx, err = t.signer.SignEthTransaction(rawTx)
+			if err != nil {
+				return nil, err
+			}
+			err = rlp.DecodeBytes(rawTx, tx)
+			if err != nil {
+				return nil, err
+			}
+			return tx, nil
 		},
 	}
 }

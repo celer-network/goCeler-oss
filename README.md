@@ -15,7 +15,7 @@ Please walk through the [local manual tests](./test/manual/README.md) before mov
 Download prebuit binaries from https://github.com/celer-network/goCeler-oss/releases
 Then run
 ```bash
-tar xzf goceler-v0.16-linux-amd64.tar.gz
+tar xzf goceler-v0.16.1-linux-amd64.tar.gz
 export PATH=$PATH:$PWD/goceler
 ```
 

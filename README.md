@@ -35,3 +35,20 @@ export PATH=$PATH:$PWD/goceler
 
 ### Steps to run with prebuilt binaries on Mainnet
 Follow [steps for ropsten](#steps-to-run-from-source-code-on-ropsten) above starting from step 2, replace all keywords `ropsten` with `mainnet`.
+
+## TLS Certificate for serving Internet traffic
+OSP needs to have a valid TLS certificate for Celer connections over the Internet. If you already have a domain name, you can get one from [Let's Encrypt](https://letsencrypt.org/). Then run OSP with flags `-tlscert mysvr.crt -tlskey mysvr.key`.
+
+Otherwise, the builtin cert supports DDNS with following domain names:
+```
+*.dynu.com
+*.mooo.com
+*.us.to
+*.hopto.org
+*.zapto.org
+*.sytes.net
+*.ddns.net
+```
+You can register free account with the DDNS provider, eg. mycelernode.ddns.net, update host field in profile.json to it, and run OSP, no need to specify tlscert or tlskey flag.
+
+If you prefer using IP address directly, please contact cert@celer.network and we'll email you a unique cert for requested IP address.

@@ -19,16 +19,19 @@ jobs:
 
       - name: checkout code
         uses: actions/checkout@v2
+      - name: get version tag
+        id: get_tag
+        run: echo ::set-output name=TAG::${GITHUB_REF/refs\/tags\//}
 
       - name: Build and tar
         run: |
           mkdir goceler && pushd goceler
-          LDFLAG="-s -w -X main.version=${{ github.ref }} -X main.commit=${GITHUB_SHA::6}"
+          LDFLAG="-s -w -X main.version=${{ steps.get_tag.outputs.TAG }} -X main.commit=${GITHUB_SHA::6}"
           go build -ldflags "$LDFLAG" ../server
           go build ../tools/osp-admin
           go build ../tools/osp-setup
           popd
-          tar czf goceler-${{ github.ref }}-linux-amd64.tar.gz goceler/
+          tar czf goceler-${{ steps.get_tag.outputs.TAG }}-linux-amd64.tar.gz goceler/
 
       - name: Create Release
         id: create_release
@@ -36,8 +39,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: ${{ github.ref }}
-          release_name: Release ${{ github.ref }}
+          tag_name: ${{ steps.get_tag.outputs.TAG }}
+          release_name: ${{ steps.get_tag.outputs.TAG }}
           draft: false
           prerelease: false
       - name: Upload Release Asset
@@ -47,6 +50,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }} # This pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, which include a `upload_url`. See this blog post for more info: https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps 
-          asset_path: ./goceler-${{ github.ref }}-linux-amd64.tar.gz
-          asset_name: goceler-${{ github.ref }}-linux-amd64.tar.gz
+          asset_path: ./goceler-${{ steps.get_tag.outputs.TAG }}-linux-amd64.tar.gz
+          asset_name: goceler-${{ steps.get_tag.outputs.TAG }}-linux-amd64.tar.gz
           asset_content_type: application/gzip

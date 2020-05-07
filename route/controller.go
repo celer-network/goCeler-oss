@@ -474,8 +474,8 @@ func (c *Controller) reportOspInfoToExplorer() {
 			peerBalances.Balances = append(
 				peerBalances.Balances,
 				&ospreport.ChannelBalance{
-					Cid:         ctype.Cid2Hex(cid),
-					TokenAddr:   tk.Hex(), // format required by explorer
+					Cid:         cid.Hex(), // format required by explorer
+					TokenAddr:   tk.Hex(),  // format required by explorer
 					SelfBalance: bal.MyFree.String(),
 					PeerBalance: bal.PeerFree.String(),
 				})

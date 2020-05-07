@@ -8,13 +8,13 @@
 		"config": {
 			"0000000000000000000000000000000000000000": {
 				"min_deposit": "50000000000000000",
-				"max_deposit": "200000000000000000",
+				"max_deposit": "2000000000000000000",
 				"min_deadline_delta": 1,
 				"max_deadline_delta": 600
 			},
 			"e496fa48419c14b0fe2dcf9c1d5c0f408ba3bd2d": {
 				"min_deposit": "500000000000000000000",
-				"max_deposit": "2000000000000000000000",
+				"max_deposit": "100000000000000000000000",
 				"min_deadline_delta": 1,
 				"max_deadline_delta": 600
 			}

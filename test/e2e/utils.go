@@ -178,7 +178,7 @@ func StartChain() (*os.Process, error) {
 	cmd := exec.Command("geth", "--networkid", "883", "--cache", "256", "--nousb", "--syncmode", "full", "--nodiscover", "--maxpeers", "0",
 		"--netrestrict", "127.0.0.1/8", "--datadir", chainDataDir, "--keystore", filepath.Join(chainDataDir, "keystore"), "--targetgaslimit", "8000000",
 		"--mine", "--allow-insecure-unlock", "--unlock", "0", "--password", "empty_password.txt", "--rpc", "--rpccorsdomain", "*",
-		"--rpcapi", "admin,debug,eth,miner,net,personal,shh,txpool,web3")
+		"--rpcapi", "admin,debug,eth,miner,net,personal,shh,txpool,web3", "--ws", "--wsaddr", "localhost", "--wsport", "8546", "--wsapi", "admin,debug,eth,miner,net,personal,shh,txpool,web3")
 	cmd.Dir = cmdInit.Dir
 
 	logF, _ := os.Create(logFname)

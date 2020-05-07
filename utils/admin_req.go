@@ -171,10 +171,9 @@ func HttpPost(url string, input interface{}) ([]byte, error) {
 		return nil, fmt.Errorf("status is %s", resp.Status)
 	}
 
-	body, err := ioutil.ReadAll(resp.Body)
+	buf, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
 	}
-
-	return body, nil
+	return buf, nil
 }

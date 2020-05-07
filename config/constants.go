@@ -17,6 +17,7 @@ var RouterBcastInterval = 293 * time.Second
 var RouterBuildInterval = 367 * time.Second
 var RouterAliveTimeout = 900 * time.Second
 var OspClearPaysInterval = 613 * time.Second
+var OspReportInverval = 887 * time.Second
 
 const (
 	ClientCacheSize            = 1000

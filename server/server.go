@@ -87,10 +87,12 @@ var (
 	tlsKey               = flag.String("tlskey", "", "Path to TLS private key file")
 	tlsClient            = flag.Bool("tlsclient", false, "Require tls client cert by CelerCA")
 	allowTsDiffInMinutes = flag.Uint64("allowtsdiff", 120, "Allowed timestamp diff (in minutes) when authenticating peer in pay history request")
-	routerBcastInterval  = flag.Uint64("routerbcastinterval", 0, "interval (in sec) to broadcast route updates, should only set for test purpose")
-	routerBuildInterval  = flag.Uint64("routerbuildinterval", 0, "interval (in sec) to uild routing table, should only set for test purpose")
-	routerAliveTimeout   = flag.Uint64("routeralivetimeout", 0, "timeout (in sec) for router aliveness, should only set for test purpose")
-	ospClearPayInterval  = flag.Uint64("ospclearpayinterval", 0, "interval (in sec) for osp to clear expired and on-chain resolved pays with its peers, should only set for test purpose")
+
+	routerBcastInterval = flag.Uint64("routerbcastinterval", 0, "interval (in sec) to broadcast route updates, should only set for test purpose")
+	routerBuildInterval = flag.Uint64("routerbuildinterval", 0, "interval (in sec) to build routing table, should only set for test purpose")
+	routerAliveTimeout  = flag.Uint64("routeralivetimeout", 0, "timeout (in sec) for router aliveness, should only set for test purpose")
+	ospClearPayInterval = flag.Uint64("ospclearpayinterval", 0, "interval (in sec) for osp to clear expired and on-chain resolved pays with its peers, should only set for test purpose")
+	ospReportInterval   = flag.Uint64("ospreportinterval", 0, "interval (in sec) to report to OSP explorer, should only set for test purpose")
 )
 
 var selfHostPort string
@@ -1001,6 +1003,10 @@ func setGlobalConfig() {
 	if *ospClearPayInterval != 0 {
 		log.Infof("set osp clear pay interval to %d seconds", *ospClearPayInterval)
 		config.OspClearPaysInterval = time.Duration(*ospClearPayInterval) * time.Second
+	}
+	if *ospReportInterval != 0 {
+		log.Infof("set osp report interval to %d seconds", *ospReportInterval)
+		config.OspReportInverval = time.Duration(*ospReportInterval) * time.Second
 	}
 }
 

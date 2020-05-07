@@ -57,10 +57,9 @@ const (
 
 // Time duration for tickers
 const (
-	refreshRouterInterval  = 5 * 24 * time.Hour
-	scanRouterInterval     = 1 * time.Hour
-	routeTTL               = 15
-	explorerReportInterval = 907 * time.Second
+	refreshRouterInterval = 5 * 24 * time.Hour
+	scanRouterInterval    = 1 * time.Hour
+	routeTTL              = 15
 )
 
 const expireIntervalBlock = uint64(46500) // estimation of block numbers during one week, fluctuation tolerant
@@ -91,7 +90,7 @@ func NewController(
 		return c, fmt.Errorf("fail to initialize routing table builder")
 	}
 	c.explorerReport = &ospreport.OspInfo{
-		EthAddr:    ctype.Addr2Hex(nodeConfig.GetOnChainAddr()),
+		EthAddr:    nodeConfig.GetOnChainAddr().Hex(), // format required by explorer
 		RpcHost:    rpcHost,
 		OpenAccept: true,
 	}
@@ -251,7 +250,7 @@ func (c *Controller) runRoutersRoutineJob() {
 	refreshTicker := time.NewTicker(refreshRouterInterval)
 	bcastTicker := time.NewTicker(config.RouterBcastInterval)
 	buildTicker := time.NewTicker(config.RouterBuildInterval)
-	reportTicker := time.NewTicker(explorerReportInterval)
+	reportTicker := time.NewTicker(config.OspReportInverval)
 	defer func() {
 		scanTicker.Stop()
 		refreshTicker.Stop()
@@ -463,7 +462,9 @@ func (c *Controller) reportOspInfoToExplorer() {
 	c.explorerReport.OspPeers = nil
 	blkNum := c.monitorService.GetCurrentBlockNumber().Uint64()
 	for addr, neighbor := range c.rtBuilder.getAliveNeighbors() {
-		peerBalances := &ospreport.PeerBalances{Peer: ctype.Addr2Hex(addr)}
+		peerBalances := &ospreport.PeerBalances{
+			Peer: addr.Hex(), // format required by explorer
+		}
 		for tk, cid := range neighbor.TokenCids {
 			bal, err := ledgerview.GetBalance(c.dal, cid, c.nodeConfig.GetOnChainAddr(), blkNum)
 			if err != nil {
@@ -474,7 +475,7 @@ func (c *Controller) reportOspInfoToExplorer() {
 				peerBalances.Balances,
 				&ospreport.ChannelBalance{
 					Cid:         ctype.Cid2Hex(cid),
-					TokenAddr:   ctype.Addr2Hex(tk),
+					TokenAddr:   tk.Hex(), // format required by explorer
 					SelfBalance: bal.MyFree.String(),
 					PeerBalance: bal.PeerFree.String(),
 				})
@@ -485,7 +486,7 @@ func (c *Controller) reportOspInfoToExplorer() {
 	c.explorerReport.StdOpenchanConfigs = nil
 	for _, cfg := range rtconfig.GetStandardConfigs().GetConfig() {
 		cfgReport := &ospreport.StdOpenChanConfig{
-			TokenAddr:  cfg.Token.Address,
+			TokenAddr:  ctype.Hex2Addr(cfg.Token.Address).Hex(), // format required by explorer
 			MinDeposit: cfg.MinDeposit,
 			MaxDeposit: cfg.MaxDeposit,
 		}
@@ -511,11 +512,11 @@ func (c *Controller) reportOspInfoToExplorer() {
 		return
 	}
 	// send report
-	ospReport := &ospreport.OspReport{
-		OspInfo: reportBytes,
-		Sig:     sig,
+	report := map[string]string{
+		"ospInfo": ctype.Bytes2Hex(reportBytes),
+		"sig":     ctype.Bytes2Hex(sig),
 	}
-	_, err = utils.HttpPost(c.explorerUrl, ospReport)
+	_, err = utils.HttpPost(c.explorerUrl, report)
 	if err != nil {
 		log.Errorln("explorer report error:", err)
 	}

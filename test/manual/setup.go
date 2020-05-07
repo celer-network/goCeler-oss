@@ -28,19 +28,19 @@ const (
 	osp5Addr = "cc09df4fe5e09ff9dec5781170f146990dd77ba3"
 
 	// config of test OSP 1
-	o1Port      = "10001"
+	o1HostPort  = "localhost:10001"
 	o1AdminHttp = "localhost:8190"
 	// config of test OSP 2
-	o2Port      = "10002"
+	o2HostPort  = "localhost:10002"
 	o2AdminHttp = "localhost:8290"
 	// config of test OSP 3
-	o3Port      = "10003"
+	o3HostPort  = "localhost:10003"
 	o3AdminHttp = "localhost:8390"
 	// config of test OSP 4
-	o4Port      = "10004"
+	o4HostPort  = "localhost:10004"
 	o4AdminHttp = "localhost:8490"
 	// config of test OSP 5
-	o5Port      = "10005"
+	o5HostPort  = "localhost:10005"
 	o5AdminHttp = "localhost:8590"
 
 	TestTokenAddr = "f3ccc0a86f8451ab193011fbb408db2e38eaf10a" // test ERC20 token
@@ -80,25 +80,26 @@ func main() {
 
 	profile := *tf.E2eProfile
 	profile.Ethereum.Contracts.Ledgers = nil
+	//profile.Osp.ExplorerUrl = "http://localhost:8000/report"
 	// osp1 profile
 	profile.Osp.Address = osp1Addr
-	profile.Osp.Host = o1Port
+	profile.Osp.Host = o1HostPort
 	e2e.SaveProfile(&profile, profileDir+"o1_profile.json")
 	// osp2 profile
 	profile.Osp.Address = osp2Addr
-	profile.Osp.Host = o2Port
+	profile.Osp.Host = o2HostPort
 	e2e.SaveProfile(&profile, profileDir+"o2_profile.json")
 	// osp3 profile
 	profile.Osp.Address = osp3Addr
-	profile.Osp.Host = o3Port
+	profile.Osp.Host = o3HostPort
 	e2e.SaveProfile(&profile, profileDir+"o3_profile.json")
 	// osp4 profile
 	profile.Osp.Address = osp4Addr
-	profile.Osp.Host = o4Port
+	profile.Osp.Host = o4HostPort
 	e2e.SaveProfile(&profile, profileDir+"o4_profile.json")
 	// osp5 profile
 	profile.Osp.Address = osp5Addr
-	profile.Osp.Host = o5Port
+	profile.Osp.Host = o5HostPort
 	e2e.SaveProfile(&profile, profileDir+"o5_profile.json")
 
 	// Fund two clients

@@ -43,7 +43,7 @@ export PATH=$PATH:$PWD/goceler
 ## Run OSP on Ethereum Mainnet
 
 ### Steps to run with prebuilt binaries on Mainnet
-Follow [steps for ropsten](#steps-to-run-from-source-code-on-ropsten) above starting from step 2, replace all keywords `ropsten` with `mainnet`.
+Follow [steps for ropsten](#steps-to-run-with-prebuilt-binaries-on-ropsten) above starting from step 2, replace all keywords `ropsten` with `mainnet`.
 
 ## TLS Certificate for serving Internet traffic
 OSP needs to have a valid TLS certificate for Celer connections over the Internet. If you already have a domain name, you can get one from [Let's Encrypt](https://letsencrypt.org/). Then run OSP with flags `-tlscert mysvr.crt -tlskey mysvr.key`.

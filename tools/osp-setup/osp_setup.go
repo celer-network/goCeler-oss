@@ -26,6 +26,7 @@ var (
 	ksfile     = flag.String("ks", "", "key store file")
 	blkDelay   = flag.Int("blkdelay", 2, "block delay for wait mined")
 	noPassword = flag.Bool("nopassword", false, "assume empty password for keystores")
+	deregister = flag.Bool("deregister", false, "deregister OSP as state channel router")
 )
 
 type processor struct {
@@ -45,6 +46,11 @@ func main() {
 
 	var p processor
 	p.setup()
+
+	if *deregister {
+		p.deregisterRouter()
+		return
+	}
 
 	if *ethpoolamt > 0 {
 		// deposit ETH to EthPool contract
@@ -112,7 +118,7 @@ func (p *processor) depositEthPool() error {
 }
 
 func (p *processor) approveEthPoolToLedger() error {
-	log.Infof("approve EthPool balance to CelerLedger and wait transaction to be mined...")
+	log.Info("approve EthPool balance to CelerLedger and wait transaction to be mined...")
 	balance, err := p.queryEthPoolBalance()
 	if err != nil {
 		return err
@@ -202,7 +208,7 @@ func (p *processor) queryRouterRegistry() (uint64, error) {
 }
 
 func (p *processor) registerRouter() error {
-	log.Infof("register OSP as state channel router and wait transaction to be mined...")
+	log.Info("register OSP as state channel router and wait transaction to be mined...")
 	routerRegistryAddr := ctype.Hex2Addr(p.profile.RouterRegistryAddr)
 	receiptChan := make(chan *types.Receipt, 1)
 	_, err := p.transactor.Transact(
@@ -234,6 +240,7 @@ func (p *processor) registerRouter() error {
 }
 
 func (p *processor) deregisterRouter() error {
+	log.Info("deregister OSP as state channel router and wait transaction to be mined...")
 	routerRegistryAddr := ctype.Hex2Addr(p.profile.RouterRegistryAddr)
 
 	receiptChan := make(chan *types.Receipt, 1)

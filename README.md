@@ -15,7 +15,7 @@ Please walk through the [local manual tests](./test/manual/README.md) before mov
 Download prebuit binaries from https://github.com/celer-network/goCeler-oss/releases
 Then run
 ```bash
-tar xzf goceler-v0.16.2-linux-amd64.tar.gz
+tar xzf goceler-v0.16.3-linux-amd64.tar.gz
 export PATH=$PATH:$PWD/goceler
 ```
 
@@ -25,6 +25,7 @@ export PATH=$PATH:$PWD/goceler
 2. Fund the newly generated ospks.json address some ropsten ETH.
 3. Update ./deploy/ropsten/profile.json `gateway` field to Ropsten RPC (eg. https://ropsten.infura.io/v3/xxxxx), `host` filed to the OSP public RPC hostname:port (default rpc port is 10000), `address` field to the OSP ETH address.
 4. Setup OSP: **`osp-setup -profile ./deploy/ropsten/profile.json -ks ./deploy/ospks.json -ethpoolamt [ETH amount]`**. This step would do two things. First, deposit OSP's ETH with amount specified by `-ethpoolamt` into the EthPool for future channel opening and deposits. Second, register the OSP on-chain as a state channel network router.
+   - **note:** currently OSP has to use ETH in its account (not EthPool) to initiate an open channel request. EthPool balance is used to accept open channel request from peers.
 
 #### Run OSP server
 5. Create a storage folder at `deploy/ropsten/store`. The OSP SQLite data store will be located at `deploy/ropsten/store/[ospAddr]`.

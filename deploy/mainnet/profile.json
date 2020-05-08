@@ -17,6 +17,7 @@
   },
   "osp": {
     "host": "HOST:PORT to accept RPC connection",
-    "address": "OSP ETH address"
+    "address": "OSP ETH address",
+    "explorerUrl": "http://report.celer.network/report"
   }
 }

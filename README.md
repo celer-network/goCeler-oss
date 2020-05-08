@@ -62,3 +62,8 @@ Otherwise, the builtin cert supports DDNS with following domain names:
 You can register free account with the DDNS provider, eg. mycelernode.ddns.net, update host field in profile.json to it, and run OSP, no need to specify tlscert or tlskey flag.
 
 If you prefer using IP address directly, please contact cert@celer.network and we'll email you a unique cert for requested IP address.
+
+## Start Web Proxy for Celer web client
+`go run webproxy/cmd/main.go -server localhost:10000` assume OSP runs on default 10000 port
+
+Then clone https://github.com/celer-network/celer-light-client repo, update demo/mainnet_config.json ospEthAddress to OSP eth address and ospNetworkAddress to http://[webproxy DNS or IP]:29980

@@ -520,7 +520,7 @@ func (c *Controller) reportOspInfoToExplorer() {
 	}
 	_, err = utils.HttpPost(c.explorerUrl, report)
 	if err != nil {
-		log.Errorln("explorer report error:", err)
+		log.Warnln("explorer report error:", err)
 	}
 }
 

@@ -150,20 +150,20 @@ func HttpPost(url string, input interface{}) ([]byte, error) {
 	log.Debugln("URL:>", url)
 	payload, err := json.Marshal(input)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("json.Marshal err: %w", err)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(payload))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("NewRequestWithContext err: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("DefaultClient.Do(req) err: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -173,7 +173,7 @@ func HttpPost(url string, input interface{}) ([]byte, error) {
 
 	buf, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("ReadAll(resp.Body) err: %w", err)
 	}
 	return buf, nil
 }

@@ -24,7 +24,7 @@ var (
 	pjson      = flag.String("profile", "", "OSP profile")
 	ethpoolamt = flag.Float64("ethpoolamt", 0, "amount of ETH to deposit into EthPool")
 	ksfile     = flag.String("ks", "", "key store file")
-	blkDelay   = flag.Int("blkDelay", 2, "block delay for wait mined")
+	blkDelay   = flag.Int("blkdelay", 2, "block delay for wait mined")
 	noPassword = flag.Bool("nopassword", false, "assume empty password for keystores")
 )
 
@@ -46,15 +46,17 @@ func main() {
 	var p processor
 	p.setup()
 
-	// deposit ETH to EthPool contract
-	err := p.depositEthPool()
-	if err != nil {
-		return
-	}
-	// approve EthPool balance to Ledger contract
-	err = p.approveEthPoolToLedger()
-	if err != nil {
-		return
+	if *ethpoolamt > 0 {
+		// deposit ETH to EthPool contract
+		err := p.depositEthPool()
+		if err != nil {
+			return
+		}
+		// approve EthPool balance to Ledger contract
+		err = p.approveEthPoolToLedger()
+		if err != nil {
+			return
+		}
 	}
 
 	// check router registration
@@ -75,11 +77,8 @@ func main() {
 }
 
 func (p *processor) depositEthPool() error {
-	if *ethpoolamt <= 0 {
-		err := fmt.Errorf("incorrect ethpool amt")
-		log.Error(err)
-		return err
-	}
+	log.Infof("deposit %f ETH to EthPool and wait transaction to be mined...", *ethpoolamt)
+
 	amtWei := utils.Float2Wei(*ethpoolamt)
 	ethPoolAddr := ctype.Hex2Addr(p.profile.EthPoolAddr)
 
@@ -113,6 +112,7 @@ func (p *processor) depositEthPool() error {
 }
 
 func (p *processor) approveEthPoolToLedger() error {
+	log.Infof("approve EthPool balance to CelerLedger and wait transaction to be mined...")
 	balance, err := p.queryEthPoolBalance()
 	if err != nil {
 		return err
@@ -202,6 +202,7 @@ func (p *processor) queryRouterRegistry() (uint64, error) {
 }
 
 func (p *processor) registerRouter() error {
+	log.Infof("register OSP as state channel router and wait transaction to be mined...")
 	routerRegistryAddr := ctype.Hex2Addr(p.profile.RouterRegistryAddr)
 	receiptChan := make(chan *types.Receipt, 1)
 	_, err := p.transactor.Transact(

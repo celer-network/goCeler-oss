@@ -1155,7 +1155,7 @@ func setUpAdminService(osp *server) *adminService {
 
 	http.Handle("/admin/", gwmux)
 	http.Handle("/metrics", metrics.GetPromExporter())
-	log.Info("Celer server has admin HTTP:", *adminweb)
+	log.Infoln("Celer server has admin HTTP:", *adminweb)
 	go func() {
 		err := http.ListenAndServe(*adminweb, http.DefaultServeMux)
 		if err != nil {

@@ -30,6 +30,8 @@ jobs:
           go build -ldflags "$LDFLAG" ../server
           go build ../tools/osp-admin
           go build ../tools/osp-setup
+          go build ../tools/channel-view
+          go build ../tools/channel-op
           popd
           tar czf goceler-${{ steps.get_tag.outputs.TAG }}-linux-amd64.tar.gz goceler/
 

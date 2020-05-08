@@ -485,12 +485,14 @@ func (c *Controller) reportOspInfoToExplorer() {
 	// set std openchan configs
 	c.explorerReport.StdOpenchanConfigs = nil
 	for _, cfg := range rtconfig.GetStandardConfigs().GetConfig() {
-		cfgReport := &ospreport.StdOpenChanConfig{
-			TokenAddr:  ctype.Hex2Addr(cfg.Token.Address).Hex(), // format required by explorer
-			MinDeposit: cfg.MinDeposit,
-			MaxDeposit: cfg.MaxDeposit,
+		if cfg != nil && cfg.Token != nil {
+			cfgReport := &ospreport.StdOpenChanConfig{
+				TokenAddr:  ctype.Hex2Addr(cfg.Token.Address).Hex(), // format required by explorer
+				MinDeposit: cfg.MinDeposit,
+				MaxDeposit: cfg.MaxDeposit,
+			}
+			c.explorerReport.StdOpenchanConfigs = append(c.explorerReport.StdOpenchanConfigs, cfgReport)
 		}
-		c.explorerReport.StdOpenchanConfigs = append(c.explorerReport.StdOpenchanConfigs, cfgReport)
 	}
 	// set pay count
 	payCount, err := c.dal.CountPayments()

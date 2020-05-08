@@ -1129,16 +1129,10 @@ func main() {
 }
 
 func setUpAdminService(osp *server) *adminService {
-	_, port, err := getHostPort(*adminrpc)
+	log.Infoln("Celer server has admin rpc:", *adminrpc)
+	lis, err := net.Listen("tcp", *adminrpc)
 	if err != nil {
-		log.Fatalf("invalid admin rpc: %s", err)
-		os.Exit(2)
-	}
-
-	log.Info("Celer server has 3rd port (admin rpc)....", port)
-	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
-	if err != nil {
-		log.Fatalf("failed to listen on 3rd port: %v", err)
+		log.Fatalf("failed to listen on admin rpc: %v", err)
 		os.Exit(2)
 	}
 	s := grpc.NewServer()
@@ -1161,8 +1155,7 @@ func setUpAdminService(osp *server) *adminService {
 
 	http.Handle("/admin/", gwmux)
 	http.Handle("/metrics", metrics.GetPromExporter())
-	_, port, err = getHostPort(*adminweb)
-	log.Info("Celer server has 4th port (admin HTTP)....", port)
+	log.Info("Celer server has admin HTTP:", *adminweb)
 	go func() {
 		err := http.ListenAndServe(*adminweb, http.DefaultServeMux)
 		if err != nil {

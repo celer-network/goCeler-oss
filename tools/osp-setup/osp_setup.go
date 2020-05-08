@@ -46,6 +46,7 @@ func main() {
 
 	var p processor
 	p.setup()
+	fmt.Println()
 
 	if *deregister {
 		p.deregisterRouter()

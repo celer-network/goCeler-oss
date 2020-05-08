@@ -211,7 +211,7 @@ func (b *routingTableBuilder) markOsp(ospAddr ctype.Addr, blknum uint64) {
 func (b *routingTableBuilder) unmarkOsp(ospAddr ctype.Addr) {
 	b.graphLock.Lock()
 	defer b.graphLock.Unlock()
-	log.Infof("unmarkOsp: %x", ctype.Addr2Hex(ospAddr))
+	log.Infof("unmarkOsp: %x", ospAddr)
 	delete(b.osps, ospAddr)
 	delete(b.neighbors, ospAddr)
 }

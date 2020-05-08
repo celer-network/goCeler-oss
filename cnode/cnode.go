@@ -518,7 +518,9 @@ func (c *CNode) initialize(
 			c.Close()
 			return err
 		}
-		go c.keepAliveEventListener()
+		if c.isMultiServer {
+			go c.keepAliveEventListener()
+		}
 	}
 
 	// Init monitor service

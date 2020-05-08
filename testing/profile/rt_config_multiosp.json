@@ -7,10 +7,6 @@
             "6a6d2a97da1c453a4e099e8054865a0a59728863": {
                 "tokens_config": {
                     "0000000000000000000000000000000000000000": {
-                        "token": {
-                            "erc_type": "eth",
-                            "address": "0000000000000000000000000000000000000000"
-                        },
                         "min_deposit": "0",
                         "max_deposit": "10000000000000000000",
                         "min_deadline_delta": 1,
@@ -22,10 +18,6 @@
             "ba756d65a1a03f07d205749f35e2406e4a8522ad": {
                 "tokens_config": {
                     "0000000000000000000000000000000000000000": {
-                        "token": {
-                            "erc_type": "eth",
-                            "address": "0000000000000000000000000000000000000000"
-                        },
                         "min_deposit": "0",
                         "max_deposit": "10000000000000000000",
                         "min_deadline_delta": 1,
@@ -37,10 +29,6 @@
             "90506865876ac95f642c8214cc3b570121ba4e4e": {
                 "tokens_config": {
                     "0000000000000000000000000000000000000000": {
-                        "token": {
-                            "erc_type": "eth",
-                            "address": "0000000000000000000000000000000000000000"
-                        },
                         "min_deposit": "0",
                         "max_deposit": "10000000000000000000",
                         "min_deadline_delta": 1,
@@ -52,10 +40,6 @@
             "59fb4bc14618ee4e9e83ff563c72b7fd1222731c": {
                 "tokens_config": {
                     "0000000000000000000000000000000000000000": {
-                        "token": {
-                            "erc_type": "eth",
-                            "address": "0000000000000000000000000000000000000000"
-                        },
                         "min_deposit": "0",
                         "max_deposit": "10000000000000000000",
                         "min_deadline_delta": 1,
@@ -67,10 +51,6 @@
             "cc09df4fe5e09ff9dec5781170f146990dd77ba3": {
                 "tokens_config": {
                     "0000000000000000000000000000000000000000": {
-                        "token": {
-                            "erc_type": "eth",
-                            "address": "0000000000000000000000000000000000000000"
-                        },
                         "min_deposit": "0",
                         "max_deposit": "10000000000000000000",
                         "min_deadline_delta": 1,
@@ -84,20 +64,12 @@
     "standard_configs": {
         "config": {
             "f3ccc0a86f8451ab193011fbb408db2e38eaf10a": {
-                "token": {
-                    "erc_type": "erc20",
-                    "address": "f3ccc0a86f8451ab193011fbb408db2e38eaf10a"
-                },
                 "min_deposit": "0",
                 "max_deposit": "1",
                 "min_deadline_delta": 1,
                 "max_deadline_delta": 500
             },
             "0000000000000000000000000000000000000000": {
-                "token": {
-                    "erc_type": "eth",
-                    "address": "0000000000000000000000000000000000000000"
-                },
                 "min_deposit": "0",
                 "max_deposit": "5000000000000000000",
                 "min_deadline_delta": 1,

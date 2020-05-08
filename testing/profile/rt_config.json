@@ -26,19 +26,11 @@
     "tcb_configs": {
         "config": {
             "0000000000000000000000000000000000000000": {
-                "token": {
-                    "erc_type": "ETH",
-                    "address": "0000000000000000000000000000000000000000"
-                },
-				"onchain_balance_safe_margin": "0",
+		"onchain_balance_safe_margin": "0",
                 "max_osp_deposit": "9000000000000000000"
             },
             "f3ccc0a86f8451ab193011fbb408db2e38eaf10a": {
-                "token": {
-                    "erc_type": "ERC20",
-                    "address": "f3ccc0a86f8451ab193011fbb408db2e38eaf10a"
-                },
-				"onchain_balance_safe_margin": "0",
+		"onchain_balance_safe_margin": "0",
                 "max_osp_deposit": "9000000000000000000"
             }
         }

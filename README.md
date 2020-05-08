@@ -29,7 +29,7 @@ export PATH=$PATH:$PWD/goceler
 
 #### Run OSP server
 5. Create a storage folder at `deploy/ropsten/store`. The OSP SQLite data store will be located at `deploy/ropsten/store/[ospAddr]`.
-6. Start OSP: **`server -profile ./deploy/ropsten/profile.json -ks ./deploy/ospks.json -svrname s0 -storedir ./deploy/ropsten/store -rtc ./deploy/ropsten/rt_config.json -routedata ./deploy/ropsten/channels_2020_05_03.json`**. The default rpc port is `10000`, default admin http endpoint is `localhost:8090`, use `-port` and `-adminweb` to change those values ([example](./test/manual/run_osp.sh)).
+6. Start OSP: **`server -profile ./deploy/ropsten/profile.json -ks ./deploy/ospks.json -svrname s0 -storedir ./deploy/ropsten/store -rtc ./deploy/ropsten/rt_config.json -routedata ./deploy/ropsten/channels_2020_05_08.json`**. The default rpc port is `10000`, default admin http endpoint is `localhost:8090`, use `-port` and `-adminweb` to change those values ([example](./test/manual/run_osp.sh)).
    - **note 1**: use `-routedata` only when starting OSP from scracth for the first time.
    - **note 2**: use [log args](https://github.com/celer-network/goutils/blob/v0.1.2/log/log.go) if needed, e.g., `-logdir ./deploy/ropsten/log -logrotate`
 

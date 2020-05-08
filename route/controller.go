@@ -484,10 +484,10 @@ func (c *Controller) reportOspInfoToExplorer() {
 	}
 	// set std openchan configs
 	c.explorerReport.StdOpenchanConfigs = nil
-	for _, cfg := range rtconfig.GetStandardConfigs().GetConfig() {
-		if cfg != nil && cfg.Token != nil {
+	for token, cfg := range rtconfig.GetStandardConfigs().GetConfig() {
+		if cfg != nil {
 			cfgReport := &ospreport.StdOpenChanConfig{
-				TokenAddr:  ctype.Hex2Addr(cfg.Token.Address).Hex(), // format required by explorer
+				TokenAddr:  ctype.Hex2Addr(token).Hex(), // format required by explorer
 				MinDeposit: cfg.MinDeposit,
 				MaxDeposit: cfg.MaxDeposit,
 			}

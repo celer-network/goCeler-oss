@@ -6,20 +6,12 @@
     "standard_configs": {
         "config": {
             "f3ccc0a86f8451ab193011fbb408db2e38eaf10a": {
-                "token": {
-                    "erc_type": "erc20",
-                    "address": "f3ccc0a86f8451ab193011fbb408db2e38eaf10a"
-                },
                 "min_deposit": "1000000000000",
                 "max_deposit": "100000000000000000000",
                 "min_deadline_delta": 1,
                 "max_deadline_delta": 500
             },
             "0000000000000000000000000000000000000000": {
-                "token": {
-                    "erc_type": "eth",
-                    "address": "0000000000000000000000000000000000000000"
-                },
                 "min_deposit": "1000000000000",
                 "max_deposit": "100000000000000000000",
                 "min_deadline_delta": 1,

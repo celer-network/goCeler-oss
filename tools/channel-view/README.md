@@ -8,6 +8,7 @@
 * `-dbview pay -payid [payment ID]`: print payment infomation for a given payment id
 * `-dbview deposit -depositid [deposit job ID]`: print deposit job info for a given deposit id
 * `-dbview deposit -cid [channel ID]`: print all deposit jobs info for a given channel id
+* `-dbview route -dest [destination address] -token [token address]`: print route info
 * `-dbview stats -token [token address] -chanstate [channel state (3:opened,4:settling)]`: print number of channels with given token and channel state
 
 #### Off-chain state slow query (table scan)
@@ -25,5 +26,6 @@
 * `-chainview app -appaddr [app contract address] -outcome [arg for query outcome] -finalize [arg for query finalization] -decode`: print onchain CelerApp session info
 
 #### Note
-* no need to have `-token` arg for ETH token.
+* no need to have `-token` for ETH token.
+* no need to have `-storedir` for on-chain query.
 * replace `-storedir` with `-storesql` followed by url if using a separate storage server.

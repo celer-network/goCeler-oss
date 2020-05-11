@@ -18,6 +18,11 @@ func NewPem(machine string) *PayEventMessage {
 func CommitPem(pem *PayEventMessage) {
 	pem.EndTimeStamp = time.Now().UnixNano()
 	pem.ExecutionTimeMs = (float32)(pem.EndTimeStamp-pem.StartTimeStamp) / 1000000
+	pem.EndTimeStamp = 0
+	pem.StartTimeStamp = 0
+	if zeroSeqNums(pem.SeqNums) {
+		pem.SeqNums = nil
+	}
 
 	if len(pem.Error) > 0 {
 		log.Errorln("LOGPEM:", pem)
@@ -43,4 +48,15 @@ func CommitOcem(ocem *OpenChannelEventMessage) {
 	} else {
 		log.Infoln("LOGOCEM:", ocem)
 	}
+}
+
+func zeroSeqNums(seq *SimplexSeqNums) bool {
+	if seq == nil {
+		return true
+	}
+	if seq.Out == 0 && seq.OutBase == 0 && seq.In == 0 && seq.InBase == 0 &&
+		seq.Stored == 0 && seq.Ack == 0 && seq.LastInflight == 0 {
+		return true
+	}
+	return false
 }

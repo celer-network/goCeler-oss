@@ -381,16 +381,12 @@ func (c *CNode) SyncOnChainChannelStates(cid ctype.CidType) (int, error) {
 	if !found {
 		return 0, common.ErrChannelNotFound
 	}
-	onchainUnitialized := uint8(0)
-	onchainSettling := uint8(2)
-	onchainClosed := uint8(3)
-	onchainMigrated := uint8(4)
 	onchainStatus, err := ledgerview.GetOnChainChannelStatus(cid, c.nodeConfig)
 	if err != nil {
 		return localState, err
 	}
 
-	if onchainStatus == onchainMigrated {
+	if onchainStatus == ledgerview.OnChainStatus_MIGRATED {
 		ledger, err := ledgerview.GetMigratedTo(c.dal, cid, c.nodeConfig)
 		if err != nil {
 			return localState, err
@@ -407,19 +403,20 @@ func (c *CNode) SyncOnChainChannelStates(cid ctype.CidType) (int, error) {
 		}
 	}
 
-	if onchainStatus == onchainSettling &&
+	if onchainStatus == ledgerview.OnChainStatus_SETTLING &&
 		(localState == enums.ChanState_TRUST_OPENED || localState == enums.ChanState_OPENED) {
 		err2 := c.dal.Transactional(fsm.OnChannelIntendSettle, cid)
 		if err2 != nil {
 			return localState, err2
 		}
-	} else if onchainStatus == onchainClosed && localState != enums.ChanState_CLOSED {
+	} else if onchainStatus == ledgerview.OnChainStatus_CLOSED && localState != enums.ChanState_CLOSED {
 		err2 := c.dal.Transactional(c.Disputer.HandleConfirmSettleEventTx, cid)
 		if err2 != nil {
 			return localState, err2
 		}
 	}
-	if onchainStatus != onchainClosed && onchainStatus != onchainUnitialized {
+	if onchainStatus != ledgerview.OnChainStatus_CLOSED &&
+		onchainStatus != ledgerview.OnChainStatus_UNINITIALIZED {
 		err2 := ledgerview.SyncOnChainBalance(c.dal, cid, c.nodeConfig)
 		if err2 != nil {
 			return localState, err2

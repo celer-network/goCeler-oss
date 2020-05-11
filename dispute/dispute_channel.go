@@ -114,11 +114,11 @@ func (p *Processor) intendSettle(cid ctype.CidType, stateArrayBytes []byte) erro
 func (p *Processor) ConfirmSettlePaymentChannel(cid ctype.CidType, waitMined bool) error {
 	log.Infoln("Confirm settle payment channel", cid.Hex())
 	state, found, err := p.dal.GetChanState(cid)
-	if !found {
-		return common.ErrChannelNotFound
-	}
 	if err != nil {
 		return fmt.Errorf("GetChanState %x err: %w", cid, err)
+	}
+	if !found {
+		return common.ErrChannelNotFound
 	}
 	if state != enums.ChanState_SETTLING {
 		return fmt.Errorf("invalid channel %x state %s", cid, fsm.ChanStateName(state))

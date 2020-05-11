@@ -12,20 +12,20 @@ const (
 
 	// etherbase and osp addr/priv key in hex
 	etherBaseAddr    = "b5bb8b7f6f1883e0c01ffb8697024532e6f3238c"
-	osp1EthAddr      = "6a6d2a97da1c453a4e099e8054865a0a59728863"
-	osp2EthAddr      = "ba756d65a1a03f07d205749f35e2406e4a8522ad"
-	osp3EthAddr      = "90506865876ac95f642c8214cc3b570121ba4e4e"
-	osp4EthAddr      = "59fb4bc14618ee4e9e83ff563c72b7fd1222731c"
-	osp5EthAddr      = "cc09df4fe5e09ff9dec5781170f146990dd77ba3"
+	osp1EthAddr      = "0015f5863ddc59ab6610d7b6d73b2eacd43e6b7e"
+	osp2EthAddr      = "00290a43e5b2b151d530845b2d5a818240bc7c70"
+	osp3EthAddr      = "003ea363bccfd7d14285a34a6b1deb862df0bc84"
+	osp4EthAddr      = "00495b55a68b5d5d1b0860b2c9eeb839e7d3a362"
+	osp5EthAddr      = "005e9930a80df77fe686225a95be93548cdfa4b0"
 	depositorEthAddr = "d0c5e4abfadbc0e71bfb6c4955e66b8a6bf4da51"
 	ospEthAddr       = osp1EthAddr
 
 	etherBasePriv = "69ef4da8204644e354d759ca93b94361474259f63caac6e12d7d0abcca0063f8"
-	osp1Priv      = "a7c9fa8bcd45a86fdb5f30fecf88337f20185b0c526088f2b8e0f726cad12857"
-	osp2Priv      = "c2ff7d4ce25f7448de00e21bbbb7b884bb8dc0ca642031642863e78a35cb933d"
-	osp3Priv      = "ec88168be62ef61b5d189415254370ac2118fdf42fbd51e2c944f60f6fc437b3"
-	osp4Priv      = "a54790ec0e8a172fc37f727a44c356eb957ff6438ba981906c6d8f3d62edbeee"
-	osp5Priv      = "16212eaf5b15f468306e81af23c7e6036860ed117745015de6f84bdff5ba5b2c"
+	osp1Priv      = "06c5923cbaf9bc3617fba223e8ca1c9fd1e290c74124aa1359fd6119a1bb2704"
+	osp2Priv      = "b6736f13344545561b1f279ffa935c9f614eceba097437823b95b5a615856306"
+	osp3Priv      = "cd6edaa990081545e3e1c936e774a42db11431e0f6f7f8b4dfc851b2e408759c"
+	osp4Priv      = "1d762733ae659befd6a2d70883de7739c1f0304bee207390d662424795d123dc"
+	osp5Priv      = "2e727669a76f26ac61ee3216dae36d66f359620b9b27ab425248f8320581fe67"
 	depositorPriv = "c76dc6d854247299174f9582566cd195a57d8236a7fb2d0c085377f274584cec"
 
 	ethGateway = "http://127.0.0.1:8545"

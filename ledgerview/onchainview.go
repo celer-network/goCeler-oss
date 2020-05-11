@@ -20,6 +20,31 @@ import (
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
 )
 
+const (
+	OnChainStatus_UNINITIALIZED uint8 = 0
+	OnChainStatus_OPERABLE      uint8 = 1
+	OnChainStatus_SETTLING      uint8 = 2
+	OnChainStatus_CLOSED        uint8 = 3
+	OnChainStatus_MIGRATED      uint8 = 4
+)
+
+func ChanStatusName(status uint8) string {
+	switch status {
+	case OnChainStatus_UNINITIALIZED:
+		return "Uninitialized"
+	case OnChainStatus_OPERABLE:
+		return "Operable"
+	case OnChainStatus_SETTLING:
+		return "Settling"
+	case OnChainStatus_CLOSED:
+		return "Close"
+	case OnChainStatus_MIGRATED:
+		return "Migrated"
+	default:
+		return "Invalid"
+	}
+}
+
 func GetOnChainChannelStatusOnLedger(cid ctype.CidType, nodeConfig common.GlobalNodeConfig, ledgerAddr ctype.Addr) (uint8, error) {
 	contract, err := ledger.NewCelerLedgerCaller(ledgerAddr, nodeConfig.GetEthConn())
 	if err != nil {

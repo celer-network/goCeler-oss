@@ -21,11 +21,11 @@ const (
 	profileDir = outRootDir + "profile/"
 	storeDir   = outRootDir + "store/" // OSP SQLite store path is `storeDir/ospAddr`
 
-	osp1Addr = "6a6d2a97da1c453a4e099e8054865a0a59728863"
-	osp2Addr = "ba756d65a1a03f07d205749f35e2406e4a8522ad"
-	osp3Addr = "90506865876ac95f642c8214cc3b570121ba4e4e"
-	osp4Addr = "59fb4bc14618ee4e9e83ff563c72b7fd1222731c"
-	osp5Addr = "cc09df4fe5e09ff9dec5781170f146990dd77ba3"
+	osp1Addr = "0015f5863ddc59ab6610d7b6d73b2eacd43e6b7e"
+	osp2Addr = "00290a43e5b2b151d530845b2d5a818240bc7c70"
+	osp3Addr = "003ea363bccfd7d14285a34a6b1deb862df0bc84"
+	osp4Addr = "00495b55a68b5d5d1b0860b2c9eeb839e7d3a362"
+	osp5Addr = "005e9930a80df77fe686225a95be93548cdfa4b0"
 
 	// config of test OSP 1
 	o1HostPort  = "localhost:10001"

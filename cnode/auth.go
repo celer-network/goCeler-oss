@@ -144,8 +144,7 @@ func (c *CNode) HandleAuthAck(peer ctype.Addr, ack *rpc.AuthAck) {
 				log.Errorln(stateErr)
 				continue
 			}
-			if chanStatus != 1 {
-				/*peer ledger is not operable*/
+			if chanStatus != ledgerview.OnChainStatus_OPERABLE {
 				continue
 			}
 			shouldUsePeerLedger = true

@@ -154,3 +154,8 @@ func Cid2Hex(p CidType) string {
 func Hex2Cid(s string) CidType {
 	return ec.BytesToHash(Hex2Bytes(s))
 }
+
+// ========= Hash ==========
+func Hex2Hash(s string) Hash {
+	return ec.BytesToHash(Hex2Bytes(s))
+}

@@ -33,7 +33,7 @@ Then, open a new terminal, go to this manual test folder and run **`./run_osp.sh
 
 ## Connect two OSPs through grpc stream
 
-In the tools terminal, go to [tools/osp-admin](../../tools/osp-admin/) folder and run **`go run osp_admin.go -adminhostport localhost:8190 -registerstream -peeraddr ba756d65a1a03f07d205749f35e2406e4a8522ad -peerhostport localhost:10002`** to let OSP1 connect with OSP2 through grpc stream.
+In the tools terminal, go to [tools/osp-admin](../../tools/osp-admin/) folder and run **`go run osp_admin.go -adminhostport localhost:8190 -registerstream -peeraddr 00290a43e5b2b151d530845b2d5a818240bc7c70 -peerhostport localhost:10002`** to let OSP1 connect with OSP2 through grpc stream.
 
 You can see that OSP1 has new log `|INFO | server.go:540: Admin: register stream ...`, and OSP2 has new log `|INFO | server.go:218: Recv AuthReq: ...`
 
@@ -41,19 +41,19 @@ Please take a look at the [instructions of OSP admin tool](../../tools/osp-admin
 
 ## Open CelerPay channel between two OSPs
 
-In the tools terminal, run **`go run osp_admin.go -adminhostport localhost:8190 -openchannel -peeraddr ba756d65a1a03f07d205749f35e2406e4a8522ad -selfdeposit 10 -peerdeposit 10`** to let OSP1 open an ETH CelerPay channel with OSP2.
+In the tools terminal, run **`go run osp_admin.go -adminhostport localhost:8190 -openchannel -peeraddr 00290a43e5b2b151d530845b2d5a818240bc7c70 -selfdeposit 10 -peerdeposit 10`** to let OSP1 open an ETH CelerPay channel with OSP2.
 
 You can see new logs for channel opening in both OSP terminals.
 
 ## Make an off-chain payment
 
-In the tools terminal, run **`go run osp_admin.go -adminhostport localhost:8190 -sendtoken -receiver ba756d65a1a03f07d205749f35e2406e4a8522ad -amount 0.01`** to let OSP1 make an off-chain payment of 0.01 ETH to OSP2.
+In the tools terminal, run **`go run osp_admin.go -adminhostport localhost:8190 -sendtoken -receiver 00290a43e5b2b151d530845b2d5a818240bc7c70 -amount 0.01`** to let OSP1 make an off-chain payment of 0.01 ETH to OSP2.
 
 You can see the returned payment ID from the admin tool log. Payment logs are also shown in OSP terminals.
 
 ## View off-chain payment state
 
-In the tools terminal, go to [tools/channel-view](../../tools/channel-view/) folder and run **`go run channel_view.go -profile /tmp/celer_manual_test/profile/o2_profile.json -storedir /tmp/celer_manual_test/store/ba756d65a1a03f07d205749f35e2406e4a8522ad -dbview pay -payid [payment ID]`** to view the payment state at local database of OSP2.
+In the tools terminal, go to [tools/channel-view](../../tools/channel-view/) folder and run **`go run channel_view.go -profile /tmp/celer_manual_test/profile/o2_profile.json -storedir /tmp/celer_manual_test/store/00290a43e5b2b151d530845b2d5a818240bc7c70 -dbview pay -payid [payment ID]`** to view the payment state at local database of OSP2.
 
 You can see the payment information from the returned output.
 
@@ -61,13 +61,13 @@ Please take a look at the [instructions of channel view tool](../../tools/channe
 
 ## View off-chain channel state
 
-In the tools terminal, run **`go run channel_view.go -profile /tmp/celer_manual_test/profile/o1_profile.json -storedir /tmp/celer_manual_test/store/6a6d2a97da1c453a4e099e8054865a0a59728863 -dbview channel -peer ba756d65a1a03f07d205749f35e2406e4a8522ad`** to view the channel state at local database of OSP1.
+In the tools terminal, run **`go run channel_view.go -profile /tmp/celer_manual_test/profile/o1_profile.json -storedir /tmp/celer_manual_test/store/0015f5863ddc59ab6610d7b6d73b2eacd43e6b7e -dbview channel -peer 00290a43e5b2b151d530845b2d5a818240bc7c70`** to view the channel state at local database of OSP1.
 
 You can see the channel information from the returned output. The simplex channel sequence number and free balances should reflect the 0.01 ETH payment just made.
 
 ## View on-chain channel state
 
-In the tools terminal, run **`go run channel_view.go -profile /tmp/celer_manual_test/profile/o1_profile.json -storedir /tmp/celer_manual_test/store/6a6d2a97da1c453a4e099e8054865a0a59728863 -chainview channel -cid [channel ID]`** to view the channel state on the testnet chain.
+In the tools terminal, run **`go run channel_view.go -profile /tmp/celer_manual_test/profile/o1_profile.json -storedir /tmp/celer_manual_test/store/0015f5863ddc59ab6610d7b6d73b2eacd43e6b7e -chainview channel -cid [channel ID]`** to view the channel state on the testnet chain.
 
 You can see the on-chain channel information stored in the smart contract. The channel ID can be found from the output of the channel state above. 
 

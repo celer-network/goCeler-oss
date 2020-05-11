@@ -49,6 +49,7 @@ var (
 	payID       = flag.String("payid", "", "pay ID")
 	depositID   = flag.String("depositid", "", "deposit job ID")
 	destAddr    = flag.String("dest", "", "destination address")
+	txhash      = flag.String("txhash", "", "on-chain transaction hash")
 	appAddr     = flag.String("appaddr", "", "app onchain address")
 	argFinalize = flag.String("finalize", "", "arg for query finalized")
 	argOutcome  = flag.String("outcome", "", "arg for query outcome")
@@ -173,6 +174,14 @@ func main() {
 		pid := ctype.Hex2PayID(*payID)
 		p.printPayRegistryInfo(pid)
 
+	case "tx":
+		txInfo, err := ledgerview.GetOnChainTxByHash(ctype.Hex2Hash(*txhash), p.nodeConfig)
+		if err != nil {
+			log.Fatal(err)
+		}
+		log.Infof("%s tx msg from %x to %x", txInfo.FuncName, txInfo.From, txInfo.To)
+		// TODO: print txInfo.FuncInput
+
 	case "app":
 		if *appAddr == "" || *argOutcome == "" {
 			log.Fatal("app address or arg for query outcome not specified")
@@ -194,7 +203,9 @@ func (p *processor) setup() {
 	profile := common.ParseProfile(*pjson)
 	overrideConfig(profile)
 	p.myAddr = ctype.Hex2Addr(profile.SvrETHAddr)
-	p.dal = toolsetup.NewDAL(profile)
+	if *dbview != "" {
+		p.dal = toolsetup.NewDAL(profile)
+	}
 	ethclient := toolsetup.NewEthClient(profile)
 	p.nodeConfig = toolsetup.NewNodeConfig(profile, ethclient, p.dal)
 }
@@ -551,23 +562,10 @@ func (p *processor) getCidPeerStr(cid ctype.CidType) string {
 
 // ===================== On Chain View Functions =====================
 
-const (
-	Uninitialized = uint8(0)
-	Operable      = uint8(1)
-	Settling      = uint8(2)
-	Closed        = uint8(3)
-	Migrated      = uint8(4)
-)
-
-var StatusString = [5]string{"Uninitialized", "Operable", "Settling", "Close", "Migrated"}
-
 func (p *processor) printChannelLedgerInfo(cid ctype.CidType) {
 	fmt.Println("")
 	fmt.Println("-- channel ID:", ctype.Cid2Hex(cid))
-	chanLedger := p.nodeConfig.GetLedgerContractOf(cid)
-	if chanLedger == nil {
-		chanLedger = p.nodeConfig.GetLedgerContract()
-	}
+	chanLedger := p.nodeConfig.GetLedgerContract()
 	contract, err := ledger.NewCelerLedgerCaller(chanLedger.GetAddr(), p.nodeConfig.GetEthConn())
 	if err != nil {
 		log.Fatal("NewCelerLedgerCaller error", err)
@@ -576,8 +574,8 @@ func (p *processor) printChannelLedgerInfo(cid ctype.CidType) {
 	if err != nil {
 		log.Fatalln("GetChannelStatus error", err)
 	}
-	fmt.Println("-- status:", StatusString[status])
-	if status == Uninitialized {
+	fmt.Println("-- status:", ledgerview.ChanStatusName(status))
+	if status == ledgerview.OnChainStatus_UNINITIALIZED {
 		return
 	}
 
@@ -595,7 +593,7 @@ func (p *processor) printChannelLedgerInfo(cid ctype.CidType) {
 	}
 	fmt.Println("-- total balance:", balance)
 
-	if status == Settling {
+	if status == ledgerview.OnChainStatus_SETTLING {
 		var blknum int64
 		header, err := p.nodeConfig.GetEthConn().HeaderByNumber(context.Background(), nil)
 		if err != nil {

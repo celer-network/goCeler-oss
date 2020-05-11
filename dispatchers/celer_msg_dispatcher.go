@@ -78,20 +78,6 @@ func NewCelerMsgDispatcher(
 	return d
 }
 
-var msgNames = []string{
-	msghdl.CondPayRequestMsgName,
-	msghdl.PaySettleProofMsgName,
-	msghdl.PaySettleRequestMsgName,
-	msghdl.HopAckStateMsgName,
-	msghdl.RevealSecretMsgName,
-	msghdl.RevealSecretAckMsgName,
-	msghdl.CondPayReceiptMsgName,
-	msghdl.CondPayResultMsgName,
-	msghdl.WithdrawRequestMsgName,
-	msghdl.WithdrawResponseMsgName,
-	msghdl.UnkownMsgName,
-}
-
 func (d *CelerMsgDispatcher) OnReceivingToken(callback event.OnReceivingTokenCallback) {
 	d.tokenCallbackLock.Lock()
 	defer d.tokenCallbackLock.Unlock()

@@ -89,6 +89,7 @@ func NewKVStoreSQL(driver, info string) (*KVStoreSQL, error) {
 				return nil, err
 			}
 		}
+		info += "?cache=shared"
 	}
 
 	db, err := sql.Open(driver, info)
@@ -115,6 +116,11 @@ func NewKVStoreSQL(driver, info string) (*KVStoreSQL, error) {
 		go s.dbPing(s.db)
 		s.db.SetMaxIdleConns(maxIdleConns)
 		s.db.SetMaxOpenConns(maxOpenConns)
+	} else if driver == "sqlite3" {
+		// force single conn to serialze sqlite ops, to avoid `database is locked`
+		// because sqlite doesn't support concurrent write
+		// the downside is read ops are also affected
+		s.db.SetMaxOpenConns(1)
 	}
 
 	return s, nil

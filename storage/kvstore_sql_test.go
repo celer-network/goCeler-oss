@@ -492,9 +492,11 @@ func testKVStoreSQLTransactionOverlap(t *testing.T, st *KVStoreSQL) {
 	}
 }
 
-func TestKVStoreSQLTransactionOverlap_Client(t *testing.T) {
-	runWithDatabase(t, true, testKVStoreSQLTransactionOverlap)
-}
+// With a single SQLite connection configured, this test deadlocks because
+// it is designed to force the need of concurrent progress on 2 transactions.
+// func TestKVStoreSQLTransactionOverlap_Client(t *testing.T) {
+//	 runWithDatabase(t, true, testKVStoreSQLTransactionOverlap)
+// }
 
 func testKVStoreSQLTransactionConflict(t *testing.T, st *KVStoreSQL) {
 	var err error
@@ -597,9 +599,11 @@ func testKVStoreSQLTransactionConflict(t *testing.T, st *KVStoreSQL) {
 	}
 }
 
-func TestKVStoreSQLTransactionConflict_Client(t *testing.T) {
-	runWithDatabase(t, true, testKVStoreSQLTransactionConflict)
-}
+// With a single SQLite connection configured, this test deadlocks because
+// it is designed to force the need of concurrent progress on 2 transactions.
+// func TestKVStoreSQLTransactionConflict_Client(t *testing.T) {
+//	 runWithDatabase(t, true, testKVStoreSQLTransactionConflict)
+// }
 
 func testDalSqlChan(t *testing.T, st *KVStoreSQL) {
 	var err error

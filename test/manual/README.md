@@ -10,7 +10,7 @@ Follow instructions below to easily start a local testnet and play with multiple
 
 ## 1. Start local Ethereum testnet
 
-Run **`./setup.sh`** to start a local Etherem testnet runing on your machine.
+Run **`./setup.sh`** to start a local Etherem testnet running on your machine.
 
 Take a look at the constants in [setup.go](./setup.go). In addition to start a testnet, this program would also do the following:
 
@@ -60,7 +60,7 @@ You can see the returned payment ID from the admin tool log. Payment logs are al
 
 ## 7. View off-chain payment state
 
-In the tools terminal, go to [tools/channel-view](../../tools/channel-view/) folder and run the following command to view the payment state at local database of OSP2.
+In the tools terminal, go to [tools/channel-view](../../tools/channel-view/) folder and run the following command to view the payment state at the local database of OSP2.
 
 - If using SQLite: **`go run channel_view.go -profile /tmp/celer_manual_test/profile/o2_profile.json -storedir /tmp/celer_manual_test/store/00290a43e5b2b151d530845b2d5a818240bc7c70 -dbview pay -payid [payment ID]`**
 - If using CockroachDB: **`go run channel_view.go -profile /tmp/celer_manual_test/profile/o2_profile.json -storesql postgresql://celer_test_o2@localhost:26257/celer_test_o2?sslmode=disable -dbview pay -payid [payment ID]`**
@@ -69,7 +69,7 @@ Please take a look at the [instructions of channel view tool](../../tools/channe
 
 ## 8. View off-chain channel state
 
-In the tools terminal, run the following command to view the channel state at local database of OSP1.
+In the tools terminal, run the following command to view the channel state at the local database of OSP1.
 
 - If using SQLite: **`go run channel_view.go -profile /tmp/celer_manual_test/profile/o1_profile.json -storedir /tmp/celer_manual_test/store/0015f5863ddc59ab6610d7b6d73b2eacd43e6b7e -dbview channel -peer 00290a43e5b2b151d530845b2d5a818240bc7c70`** 
 - If using CockroachDB: **`go run channel_view.go -profile /tmp/celer_manual_test/profile/o1_profile.json -storesql postgresql://celer_test_o1@localhost:26257/celer_test_o1?sslmode=disable -dbview channel -peer 00290a43e5b2b151d530845b2d5a818240bc7c70`** 

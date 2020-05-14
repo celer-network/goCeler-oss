@@ -5,7 +5,7 @@ Celer state channel network is a generic framework of state channels with deeply
 
 ## Run Local Manual Tests
 
-One who plan to run a full Off-chain Service Provider (OSP) node can start by following the [instructions on local manual tests](./test/manual/README.md) to play with the code and essential tools.
+One who plans to run a full Off-chain Service Provider (OSP) node can start by following the [instructions on local manual tests](./test/manual/README.md) to play with the code and essential tools.
 
 ## Run OSP on Ethereum Mainnet
 
@@ -28,7 +28,7 @@ export PATH=$PATH:$PWD/goceler
 2. Fund the newly generated ospks.json address some mainnet ETH.
 3. Update [deploy/mainnet/profile.json](./deploy/mainnet/profile.json) `gateway` field to your Mainnet RPC (eg. https://mainnet.infura.io/v3/xxxxx), `host` filed to the OSP public RPC hostname:port (default rpc port is 10000), `address` field to the OSP ETH address.
 4. Setup OSP: **`osp-setup -profile $GOCELER/deploy/mainnet/profile.json -ks ospks.json -ethpoolamt [ETH amount]`**. This step would do two things. First, deposit OSP's ETH with amount specified by `-ethpoolamt` into the EthPool for future channel opening and deposits. Second, register the OSP on-chain as a state channel network router.
-   - **note**: currently OSP has to use ETH in its account (not EthPool) to initiate an open channel request. EthPool balance is used to accept open channel request from peers.
+   - **note**: currently, OSP has to use ETH in its account (not EthPool) to initiate an open channel request. EthPool balance is used to accept open channel request from peers.
 
 ### Run OSP server
 #### Option 1: run OSP using SQLite as storage backend (easier)
@@ -47,7 +47,7 @@ export PATH=$PATH:$PWD/goceler
 8. Open channel with another OSP: **`osp-admin -adminhostport localhost:8090 -openchannel -peeraddr [peerOspEthAddr] -selfdeposit 0.1 -peerdeposit 0.1`**
 
 ### Apply other OSP operations
-9. Use [osp-admin](./tools/osp-admin/README.md), [channel-view](./tools/channel-view/README.md), and [channel-op](./tools/channel-op/README.md) tools to operate the OSP. See [local manual tests](./test/manual/README.md) for examples.
+9. Use [osp-admin](./tools/osp-admin/README.md), [channel-view](./tools/channel-view/README.md), and [channel-op](./tools/channel-op/README.md) tools to operate the OSP. See [local manual tests](./test/manual/README.md) for example.
 
 
 ## Run OSP on Ropsten Testnet
@@ -57,7 +57,7 @@ Follow [steps for mainnet](#run-osp-on-ethereum-mainnet) above starting from ste
 ## TLS Certificate for serving Internet traffic
 OSP needs to have a valid TLS certificate for Celer connections over the Internet. If you already have a domain name, you can get one from [Let's Encrypt](https://letsencrypt.org/). Then run OSP with flags `-tlscert mysvr.crt -tlskey mysvr.key`.
 
-Otherwise, the builtin cert supports DDNS with following domain names:
+Otherwise, the builtin cert supports DDNS with the following domain names:
 ```
 *.dynu.com
 *.mooo.com

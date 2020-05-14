@@ -14,7 +14,7 @@ import (
 	"github.com/celer-network/goutils/log"
 )
 
-var autofund = flag.Bool("autofund", false, "automatically add and approve fund when setup")
+var auto = flag.Bool("auto", false, "automatically add/approve fund and register osps when setup")
 
 const (
 	outRootDir = "/tmp/celer_manual_test/"
@@ -72,8 +72,8 @@ func main() {
 	time.Sleep(3 * time.Second)
 	e2e.CheckError(err, "starting chain")
 
-	tf.E2eProfile, _ = e2e.SetupOnChain(make(map[string]ctype.Addr), *autofund)
-	if *autofund {
+	tf.E2eProfile, _ = e2e.SetupOnChain(make(map[string]ctype.Addr), *auto)
+	if *auto {
 		// if auto fund, also register all osps on-chain as routers
 		tf.RegisterRouters([]string{osp1Keystore, osp2Keystore, osp3Keystore, osp4Keystore, osp5Keystore})
 	}

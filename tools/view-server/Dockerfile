@@ -8,13 +8,13 @@ RUN --mount=type=secret,id=github_access_token,required \
 
 WORKDIR /goCeler-oss
 ADD . /goCeler-oss
-RUN go build -o /tmp/channel-view tools/channel-view/channel_view.go && go build -o /tmp/channel-view-server tools/channel-view/view-server/view_server.go
+RUN go build -o /tmp/osp-cli tools/osp-cli/osp_cli.go && go build -o /tmp/channel-view-server tools/view-server/view_server.go
 
 # Second stage container for deployment
 FROM alpine:latest
 
-COPY --from=builder /tmp/channel-view /usr/local/bin
+COPY --from=builder /tmp/osp-cli /usr/local/bin
 COPY --from=builder /tmp/channel-view-server /usr/local/bin
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
-COPY --from=builder /goCeler/tools/channel-view/view-server/static/* /etc/cv_static/
+COPY --from=builder /goCeler/tools/view-server/static/* /etc/cv_static/
 ENTRYPOINT ["channel-view-server"]

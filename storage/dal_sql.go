@@ -290,37 +290,36 @@ func getChanViewInfoByID(st SqlStorage, cid ctype.CidType) (
 	return state, &statets, &opents, chaninit, onChainBalance, selfSimplex, peerSimplex, found, err
 }
 
-func getAllChanInfoByToken(st SqlStorage, token *entity.TokenInfo) (
-	[]ctype.CidType, []ctype.Addr, []*entity.TokenInfo, []int, []*time.Time, []*time.Time, []*structs.OnChainBalance,
+func getAllChansByTokenAndState(st SqlStorage, token *entity.TokenInfo, state int) (
+	[]ctype.CidType, []ctype.Addr, []*entity.TokenInfo, []*time.Time, []*time.Time, []*structs.OnChainBalance,
 	[]*entity.SimplexPaymentChannel, []*entity.SimplexPaymentChannel, error) {
-	q := `SELECT cid, peer, token, state, statets, opents, onchainbalance, selfsimplex, peersimplex FROM channels WHERE token = $1 ORDER BY state, statets`
-	rows, err := st.Query(q, utils.GetTokenAddrStr(token))
+	q := `SELECT cid, peer, token, statets, opents, onchainbalance, selfsimplex, peersimplex FROM channels WHERE token = $1 AND state = $2 ORDER BY statets`
+	rows, err := st.Query(q, utils.GetTokenAddrStr(token), state)
 	if err != nil {
-		return nil, nil, nil, nil, nil, nil, nil, nil, nil, err
+		return nil, nil, nil, nil, nil, nil, nil, nil, err
 	}
 	defer rows.Close()
 	return getChanFromRows(rows)
 }
 
-func getInactiveChanInfo(st SqlStorage, token *entity.TokenInfo, stateTs time.Time) (
-	[]ctype.CidType, []ctype.Addr, []*entity.TokenInfo, []int, []*time.Time, []*time.Time, []*structs.OnChainBalance,
+func getInactiveChansByTokenAndState(st SqlStorage, token *entity.TokenInfo, state int, stateTs time.Time) (
+	[]ctype.CidType, []ctype.Addr, []*entity.TokenInfo, []*time.Time, []*time.Time, []*structs.OnChainBalance,
 	[]*entity.SimplexPaymentChannel, []*entity.SimplexPaymentChannel, error) {
-	q := `SELECT cid, peer, token, state, statets, opents, onchainbalance, selfsimplex, peersimplex FROM channels WHERE token = $1 AND statets < $2 ORDER BY state, statets`
-	rows, err := st.Query(q, utils.GetTokenAddrStr(token), stateTs)
+	q := `SELECT cid, peer, token, statets, opents, onchainbalance, selfsimplex, peersimplex FROM channels WHERE token = $1 AND state = $2 AND statets < $3 ORDER BY statets`
+	rows, err := st.Query(q, utils.GetTokenAddrStr(token), state, stateTs)
 	if err != nil {
-		return nil, nil, nil, nil, nil, nil, nil, nil, nil, err
+		return nil, nil, nil, nil, nil, nil, nil, nil, err
 	}
 	defer rows.Close()
 	return getChanFromRows(rows)
 }
 
 func getChanFromRows(rows *sql.Rows) (
-	[]ctype.CidType, []ctype.Addr, []*entity.TokenInfo, []int, []*time.Time, []*time.Time, []*structs.OnChainBalance,
+	[]ctype.CidType, []ctype.Addr, []*entity.TokenInfo, []*time.Time, []*time.Time, []*structs.OnChainBalance,
 	[]*entity.SimplexPaymentChannel, []*entity.SimplexPaymentChannel, error) {
 	var cids []ctype.CidType
 	var peers []ctype.Addr
 	var tokens []*entity.TokenInfo
-	var states []int
 	var stateTses, openTses []*time.Time
 	var balances []*structs.OnChainBalance
 	var selfSimplexes, peerSimplexes []*entity.SimplexPaymentChannel
@@ -328,8 +327,7 @@ func getChanFromRows(rows *sql.Rows) (
 	for rows.Next() {
 		var cidStr, peerStr, tokenStr, stateTsStr, openTsStr string
 		var onChainBalanceBytes, selfSimplexBytes, peerSimplexBytes []byte
-		var state int
-		err := rows.Scan(&cidStr, &peerStr, &tokenStr, &state, &stateTsStr, &openTsStr, &onChainBalanceBytes, &selfSimplexBytes, &peerSimplexBytes)
+		err := rows.Scan(&cidStr, &peerStr, &tokenStr, &stateTsStr, &openTsStr, &onChainBalanceBytes, &selfSimplexBytes, &peerSimplexBytes)
 		var onChainBalance *structs.OnChainBalance
 		var selfSimplex, peerSimplex *entity.SimplexPaymentChannel
 		var statets, opents time.Time
@@ -346,12 +344,11 @@ func getChanFromRows(rows *sql.Rows) (
 			opents, err = str2Time(openTsStr)
 		}
 		if err != nil {
-			return nil, nil, nil, nil, nil, nil, nil, nil, nil, err
+			return nil, nil, nil, nil, nil, nil, nil, nil, err
 		}
 		cids = append(cids, ctype.Hex2Cid(cidStr))
 		peers = append(peers, ctype.Hex2Addr(peerStr))
 		tokens = append(tokens, utils.GetTokenInfoFromAddress(ctype.Hex2Addr(tokenStr)))
-		states = append(states, state)
 		stateTses = append(stateTses, &statets)
 		openTses = append(openTses, &opents)
 		balances = append(balances, onChainBalance)
@@ -359,7 +356,7 @@ func getChanFromRows(rows *sql.Rows) (
 		peerSimplexes = append(peerSimplexes, peerSimplex)
 	}
 
-	return cids, peers, tokens, states, stateTses, openTses, balances, selfSimplexes, peerSimplexes, nil
+	return cids, peers, tokens, stateTses, openTses, balances, selfSimplexes, peerSimplexes, nil
 }
 
 func getCidsByTokenAndState(st SqlStorage, token *entity.TokenInfo, state int) ([]ctype.CidType, error) {

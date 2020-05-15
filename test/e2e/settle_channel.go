@@ -672,13 +672,14 @@ func ospIntendSettleChannel(t *testing.T, tokenType entity.TokenType, tokenAddr 
 		return
 	}
 
-	tf.StartProcess(outRootDir+"channelop",
+	tf.StartProcess(outRootDir+"ospcli",
 		"-ks", ospKeystore,
 		"-nopassword",
 		"-profile", noProxyProfile,
 		"-storedir", sStoreDir+"/"+ospEthAddr,
-		"-intendsettle", channel.ChannelId,
-		"-logprefix", "co").Wait()
+		"-intendsettle",
+		"-cid", channel.ChannelId,
+		"-logprefix", "cli").Wait()
 
 	var finalizedTime uint64
 	for {
@@ -700,13 +701,14 @@ func ospIntendSettleChannel(t *testing.T, tokenType entity.TokenType, tokenAddr 
 		return
 	}
 
-	tf.StartProcess(outRootDir+"channelop",
+	tf.StartProcess(outRootDir+"ospcli",
 		"-ks", ospKeystore,
 		"-nopassword",
 		"-profile", noProxyProfile,
 		"-storedir", sStoreDir+"/"+ospEthAddr,
-		"-confirmsettle", channel.ChannelId,
-		"-logprefix", "co").Wait()
+		"-confirmsettle",
+		"-cid", channel.ChannelId,
+		"-logprefix", "cli").Wait()
 
 	cEthClient, err := getEthClient(cEthAddr)
 	if err != nil {

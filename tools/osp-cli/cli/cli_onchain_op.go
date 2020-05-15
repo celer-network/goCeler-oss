@@ -1,18 +1,14 @@
 // Copyright 2020 Celer Network
 
-package main
+package cli
 
 import (
-	"flag"
 	"fmt"
 	"math/big"
 
 	"github.com/celer-network/goCeler/chain/channel-eth-go/ethpool"
-	"github.com/celer-network/goCeler/common"
-	"github.com/celer-network/goCeler/config"
 	"github.com/celer-network/goCeler/ctype"
 	"github.com/celer-network/goCeler/route/routerregistry"
-	"github.com/celer-network/goCeler/tools/toolsetup"
 	"github.com/celer-network/goCeler/transactor"
 	"github.com/celer-network/goCeler/utils"
 	"github.com/celer-network/goutils/log"
@@ -20,52 +16,29 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 )
 
-var (
-	pjson      = flag.String("profile", "", "OSP profile")
-	ethpoolamt = flag.Float64("ethpoolamt", 0, "amount of ETH to deposit into EthPool")
-	ksfile     = flag.String("ks", "", "key store file")
-	blkDelay   = flag.Int("blkdelay", 2, "block delay for wait mined")
-	noPassword = flag.Bool("nopassword", false, "assume empty password for keystores")
-	deregister = flag.Bool("deregister", false, "deregister OSP as state channel router")
-)
-
-type processor struct {
-	profile    *common.CProfile
-	transactor *transactor.Transactor
-	myAddr     ctype.Addr
-}
-
-func main() {
-	flag.Parse()
-	if *pjson == "" {
-		log.Fatalln("profile was not set")
-	}
-	if *ksfile == "" {
-		log.Fatalln("keystore was not set")
-	}
-
-	var p processor
-	p.setup()
-	fmt.Println()
-
-	if *deregister {
-		p.deregisterRouter()
+func (p *Processor) EthPoolDeposit() {
+	// deposit ETH to EthPool contract
+	err := p.depositEthPool()
+	if err != nil {
 		return
 	}
-
-	if *ethpoolamt > 0 {
-		// deposit ETH to EthPool contract
-		err := p.depositEthPool()
-		if err != nil {
-			return
-		}
-		// approve EthPool balance to Ledger contract
-		err = p.approveEthPoolToLedger()
-		if err != nil {
-			return
-		}
+	// approve EthPool balance to Ledger contract
+	err = p.approveEthPoolToLedger()
+	if err != nil {
+		return
 	}
+	p.queryEthPoolLedgerAllowance()
+}
 
+func (p *Processor) EthPoolWithdraw() {
+	// withdraw ETH from EthPool contract
+	err := p.withdrawEthPool()
+	if err != nil {
+		return
+	}
+}
+
+func (p *Processor) RegisterRouter() {
 	// check router registration
 	blk, err := p.queryRouterRegistry()
 	if err != nil {
@@ -79,16 +52,27 @@ func main() {
 		}
 		p.queryRouterRegistry()
 	}
-
 	log.Infoln("Welcome to Celer Network!")
 }
 
-func (p *processor) depositEthPool() error {
-	log.Infof("deposit %f ETH to EthPool and wait transaction to be mined...", *ethpoolamt)
+func (p *Processor) DeregisterRouter() {
+	// check router registration
+	blk, err := p.queryRouterRegistry()
+	if err != nil {
+		return
+	}
+	// registry router
+	if blk == 0 {
+		log.Info("OSP not registered as a network router")
+		return
+	}
+	p.deregisterRouter()
+}
 
-	amtWei := utils.Float2Wei(*ethpoolamt)
+func (p *Processor) depositEthPool() error {
+	log.Infof("deposit %f ETH to EthPool and wait transaction to be mined...", *amount)
+	amtWei := utils.Float2Wei(*amount)
 	ethPoolAddr := ctype.Hex2Addr(p.profile.EthPoolAddr)
-
 	receiptChan := make(chan *types.Receipt, 1)
 	_, err := p.transactor.Transact(
 		&transactor.TransactionMinedHandler{
@@ -118,7 +102,7 @@ func (p *processor) depositEthPool() error {
 	return nil
 }
 
-func (p *processor) approveEthPoolToLedger() error {
+func (p *Processor) approveEthPoolToLedger() error {
 	log.Info("approve EthPool balance to CelerLedger and wait transaction to be mined...")
 	balance, err := p.queryEthPoolBalance()
 	if err != nil {
@@ -156,7 +140,7 @@ func (p *processor) approveEthPoolToLedger() error {
 	return nil
 }
 
-func (p *processor) queryEthPoolBalance() (*big.Int, error) {
+func (p *Processor) queryEthPoolBalance() (*big.Int, error) {
 	ethPoolAddr := ctype.Hex2Addr(p.profile.EthPoolAddr)
 	contract, err := ethpool.NewEthPoolCaller(ethPoolAddr, p.transactor.ContractCaller())
 	if err != nil {
@@ -172,7 +156,7 @@ func (p *processor) queryEthPoolBalance() (*big.Int, error) {
 	return balance, nil
 }
 
-func (p *processor) queryEthPoolLedgerAllowance() (*big.Int, error) {
+func (p *Processor) queryEthPoolLedgerAllowance() (*big.Int, error) {
 	ethPoolAddr := ctype.Hex2Addr(p.profile.EthPoolAddr)
 	ledgerAddr := ctype.Hex2Addr(p.profile.LedgerAddr)
 	contract, err := ethpool.NewEthPoolCaller(ethPoolAddr, p.transactor.ContractCaller())
@@ -189,7 +173,40 @@ func (p *processor) queryEthPoolLedgerAllowance() (*big.Int, error) {
 	return allowance, nil
 }
 
-func (p *processor) queryRouterRegistry() (uint64, error) {
+func (p *Processor) withdrawEthPool() error {
+	log.Infof("withdraw %f ETH from EthPool and wait transaction to be mined...", *amount)
+	amtWei := utils.Float2Wei(*amount)
+	ethPoolAddr := ctype.Hex2Addr(p.profile.EthPoolAddr)
+	receiptChan := make(chan *types.Receipt, 1)
+	_, err := p.transactor.Transact(
+		&transactor.TransactionMinedHandler{
+			OnMined: func(receipt *types.Receipt) {
+				receiptChan <- receipt
+			},
+		},
+		big.NewInt(0),
+		func(transactor bind.ContractTransactor, opts *bind.TransactOpts) (*types.Transaction, error) {
+			contract, err2 := ethpool.NewEthPoolTransactor(ethPoolAddr, transactor)
+			if err2 != nil {
+				return nil, err2
+			}
+			return contract.Withdraw(opts, amtWei)
+		})
+	if err != nil {
+		log.Error(err)
+		return err
+	}
+	receipt := <-receiptChan
+	if receipt.Status == types.ReceiptStatusSuccessful {
+		log.Infof("ethpool withdraw transaction %x succeeded", receipt.TxHash)
+	} else {
+		log.Errorf("ethpool withdraw transaction %x failed", receipt.TxHash)
+		return fmt.Errorf("tx failed")
+	}
+	return nil
+}
+
+func (p *Processor) queryRouterRegistry() (uint64, error) {
 	routerRegistryAddr := ctype.Hex2Addr(p.profile.RouterRegistryAddr)
 	contract, err := routerregistry.NewRouterRegistryCaller(routerRegistryAddr, p.transactor.ContractCaller())
 	if err != nil {
@@ -208,7 +225,7 @@ func (p *processor) queryRouterRegistry() (uint64, error) {
 	return blknum, nil
 }
 
-func (p *processor) registerRouter() error {
+func (p *Processor) registerRouter() error {
 	log.Info("register OSP as state channel router and wait transaction to be mined...")
 	routerRegistryAddr := ctype.Hex2Addr(p.profile.RouterRegistryAddr)
 	receiptChan := make(chan *types.Receipt, 1)
@@ -240,7 +257,7 @@ func (p *processor) registerRouter() error {
 	return nil
 }
 
-func (p *processor) deregisterRouter() error {
+func (p *Processor) deregisterRouter() error {
 	log.Info("deregister OSP as state channel router and wait transaction to be mined...")
 	routerRegistryAddr := ctype.Hex2Addr(p.profile.RouterRegistryAddr)
 
@@ -271,32 +288,4 @@ func (p *processor) deregisterRouter() error {
 		return fmt.Errorf("tx failed")
 	}
 	return nil
-}
-
-func (p *processor) setup() {
-	p.profile = common.ParseProfile(*pjson)
-	overrideConfig(p.profile)
-	config.ChainID = big.NewInt(p.profile.ChainId)
-	config.BlockDelay = p.profile.BlockDelayNum
-
-	ethclient := toolsetup.NewEthClient(p.profile)
-	keyStore, passPhrase := toolsetup.ParseKeyStoreFile(*ksfile, *noPassword)
-
-	var err error
-	p.myAddr, _, err = utils.GetAddrAndPrivKey(keyStore, passPhrase)
-	if err != nil {
-		log.Fatal(err)
-	}
-	if p.myAddr != ctype.Hex2Addr(p.profile.SvrETHAddr) {
-		log.Fatal("incorrect profile")
-	}
-
-	p.transactor, err = transactor.NewTransactor(keyStore, passPhrase, ethclient)
-	if err != nil {
-		log.Fatal(err)
-	}
-}
-
-func overrideConfig(profile *common.CProfile) {
-	profile.BlockDelayNum = uint64(*blkDelay)
 }

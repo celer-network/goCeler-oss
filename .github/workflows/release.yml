@@ -28,10 +28,7 @@ jobs:
           mkdir goceler && pushd goceler
           LDFLAG="-s -w -X main.version=${{ steps.get_tag.outputs.TAG }} -X main.commit=${GITHUB_SHA::6}"
           go build -ldflags "$LDFLAG" ../server
-          go build ../tools/osp-admin
-          go build ../tools/osp-setup
-          go build ../tools/channel-view
-          go build ../tools/channel-op
+          go build ../tools/osp-cli
           popd
           tar czf goceler-${{ steps.get_tag.outputs.TAG }}-linux-amd64.tar.gz goceler/
 

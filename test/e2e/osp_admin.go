@@ -12,7 +12,6 @@ import (
 func ospAdminTest(t *testing.T) {
 	log.Info("============== start test ospAdminTest ==============")
 	defer log.Info("============== end test ospAdminTest ==============")
-	buildPkgBin(outRootDir, "tools/osp-admin", "ospadmin")
 
 	o2 := tf.StartServerController(outRootDir+toBuild["server"],
 		"-profile", noProxyProfile,
@@ -30,24 +29,24 @@ func ospAdminTest(t *testing.T) {
 	sleep(2)
 
 	// register stream
-	tf.StartProcess(outRootDir+"ospadmin",
+	tf.StartProcess(outRootDir+"ospcli",
 		"-adminhostport", o1AdminWeb,
 		"-registerstream",
-		"-peeraddr", osp2EthAddr,
+		"-peer", osp2EthAddr,
 		"-peerhostport", localhost+o2Port,
 		"-logcolor",
-		"-logprefix", "oa").Wait()
+		"-logprefix", "cli").Wait()
 	sleep(3)
 
 	// open channel
-	tf.StartProcess(outRootDir+"ospadmin",
+	tf.StartProcess(outRootDir+"ospcli",
 		"-adminhostport", o1AdminWeb,
 		"-openchannel",
-		"-peerdeposit", initialBalance,
-		"-selfdeposit", initialBalance,
-		"-peeraddr", osp2EthAddr,
+		"-peerdeposit", "5",
+		"-selfdeposit", "5",
+		"-peer", osp2EthAddr,
 		"-logcolor",
-		"-logprefix", "oa").Wait()
+		"-logprefix", "cli").Wait()
 	sleep(3)
 
 	// check o1 balance
@@ -73,13 +72,13 @@ func ospAdminTest(t *testing.T) {
 	}
 
 	// send token
-	tf.StartProcess(outRootDir+"ospadmin",
+	tf.StartProcess(outRootDir+"ospcli",
 		"-adminhostport", o1AdminWeb,
 		"-sendtoken",
 		"-receiver", osp2EthAddr,
-		"-amount", "99",
+		"-amount", "1",
 		"-logcolor",
-		"-logprefix", "oa").Wait()
+		"-logprefix", "cli").Wait()
 	sleep(3)
 
 	// check o1 balance
@@ -88,8 +87,8 @@ func ospAdminTest(t *testing.T) {
 		t.Error(err)
 		return
 	}
-	if free != tf.AddAmtStr(initialBalance, "-99") {
-		t.Errorf("expect %s sending capacity %s, got %s", osp1EthAddr, tf.AddAmtStr(initialBalance, "-99"), free)
+	if free != "4000000000000000000" {
+		t.Errorf("expect %s sending capacity %s, got %s", osp1EthAddr, "4000000000000000000", free)
 		return
 	}
 
@@ -99,19 +98,19 @@ func ospAdminTest(t *testing.T) {
 		t.Error(err)
 		return
 	}
-	if free != tf.AddAmtStr(initialBalance, "99") {
-		t.Errorf("expect %s sending capacity %s, got %s", osp2EthAddr, tf.AddAmtStr(initialBalance, "99"), free)
+	if free != "6000000000000000000" {
+		t.Errorf("expect %s sending capacity %s, got %s", osp2EthAddr, "6000000000000000000", free)
 		return
 	}
 
-	// make deposit
-	tf.StartProcess(outRootDir+"ospadmin",
+	// make deposit to o1
+	tf.StartProcess(outRootDir+"ospcli",
 		"-adminhostport", o1AdminWeb,
 		"-deposit",
-		"-peeraddr", osp2EthAddr,
-		"-amount", "100",
+		"-peer", osp2EthAddr,
+		"-amount", "0.1",
 		"-logcolor",
-		"-logprefix", "oa").Wait()
+		"-logprefix", "cli").Wait()
 	sleep(5)
 
 	// check o1 balance
@@ -120,8 +119,8 @@ func ospAdminTest(t *testing.T) {
 		t.Error(err)
 		return
 	}
-	if free != tf.AddAmtStr(initialBalance, "1") {
-		t.Errorf("expect %s sending capacity %s, got %s", osp1EthAddr, tf.AddAmtStr(initialBalance, "1"), free)
+	if free != "4100000000000000000" {
+		t.Errorf("expect %s sending capacity %s, got %s", osp1EthAddr, "4100000000000000000", free)
 		return
 	}
 }

@@ -38,7 +38,7 @@ var (
 var toBuild = map[string]string{
 	"server":             "server",
 	"testing/testclient": "testclient",
-	"tools/channel-op":   "channelop",
+	"tools/osp-cli":      "ospcli",
 }
 
 // todo: remove addr arg

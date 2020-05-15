@@ -141,12 +141,12 @@ func (d *DAL) GetChanViewInfoByID(cid ctype.CidType) (int, *time.Time, *time.Tim
 	return getChanViewInfoByID(d.st, cid)
 }
 
-func (d *DAL) GetAllChanInfoByToken(token *entity.TokenInfo) ([]ctype.CidType, []ctype.Addr, []*entity.TokenInfo, []int, []*time.Time, []*time.Time, []*structs.OnChainBalance, []*entity.SimplexPaymentChannel, []*entity.SimplexPaymentChannel, error) {
-	return getAllChanInfoByToken(d.st, token)
+func (d *DAL) GetAllChansByTokenAndState(token *entity.TokenInfo, state int) ([]ctype.CidType, []ctype.Addr, []*entity.TokenInfo, []*time.Time, []*time.Time, []*structs.OnChainBalance, []*entity.SimplexPaymentChannel, []*entity.SimplexPaymentChannel, error) {
+	return getAllChansByTokenAndState(d.st, token, state)
 }
 
-func (d *DAL) GetInactiveChanInfo(token *entity.TokenInfo, stateTs time.Time) ([]ctype.CidType, []ctype.Addr, []*entity.TokenInfo, []int, []*time.Time, []*time.Time, []*structs.OnChainBalance, []*entity.SimplexPaymentChannel, []*entity.SimplexPaymentChannel, error) {
-	return getInactiveChanInfo(d.st, token, stateTs)
+func (d *DAL) GetInactiveChansByTokenAndState(token *entity.TokenInfo, state int, stateTs time.Time) ([]ctype.CidType, []ctype.Addr, []*entity.TokenInfo, []*time.Time, []*time.Time, []*structs.OnChainBalance, []*entity.SimplexPaymentChannel, []*entity.SimplexPaymentChannel, error) {
+	return getInactiveChansByTokenAndState(d.st, token, state, stateTs)
 }
 
 func (d *DAL) GetChanState(cid ctype.CidType) (int, bool, error) {

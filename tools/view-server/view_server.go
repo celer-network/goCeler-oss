@@ -14,8 +14,8 @@ import (
 
 var (
 	profile       = flag.String("profile", "config/profile.json", "Path to profile json file")
-	viewBinary    = flag.String("viewbin", "/usr/local/bin/channel-view", "location of view binary")
-	storedir      = flag.String("storedir", "", "sql api entry")
+	viewBinary    = flag.String("viewbin", "/usr/local/bin/osp-cli", "location of view binary")
+	storedir      = flag.String("storedir", "", "sqllite directory")
 	staticFileDir = flag.String("staticfiledir", "/etc/cv_static/", "location of static file dir")
 	port          = flag.String("port", "10080", "port to serve on")
 )
@@ -101,7 +101,7 @@ func main() {
 			fmt.Fprintf(w, "Input Wrong")
 			return
 		}
-		out, err := view("-chainview", "channel", "-cid", cid[0])
+		out, err := view("-onchainview", "channel", "-cid", cid[0])
 		if err != nil {
 			fmt.Fprintf(w, "cmd.Run() failed with %s\n", err)
 		}
@@ -113,7 +113,7 @@ func main() {
 			fmt.Fprintf(w, "Input Wrong")
 			return
 		}
-		out, err := view("-chainview", "pay", "-payid", payid[0])
+		out, err := view("-onchainview", "pay", "-payid", payid[0])
 		if err != nil {
 			fmt.Fprintf(w, "cmd.Run() failed with %s\n", err)
 		}
@@ -130,9 +130,9 @@ func main() {
 		var err error
 		var out []byte
 		if argFinalize == nil || len(argFinalize) == 0 {
-			out, err = view("-chainview", "app", "-appaddr", appAddr[0], "-outcome", argOutcome[0])
+			out, err = view("-onchainview", "app", "-appaddr", appAddr[0], "-outcome", argOutcome[0])
 		} else {
-			out, err = view("-chainview", "app", "-appaddr", appAddr[0], "-outcome", argOutcome[0], "-finalize", argFinalize[0])
+			out, err = view("-onchainview", "app", "-appaddr", appAddr[0], "-outcome", argOutcome[0], "-finalize", argFinalize[0])
 		}
 		if err != nil {
 			fmt.Fprintf(w, "cmd.Run() failed with %s\n", err)

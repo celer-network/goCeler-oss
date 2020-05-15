@@ -69,23 +69,25 @@ func ospIntendWithdraw(t *testing.T, tokenType entity.TokenType, tokenAddr strin
 		}
 		sAmtBefore, err := c.GetAccountBalance(tokenAddr, ospEthAddr, cEthClient)
 	*/
-	tf.StartProcess(outRootDir+"channelop",
+	tf.StartProcess(outRootDir+"ospcli",
 		"-ks", ospKeystore,
 		"-nopassword",
 		"-profile", noProxyProfile,
 		"-storedir", sStoreDir+"/"+ospEthAddr,
-		"-intendwithdraw", channel.ChannelId,
-		"-withdrawamt", "1.1",
-		"-logprefix", "co").Wait()
+		"-intendwithdraw",
+		"-cid", channel.ChannelId,
+		"-amount", "1.1",
+		"-logprefix", "cli").Wait()
 	tf.AdvanceBlocks(10)
 
-	tf.StartProcess(outRootDir+"channelop",
+	tf.StartProcess(outRootDir+"ospcli",
 		"-ks", ospKeystore,
 		"-nopassword",
 		"-profile", noProxyProfile,
 		"-storedir", sStoreDir+"/"+ospEthAddr,
-		"-confirmwithdraw", channel.ChannelId,
-		"-logprefix", "co").Wait()
+		"-confirmwithdraw",
+		"-cid", channel.ChannelId,
+		"-logprefix", "cli").Wait()
 	tf.AdvanceBlocks(5)
 
 	err = c.SyncOnChainChannelStates(tokenType, tokenAddr)

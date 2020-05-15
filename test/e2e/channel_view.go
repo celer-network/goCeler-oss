@@ -29,7 +29,6 @@ func erc20ChannelView(t *testing.T) {
 }
 
 func channelView(t *testing.T, tokenType entity.TokenType, tokenAddr string) {
-	buildPkgBin(outRootDir, "tools/channel-view", "channelview")
 	ks, addrs, err := tf.CreateAccountsWithBalance(2, accountBalance)
 	if err != nil {
 		t.Error(err)
@@ -67,7 +66,7 @@ func channelView(t *testing.T, tokenType entity.TokenType, tokenAddr string) {
 		t.Error(err)
 		return
 	}
-	_, err = c2.TcbOpenChannel(c2EthAddr, tokenType, tokenAddr, initialBalance)
+	_, err = c2.OpenChannel(c2EthAddr, tokenType, tokenAddr, initialBalance, initialBalance)
 	if err != nil {
 		t.Error(err)
 		return
@@ -165,102 +164,120 @@ func channelView(t *testing.T, tokenType entity.TokenType, tokenAddr string) {
 		t.Error(err)
 		return
 	}
-	sleep(1)
+	sleep(2)
 
 	fmt.Println()
 	fmt.Println("-------------------------------------- channel cid")
-	tf.StartProcess(outRootDir+"channelview",
+	tf.StartProcess(outRootDir+"ospcli",
 		"-profile", noProxyProfile,
 		"-storedir", sStoreDir+"/"+ospEthAddr,
 		"-dbview", "channel",
 		"-cid", cid1.GetChannelId(),
-		"-allpays",
+		"-payhistory",
 		"-logcolor",
-		"-logprefix", "cv").Wait()
+		"-logprefix", "cli").Wait()
 
 	fmt.Println()
 	fmt.Println("-------------------------------------- channel peer token")
-	tf.StartProcess(outRootDir+"channelview",
+	tf.StartProcess(outRootDir+"ospcli",
 		"-profile", noProxyProfile,
 		"-storedir", sStoreDir+"/"+ospEthAddr,
 		"-dbview", "channel",
 		"-peer", c2EthAddr,
 		"-token", tokenAddr,
 		"-logcolor",
-		"-logprefix", "cv").Wait()
+		"-logprefix", "cli").Wait()
 
 	fmt.Println()
-	fmt.Println("-------------------------------------- allchan")
-	tf.StartProcess(outRootDir+"channelview",
+	fmt.Println("-------------------------------------- list all channel details")
+	tf.StartProcess(outRootDir+"ospcli",
 		"-profile", noProxyProfile,
 		"-storedir", sStoreDir+"/"+ospEthAddr,
-		"-dbview", "allchan",
+		"-dbview", "channel",
+		"-list",
+		"-detail",
 		"-token", tokenAddr,
 		"-logcolor",
-		"-logprefix", "cv").Wait()
+		"-logprefix", "cli").Wait()
 
 	fmt.Println()
-	fmt.Println("-------------------------------------- inactive")
-	tf.StartProcess(outRootDir+"channelview",
+	fmt.Println("-------------------------------------- list inactive channels")
+	tf.StartProcess(outRootDir+"ospcli",
 		"-profile", noProxyProfile,
 		"-storedir", sStoreDir+"/"+ospEthAddr,
-		"-dbview", "allchan",
+		"-dbview", "channel",
+		"-list",
+		"-detail",
 		"-token", tokenAddr,
 		"-inactivesec", fmt.Sprintf("%d", int(time.Now().Sub(ts).Seconds())),
 		"-logcolor",
-		"-logprefix", "cv").Wait()
+		"-logprefix", "cli").Wait()
 
 	fmt.Println()
-	fmt.Println("-------------------------------------- inactive")
-	tf.StartProcess(outRootDir+"channelview",
+	fmt.Println("-------------------------------------- list inactive channels")
+	tf.StartProcess(outRootDir+"ospcli",
 		"-profile", noProxyProfile,
 		"-storedir", sStoreDir+"/"+ospEthAddr,
-		"-dbview", "allchan",
+		"-dbview", "channel",
+		"-list",
+		"-detail",
 		"-token", tokenAddr,
-		"-inactivesec", "0",
+		"-inactivesec", "1",
 		"-logcolor",
-		"-logprefix", "cv").Wait()
+		"-logprefix", "cli").Wait()
+
+	fmt.Println()
+	fmt.Println("-------------------------------------- list channel IDs")
+	tf.StartProcess(outRootDir+"ospcli",
+		"-profile", noProxyProfile,
+		"-storedir", sStoreDir+"/"+ospEthAddr,
+		"-dbview", "channel",
+		"-token", tokenAddr,
+		"-list",
+		"-logcolor",
+		"-logprefix", "cli").Wait()
 
 	fmt.Println()
 	fmt.Println("-------------------------------------- balance")
-	tf.StartProcess(outRootDir+"channelview",
+	tf.StartProcess(outRootDir+"ospcli",
 		"-profile", noProxyProfile,
 		"-storedir", sStoreDir+"/"+ospEthAddr,
-		"-dbview", "balance",
+		"-dbview", "channel",
 		"-token", tokenAddr,
+		"-balance",
 		"-logcolor",
-		"-logprefix", "cv").Wait()
+		"-logprefix", "cli").Wait()
 
 	fmt.Println()
 	fmt.Println("-------------------------------------- route")
-	tf.StartProcess(outRootDir+"channelview",
+	tf.StartProcess(outRootDir+"ospcli",
 		"-profile", noProxyProfile,
 		"-storedir", sStoreDir+"/"+ospEthAddr,
 		"-dbview", "route",
 		"-dest", c2EthAddr,
 		"-token", tokenAddr,
 		"-logcolor",
-		"-logprefix", "cv").Wait()
+		"-logprefix", "cli").Wait()
 
 	fmt.Println()
 	fmt.Println("-------------------------------------- pay")
-	tf.StartProcess(outRootDir+"channelview",
+	tf.StartProcess(outRootDir+"ospcli",
 		"-profile", noProxyProfile,
 		"-storedir", sStoreDir+"/"+ospEthAddr,
 		"-dbview", "pay",
 		"-payid", p2,
 		"-logcolor",
-		"-logprefix", "cv").Wait()
+		"-logprefix", "cli").Wait()
 
 	fmt.Println()
 	fmt.Println("-------------------------------------- pay")
-	tf.StartProcess(outRootDir+"channelview",
+	tf.StartProcess(outRootDir+"ospcli",
 		"-profile", noProxyProfile,
 		"-storedir", sStoreDir+"/"+ospEthAddr,
 		"-dbview", "pay",
 		"-payid", p4,
 		"-logcolor",
-		"-logprefix", "cv").Wait()
+		"-logprefix", "cli").Wait()
 
 	fmt.Println()
 }

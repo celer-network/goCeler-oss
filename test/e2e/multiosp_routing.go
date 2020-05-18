@@ -162,7 +162,7 @@ func multiOspRouting(args ...*tf.ServerController) func(*testing.T) {
 		}
 		log.Infoln("channel id for o4 o5:", ctype.Cid2Hex(cid45))
 
-		sleep(10)
+		sleep(8)
 
 		log.Infoln("p1: c3 pay c5, should go through c3->o3->o4->o5->c5")
 		p1, err := c3.SendPayment(c5EthAddr, "1", entity.TokenType_ETH, tokenAddrEth)
@@ -248,7 +248,7 @@ func multiOspRouting(args ...*tf.ServerController) func(*testing.T) {
 		log.Info("------------------ kill o4, route should change ------------------")
 		o4 := args[3]
 		o4.Kill()
-		sleep(20)
+		sleep(12)
 
 		log.Infoln("p2: o3 pay o5, should go through o3->o1->o2->o5")
 		p2, err := requestSendToken(o3AdminWeb, osp5EthAddr, "1", tokenAddrEth)
@@ -256,7 +256,7 @@ func multiOspRouting(args ...*tf.ServerController) func(*testing.T) {
 			t.Error(err)
 			return
 		}
-		sleep(5)
+		sleep(3)
 
 		_, _, inCid, inState, outCid, outState, _, found, err = dal3.GetPaymentInfo(ctype.Hex2PayID(p2))
 		if err != nil {
@@ -363,31 +363,19 @@ func multiOspRouting(args ...*tf.ServerController) func(*testing.T) {
 			"-logcolor",
 			"-logprefix", "o4_"+osp4EthAddr[:4])
 		defer o4.Kill()
-		utils.RequestRegisterStream(o4AdminWeb, ctype.Hex2Addr(osp1EthAddr), localhost+o1Port)
-		utils.RequestRegisterStream(o4AdminWeb, ctype.Hex2Addr(osp3EthAddr), localhost+o3Port)
 		utils.RequestRegisterStream(o4AdminWeb, ctype.Hex2Addr(osp5EthAddr), localhost+o5Port)
 
-		log.Info("p4: c5 pay random addr, expect loop route c5->o5->o4->o1->o3->o4")
-		// Use the default route settings to create a pay loop.
-		randAddr := "7a6d2a97da1c453a4e099e8054865a0a59728863"
-		p4, err := c5.SendPayment(randAddr, "1", entity.TokenType_ETH, tokenAddrEth)
+		sleep(20)
+		log.Infoln("p4: o5 pay o3, should go through o5->o2->o1->o3, as o4 has not registered stream with o1 and o3")
+		p4, err := requestSendToken(o5AdminWeb, osp3EthAddr, "1", tokenAddrEth)
 		if err != nil {
 			t.Error(err)
 			return
 		}
-		err = waitForPaymentCompletion(p4, c5, nil)
-		if err != nil {
-			t.Error(err)
-			return
-		}
-
-		// pay should be rolled back, remaining balance shouldn't change.
-		err = c5.AssertBalance(tokenAddrEth, initialBalance, "0", initialBalance)
-		if err != nil {
-			t.Error(err)
-			return
-		}
-
+		sleep(3)
+		// register streams after pay
+		utils.RequestRegisterStream(o4AdminWeb, ctype.Hex2Addr(osp1EthAddr), localhost+o1Port)
+		utils.RequestRegisterStream(o4AdminWeb, ctype.Hex2Addr(osp3EthAddr), localhost+o3Port)
 		_, _, inCid, inState, outCid, outState, _, found, err = dal5.GetPaymentInfo(ctype.Hex2PayID(p4))
 		if err != nil {
 			t.Error(err)
@@ -397,7 +385,7 @@ func multiOspRouting(args ...*tf.ServerController) func(*testing.T) {
 			t.Error("p4 not found in o5")
 			return
 		}
-		expInCid, expInState, expOutCid, expOutState = c5cid, structs.PayState_COSIGNED_CANCELED, cid45, structs.PayState_COSIGNED_CANCELED
+		expInCid, expInState, expOutCid, expOutState = ctype.ZeroCid, structs.PayState_NULL, cid25, structs.PayState_COSIGNED_PAID
 		if inCid != expInCid || inState != expInState || outCid != expOutCid || outState != expOutState {
 			t.Errorf("pay states error get in: %x %s out: %x %s, exp int: %x %s out: %x %s",
 				inCid, fsm.PayStateName(inState), outCid, fsm.PayStateName(outState),
@@ -405,16 +393,16 @@ func multiOspRouting(args ...*tf.ServerController) func(*testing.T) {
 			return
 		}
 
-		_, _, inCid, inState, outCid, outState, _, found, err = dal4.GetPaymentInfo(ctype.Hex2PayID(p4))
+		_, _, inCid, inState, outCid, outState, _, found, err = dal2.GetPaymentInfo(ctype.Hex2PayID(p4))
 		if err != nil {
 			t.Error(err)
 			return
 		}
 		if !found {
-			t.Error("p4 not found in o4")
+			t.Error("p4 not found in o2")
 			return
 		}
-		expInCid, expInState, expOutCid, expOutState = cid45, structs.PayState_COSIGNED_CANCELED, cid14, structs.PayState_COSIGNED_CANCELED
+		expInCid, expInState, expOutCid, expOutState = cid25, structs.PayState_COSIGNED_PAID, cid12, structs.PayState_COSIGNED_PAID
 		if inCid != expInCid || inState != expInState || outCid != expOutCid || outState != expOutState {
 			t.Errorf("pay states error get in: %x %s out: %x %s, exp int: %x %s out: %x %s",
 				inCid, fsm.PayStateName(inState), outCid, fsm.PayStateName(outState),
@@ -431,7 +419,7 @@ func multiOspRouting(args ...*tf.ServerController) func(*testing.T) {
 			t.Error("p4 not found in o1")
 			return
 		}
-		expInCid, expInState, expOutCid, expOutState = cid14, structs.PayState_COSIGNED_CANCELED, cid13, structs.PayState_COSIGNED_CANCELED
+		expInCid, expInState, expOutCid, expOutState = cid12, structs.PayState_COSIGNED_PAID, cid13, structs.PayState_COSIGNED_PAID
 		if inCid != expInCid || inState != expInState || outCid != expOutCid || outState != expOutState {
 			t.Errorf("pay states error get in: %x %s out: %x %s, exp int: %x %s out: %x %s",
 				inCid, fsm.PayStateName(inState), outCid, fsm.PayStateName(outState),
@@ -448,7 +436,7 @@ func multiOspRouting(args ...*tf.ServerController) func(*testing.T) {
 			t.Error("p4 not found in o3")
 			return
 		}
-		expInCid, expInState, expOutCid, expOutState = cid13, structs.PayState_COSIGNED_CANCELED, cid34, structs.PayState_COSIGNED_CANCELED
+		expInCid, expInState, expOutCid, expOutState = cid13, structs.PayState_COSIGNED_PAID, ctype.ZeroCid, structs.PayState_NULL
 		if inCid != expInCid || inState != expInState || outCid != expOutCid || outState != expOutState {
 			t.Errorf("pay states error get in: %x %s out: %x %s, exp int: %x %s out: %x %s",
 				inCid, fsm.PayStateName(inState), outCid, fsm.PayStateName(outState),
@@ -456,7 +444,7 @@ func multiOspRouting(args ...*tf.ServerController) func(*testing.T) {
 			return
 		}
 
-		sleep(15)
+		sleep(8)
 		log.Infoln("p5: c5 pay c3, should go through c5->o5->o4->o3->c3")
 		p5, err := c5.SendPayment(c3EthAddr, "1", entity.TokenType_ETH, tokenAddrEth)
 		if err != nil {
@@ -503,6 +491,99 @@ func multiOspRouting(args ...*tf.ServerController) func(*testing.T) {
 			return
 		}
 
+		log.Info("p6: c5 pay random addr, expect loop route c5->o5->o4->o1->o3->o4")
+		// Use the default route settings to create a pay loop.
+		randAddr := "7a6d2a97da1c453a4e099e8054865a0a59728863"
+		p6, err := c5.SendPayment(randAddr, "1", entity.TokenType_ETH, tokenAddrEth)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		err = waitForPaymentCompletion(p6, c5, nil)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+
+		// pay should be rolled back, remaining balance shouldn't change.
+		err = c5.AssertBalance(
+			tokenAddrEth,
+			tf.AddAmtStr(initialBalance, "-1"),
+			"0",
+			tf.AddAmtStr(initialBalance, "1"))
+		if err != nil {
+			t.Error(err)
+			return
+		}
+
+		_, _, inCid, inState, outCid, outState, _, found, err = dal5.GetPaymentInfo(ctype.Hex2PayID(p6))
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		if !found {
+			t.Error("p6 not found in o5")
+			return
+		}
+		expInCid, expInState, expOutCid, expOutState = c5cid, structs.PayState_COSIGNED_CANCELED, cid45, structs.PayState_COSIGNED_CANCELED
+		if inCid != expInCid || inState != expInState || outCid != expOutCid || outState != expOutState {
+			t.Errorf("pay states error get in: %x %s out: %x %s, exp int: %x %s out: %x %s",
+				inCid, fsm.PayStateName(inState), outCid, fsm.PayStateName(outState),
+				expInCid, fsm.PayStateName(expInState), expOutCid, fsm.PayStateName(expOutState))
+			return
+		}
+
+		_, _, inCid, inState, outCid, outState, _, found, err = dal4.GetPaymentInfo(ctype.Hex2PayID(p6))
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		if !found {
+			t.Error("p6 not found in o4")
+			return
+		}
+		expInCid, expInState, expOutCid, expOutState = cid45, structs.PayState_COSIGNED_CANCELED, cid14, structs.PayState_COSIGNED_CANCELED
+		if inCid != expInCid || inState != expInState || outCid != expOutCid || outState != expOutState {
+			t.Errorf("pay states error get in: %x %s out: %x %s, exp int: %x %s out: %x %s",
+				inCid, fsm.PayStateName(inState), outCid, fsm.PayStateName(outState),
+				expInCid, fsm.PayStateName(expInState), expOutCid, fsm.PayStateName(expOutState))
+			return
+		}
+
+		_, _, inCid, inState, outCid, outState, _, found, err = dal1.GetPaymentInfo(ctype.Hex2PayID(p6))
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		if !found {
+			t.Error("p6 not found in o1")
+			return
+		}
+		expInCid, expInState, expOutCid, expOutState = cid14, structs.PayState_COSIGNED_CANCELED, cid13, structs.PayState_COSIGNED_CANCELED
+		if inCid != expInCid || inState != expInState || outCid != expOutCid || outState != expOutState {
+			t.Errorf("pay states error get in: %x %s out: %x %s, exp int: %x %s out: %x %s",
+				inCid, fsm.PayStateName(inState), outCid, fsm.PayStateName(outState),
+				expInCid, fsm.PayStateName(expInState), expOutCid, fsm.PayStateName(expOutState))
+			return
+		}
+
+		_, _, inCid, inState, outCid, outState, _, found, err = dal3.GetPaymentInfo(ctype.Hex2PayID(p6))
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		if !found {
+			t.Error("p6 not found in o3")
+			return
+		}
+		expInCid, expInState, expOutCid, expOutState = cid13, structs.PayState_COSIGNED_CANCELED, cid34, structs.PayState_COSIGNED_CANCELED
+		if inCid != expInCid || inState != expInState || outCid != expOutCid || outState != expOutState {
+			t.Errorf("pay states error get in: %x %s out: %x %s, exp int: %x %s out: %x %s",
+				inCid, fsm.PayStateName(inState), outCid, fsm.PayStateName(outState),
+				expInCid, fsm.PayStateName(expInState), expOutCid, fsm.PayStateName(expOutState))
+			return
+		}
+
 		log.Info("------------------ test auto clear pays ------------------")
 		constructor := testapp.GetSingleSessionConstructor(
 			[]ctype.Addr{
@@ -525,7 +606,7 @@ func multiOspRouting(args ...*tf.ServerController) func(*testing.T) {
 			ArgsQueryOutcome:       []byte{2},
 		}
 		timeout := uint64(3)
-		p6, err := c3.SendPaymentWithBooleanConditions(
+		p7, err := c3.SendPaymentWithBooleanConditions(
 			c5EthAddr, sendAmt, entity.TokenType_ETH, tokenAddrEth, []*entity.Condition{c3Cond1}, timeout)
 		if err != nil {
 			t.Error(err)
@@ -536,7 +617,7 @@ func multiOspRouting(args ...*tf.ServerController) func(*testing.T) {
 			t.Error(err)
 			return
 		}
-		err = waitForPaymentPending(p6, c3, c5)
+		err = waitForPaymentPending(p7, c3, c5)
 		if err != nil {
 			t.Error(err)
 			return
@@ -560,13 +641,13 @@ func multiOspRouting(args ...*tf.ServerController) func(*testing.T) {
 			return
 		}
 
-		_, _, inCid, inState, outCid, outState, _, found, err = dal3.GetPaymentInfo(ctype.Hex2PayID(p6))
+		_, _, inCid, inState, outCid, outState, _, found, err = dal3.GetPaymentInfo(ctype.Hex2PayID(p7))
 		if err != nil {
 			t.Error(err)
 			return
 		}
 		if !found {
-			t.Error("p6 not found in o3")
+			t.Error("p7 not found in o3")
 			return
 		}
 		expInCid, expInState, expOutCid, expOutState = c3cid, structs.PayState_COSIGNED_PENDING, cid34, structs.PayState_COSIGNED_PENDING
@@ -577,13 +658,13 @@ func multiOspRouting(args ...*tf.ServerController) func(*testing.T) {
 			return
 		}
 
-		_, _, inCid, inState, outCid, outState, _, found, err = dal4.GetPaymentInfo(ctype.Hex2PayID(p6))
+		_, _, inCid, inState, outCid, outState, _, found, err = dal4.GetPaymentInfo(ctype.Hex2PayID(p7))
 		if err != nil {
 			t.Error(err)
 			return
 		}
 		if !found {
-			t.Error("p6 not found in o4")
+			t.Error("p7 not found in o4")
 			return
 		}
 		expInCid, expInState, expOutCid, expOutState = cid34, structs.PayState_COSIGNED_PENDING, cid45, structs.PayState_COSIGNED_PENDING
@@ -594,13 +675,13 @@ func multiOspRouting(args ...*tf.ServerController) func(*testing.T) {
 			return
 		}
 
-		_, _, inCid, inState, outCid, outState, _, found, err = dal5.GetPaymentInfo(ctype.Hex2PayID(p6))
+		_, _, inCid, inState, outCid, outState, _, found, err = dal5.GetPaymentInfo(ctype.Hex2PayID(p7))
 		if err != nil {
 			t.Error(err)
 			return
 		}
 		if !found {
-			t.Error("p6 not found in o5")
+			t.Error("p7 not found in o5")
 			return
 		}
 		expInCid, expInState, expOutCid, expOutState = cid45, structs.PayState_COSIGNED_PENDING, c5cid, structs.PayState_COSIGNED_PENDING
@@ -617,15 +698,14 @@ func multiOspRouting(args ...*tf.ServerController) func(*testing.T) {
 			t.Error(err)
 			return
 		}
-		sleep(5)
 
-		_, _, inCid, inState, outCid, outState, _, found, err = dal3.GetPaymentInfo(ctype.Hex2PayID(p6))
+		_, _, inCid, inState, outCid, outState, _, found, err = dal3.GetPaymentInfo(ctype.Hex2PayID(p7))
 		if err != nil {
 			t.Error(err)
 			return
 		}
 		if !found {
-			t.Error("p6 not found in o3")
+			t.Error("p7 not found in o3")
 			return
 		}
 		expInCid, expInState, expOutCid, expOutState = c3cid, structs.PayState_COSIGNED_PENDING, cid34, structs.PayState_COSIGNED_CANCELED
@@ -636,13 +716,13 @@ func multiOspRouting(args ...*tf.ServerController) func(*testing.T) {
 			return
 		}
 
-		_, _, inCid, inState, outCid, outState, _, found, err = dal4.GetPaymentInfo(ctype.Hex2PayID(p6))
+		_, _, inCid, inState, outCid, outState, _, found, err = dal4.GetPaymentInfo(ctype.Hex2PayID(p7))
 		if err != nil {
 			t.Error(err)
 			return
 		}
 		if !found {
-			t.Error("p6 not found in o4")
+			t.Error("p7 not found in o4")
 			return
 		}
 		expInCid, expInState, expOutCid, expOutState = cid34, structs.PayState_COSIGNED_CANCELED, cid45, structs.PayState_COSIGNED_CANCELED
@@ -653,13 +733,13 @@ func multiOspRouting(args ...*tf.ServerController) func(*testing.T) {
 			return
 		}
 
-		_, _, inCid, inState, outCid, outState, _, found, err = dal5.GetPaymentInfo(ctype.Hex2PayID(p6))
+		_, _, inCid, inState, outCid, outState, _, found, err = dal5.GetPaymentInfo(ctype.Hex2PayID(p7))
 		if err != nil {
 			t.Error(err)
 			return
 		}
 		if !found {
-			t.Error("p6 not found in o5")
+			t.Error("p7 not found in o5")
 			return
 		}
 		expInCid, expInState, expOutCid, expOutState = cid45, structs.PayState_COSIGNED_CANCELED, c5cid, structs.PayState_COSIGNED_PENDING

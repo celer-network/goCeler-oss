@@ -55,7 +55,6 @@ const (
 	routerRefreshed
 )
 
-// Time duration for tickers
 const (
 	refreshRouterInterval = 5 * 24 * time.Hour
 	scanRouterInterval    = 1 * time.Hour
@@ -375,7 +374,23 @@ func (c *Controller) enqueueRouterInfo(update *rpc.RoutingUpdate, ttl uint64) bo
 	if ok && oldUpdate.GetTs() >= ts {
 		return false // already have newer info from this origin
 	}
-	c.rtBuilder.keepOspAlive(origin, ts)
+	// keep osp and edges alive
+	timestamp := time.Unix(int64(ts), 0).UTC()
+	now := now()
+	if timestamp.After(now) {
+		timestamp = now
+	}
+	c.rtBuilder.keepOspAlive(origin, timestamp)
+	for _, ch := range update.GetChannels() {
+		if ch != nil {
+			balance := utils.Wei2BigInt(ch.GetBalance())
+			if balance == nil {
+				log.Errorln("invalid balance report", ch.GetBalance())
+				continue
+			}
+			c.rtBuilder.updateOspEdge(ctype.Hex2Cid(ch.GetCid()), balance, origin, timestamp)
+		}
+	}
 
 	c.routingBatch[origin] = update
 	// Propagate the info if the incoming TTL was more than 1.
@@ -527,7 +542,7 @@ func (c *Controller) BuildTable(tokenAddr ctype.Addr) (map[ctype.Addr]ctype.CidT
 	return c.rtBuilder.buildTable(tokenAddr)
 }
 
-func (c *Controller) AddEdge(p1 ctype.Addr, p2 ctype.Addr, cid ctype.CidType, tokenAddr ctype.Addr) error {
+func (c *Controller) AddEdge(p1, p2 ctype.Addr, cid ctype.CidType, tokenAddr ctype.Addr) error {
 	return c.rtBuilder.addEdge(p1, p2, cid, tokenAddr)
 }
 

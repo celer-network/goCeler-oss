@@ -3,8 +3,8 @@
 package route
 
 import (
-	"errors"
 	"fmt"
+	"math/big"
 	"sync"
 	"time"
 
@@ -33,18 +33,31 @@ type NeighborInfo struct {
 	TokenCids map[ctype.Addr]ctype.CidType
 }
 
+type OspEdge struct {
+	edge *Edge
+	// balance reported by edge.P1
+	balance1 *big.Int
+	// balance reported by edge.P2
+	balance2 *big.Int
+	// latest report of P1 or P2
+	// since stream is bidirectional, we assume
+	// the edge is alive as long as one peer reports
+	updateTime time.Time
+}
+
 type edgeMap = map[ctype.CidType]*Edge
 type accessOspSet = map[ctype.Addr]bool
 
 type routingTableBuilder struct {
 	myAddr      ctype.Addr
 	dal         *storage.DAL
-	edges       map[ctype.Addr]edgeMap                      // tokenAddr -> { cid -> edge }
+	edges       map[ctype.Addr]edgeMap                      // tokenAddr -> { cid -> edge }, including non-OSP edges
+	ospEdges    map[ctype.CidType]*OspEdge                  // cid -> OspEdge, only OSP-to-OSP edges
 	osps        map[ctype.Addr]*OspInfo                     // ospAddr -> OspInfo
 	neighbors   map[ctype.Addr]*NeighborInfo                // neighborAddr -> NeighborInfo
 	accessOsps  map[ctype.Addr]map[ctype.Addr]accessOspSet  // tokenAddr, clientAddr -> set of ospAddrs
 	nextHopCids map[ctype.Addr]map[ctype.Addr]ctype.CidType // tokenAddr, dstOspAddr -> cid
-	graphLock   sync.RWMutex                                // protect edges, osps, neighbors
+	graphLock   sync.RWMutex                                // protect edges, ospEdges, osps, neighbors
 	routeLock   sync.RWMutex                                // protect accessOsps, nextHopCids
 	buildLock   sync.Mutex                                  // serialize building processes
 }
@@ -55,6 +68,7 @@ func newRoutingTableBuilder(myAddr ctype.Addr, dal *storage.DAL) *routingTableBu
 		myAddr:      myAddr,
 		dal:         dal,
 		edges:       make(map[ctype.Addr]edgeMap),
+		ospEdges:    make(map[ctype.CidType]*OspEdge),
 		osps:        make(map[ctype.Addr]*OspInfo),
 		neighbors:   make(map[ctype.Addr]*NeighborInfo),
 		accessOsps:  make(map[ctype.Addr]map[ctype.Addr]accessOspSet),
@@ -93,8 +107,7 @@ func newRoutingTableBuilder(myAddr ctype.Addr, dal *storage.DAL) *routingTableBu
 	return b
 }
 
-func (b *routingTableBuilder) addEdge(
-	p1 ctype.Addr, p2 ctype.Addr, cid ctype.CidType, tokenAddr ctype.Addr) error {
+func (b *routingTableBuilder) addEdge(p1, p2 ctype.Addr, cid ctype.CidType, tokenAddr ctype.Addr) error {
 	b.graphLock.Lock()
 	defer b.graphLock.Unlock()
 	log.Infof("Adding edge cid %x", cid.Bytes())
@@ -129,11 +142,14 @@ func (b *routingTableBuilder) removeEdge(cid ctype.CidType) error {
 	b.graphLock.Lock()
 	defer b.graphLock.Unlock()
 	log.Infof("Removing cid %x", cid.Bytes())
-	var token ctype.Addr
+	delete(b.ospEdges, cid)
 	found := false
-	for _, edges := range b.edges {
+	for token, edges := range b.edges {
 		if edge, ok := edges[cid]; ok {
 			delete(edges, cid)
+			if len(edges) == 0 {
+				delete(b.edges, token)
+			}
 			myEdge, peerAddr := b.isMyEdge(edge)
 			// update neigbhbor
 			if myEdge && b.osps[peerAddr] != nil {
@@ -153,12 +169,9 @@ func (b *routingTableBuilder) removeEdge(cid ctype.CidType) error {
 		}
 	}
 	if !found {
-		errStr := fmt.Sprintf("cid %s doesn't exist in any token addr", ctype.Cid2Hex(cid))
+		errStr := fmt.Sprintf("cid %x doesn't exist in any token addr", cid)
 		log.Errorf(errStr)
-		return errors.New(errStr)
-	}
-	if len(b.edges[token]) == 0 {
-		delete(b.edges, token)
+		return fmt.Errorf(errStr)
 	}
 	return nil
 }
@@ -173,6 +186,38 @@ func (b *routingTableBuilder) isMyEdge(e *Edge) (bool, ctype.Addr) {
 		return false, peerAddr
 	}
 	return true, peerAddr
+}
+
+func (b *routingTableBuilder) updateOspEdge(
+	cid ctype.CidType, balance *big.Int, peerFrom ctype.Addr, timestamp time.Time) {
+	b.graphLock.Lock()
+	defer b.graphLock.Unlock()
+	ospEdge, ok := b.ospEdges[cid]
+	if !ok {
+		for _, edges := range b.edges {
+			edge := edges[cid]
+			if edge != nil {
+				ospEdge = &OspEdge{edge: edge}
+				b.ospEdges[cid] = ospEdge
+				break
+			}
+		}
+	}
+	if ospEdge == nil {
+		log.Warnf("tried to add non-existing edge %x as OSP edge", cid)
+		return
+	}
+	if timestamp.After(ospEdge.updateTime) {
+		if peerFrom == ospEdge.edge.P1 {
+			ospEdge.balance1 = balance
+		} else if peerFrom == ospEdge.edge.P2 {
+			ospEdge.balance2 = balance
+		} else {
+			log.Warnf("OSP edge %x peer not match %x", cid, peerFrom)
+			return
+		}
+		ospEdge.updateTime = timestamp
+	}
 }
 
 // markOsp marks an Osp as a router and records its block number
@@ -251,17 +296,12 @@ func (b *routingTableBuilder) hasOsp(ospAddr ctype.Addr) bool {
 	return ok
 }
 
-func (b *routingTableBuilder) keepOspAlive(ospAddr ctype.Addr, timestamp uint64) {
+func (b *routingTableBuilder) keepOspAlive(ospAddr ctype.Addr, timestamp time.Time) {
 	b.graphLock.Lock()
 	defer b.graphLock.Unlock()
 	if _, ok := b.osps[ospAddr]; ok {
-		ts := time.Unix(int64(timestamp), 0).UTC()
-		now := now()
-		if ts.After(now) {
-			ts = now
-		}
-		if ts.After(b.osps[ospAddr].UpdateTime) {
-			b.osps[ospAddr].UpdateTime = ts
+		if timestamp.After(b.osps[ospAddr].UpdateTime) {
+			b.osps[ospAddr].UpdateTime = timestamp
 		}
 	}
 }
@@ -393,11 +433,18 @@ func (b *routingTableBuilder) computeRoutes(tokenAddr ctype.Addr) (
 
 		p1Str := ctype.Addr2Hex(edge.P1)
 		p2Str := ctype.Addr2Hex(edge.P2)
-		// only add edge to graph when both are active osps.
+		// only add edge to graph when it is alive, and both osps are alive
 		if liveOspSet[edge.P1] && liveOspSet[edge.P2] {
-			log.Debugln("adding edge", p1Str, p2Str)
-			graph.addEdge(p1Str, p2Str, 1)
-			graph.addEdge(p2Str, p1Str, 1)
+			ospEdge := b.ospEdges[edge.Cid]
+			if ospEdge == nil {
+				log.Debugln("osp edge not found", p1Str, p2Str)
+				continue
+			}
+			if ospEdge.updateTime.Add(config.RouterAliveTimeout).After(now) {
+				log.Debugln("adding edge", p1Str, p2Str)
+				graph.addEdge(p1Str, p2Str, 1)
+				graph.addEdge(p2Str, p1Str, 1)
+			}
 			continue
 		}
 

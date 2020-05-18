@@ -66,7 +66,7 @@ func waitForPaymentCompletion(payID string, sender, receiver *tf.ClientControlle
 			if status == celersdkintf.PAY_STATUS_PAID || status == celersdkintf.PAY_STATUS_UNPAID {
 				return nil
 			}
-			time.Sleep(200 * time.Millisecond)
+			time.Sleep(300 * time.Millisecond)
 		}
 		return fmt.Errorf("payment not sent successfully, payID %s", payID)
 	}
@@ -79,7 +79,7 @@ func waitForPaymentCompletion(payID string, sender, receiver *tf.ClientControlle
 			if status == celersdkintf.PAY_STATUS_PAID || status == celersdkintf.PAY_STATUS_UNPAID {
 				return nil
 			}
-			time.Sleep(200 * time.Millisecond)
+			time.Sleep(300 * time.Millisecond)
 		}
 		return fmt.Errorf("payment not received successfully, payID %s", payID)
 	}

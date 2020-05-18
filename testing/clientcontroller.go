@@ -500,7 +500,7 @@ func (cc *ClientController) AssertBalance(
 		} else {
 			return nil
 		}
-		log.Errorf("AssertBalance retry: %d error: %s", retry, err)
+		log.Warnf("AssertBalance retry: %d error: %s", retry, err)
 		time.Sleep(time.Second)
 	}
 	return err

@@ -14,10 +14,10 @@ type ServerController struct {
 // note address isn't used
 func StartServerController(path string, args ...string) *ServerController {
 	args = append(args,
-		"-routerbcastinterval", "5",
-		"-routerbuildinterval", "10",
-		"-routeralivetimeout", "12",
-		"-ospclearpayinterval", "10")
+		"-routerbcastinterval", "4",
+		"-routerbuildinterval", "5",
+		"-routeralivetimeout", "8",
+		"-ospclearpayinterval", "8")
 	process := StartProcess(path, args...)
 	time.Sleep(2 * time.Second)
 	return &ServerController{process}

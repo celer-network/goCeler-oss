@@ -10,6 +10,7 @@ import (
 	"github.com/celer-network/goCeler/ctype"
 	"github.com/celer-network/goCeler/entity"
 	"github.com/celer-network/goCeler/rpc"
+	"github.com/golang/protobuf/proto"
 )
 
 func PrintByteArrays(array [][]byte) string {
@@ -144,4 +145,32 @@ func PrintRoutingUpdate(update *rpc.RoutingUpdate) string {
 		update.GetOrigin(),
 		time.Unix(int64(update.GetTs()), 0).UTC().Format("2006-01-02 15:04:05"),
 		len(update.GetChannels()), channels)
+}
+
+func PrintPayPath(payPath *rpc.PayPath, payID ctype.PayIDType) string {
+	path := ""
+	nhop := len(payPath.GetHops())
+	if nhop > 1 {
+		path = fmt.Sprintf("%d reported hops | ", nhop)
+	}
+	for i, signedHop := range payPath.GetHops() {
+		signer := RecoverSigner(signedHop.GetPayHopBytes(), signedHop.GetSig())
+		var payHop rpc.PayHop
+		err := proto.Unmarshal(signedHop.GetPayHopBytes(), &payHop)
+		if err != nil {
+			return fmt.Sprintf("%s proto.Unmarshal err: %s", path, err)
+		}
+		hop := fmt.Sprintf("signer:%x, prev:%x, next:%x", signer, payHop.GetPrevHopAddr(), payHop.GetNextHopAddr())
+		if payHop.GetErr() != nil {
+			hop += fmt.Sprintf(", err:%s", payHop.GetErr())
+		}
+		if ctype.Bytes2PayID(payHop.GetPayId()) != payID {
+			hop += fmt.Sprintf(", invalid_payid:%x", payHop.GetPayId())
+		}
+		path += hop
+		if i < nhop-1 {
+			path += " | "
+		}
+	}
+	return path
 }

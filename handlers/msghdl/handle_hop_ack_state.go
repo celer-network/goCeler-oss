@@ -3,7 +3,6 @@
 package msghdl
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"math/big"
@@ -201,9 +200,33 @@ func (h *CelerMsgHandler) HandleHopAckState(frame *common.MsgFrame) error {
 			log.Error(err)
 			return err
 		}
-		payAmt := new(big.Int).SetUint64(0)
+		if !h.payFromSelf(&pay) {
+			payID := ctype.PayBytes2PayID(req.GetCondPay())
+			ingressPeer, found, err := h.dal.GetPayIngressPeer(payID)
+			if err != nil {
+				return fmt.Errorf("GetPayIngressPeer err: %w", err)
+			}
+			if !found {
+				return fmt.Errorf("GetPayIngressPeer err: %w", common.ErrPayNoIngress)
+			}
+			payHop := &rpc.PayHop{
+				PayId:       payID.Bytes(),
+				PrevHopAddr: ingressPeer.Bytes(),
+				NextHopAddr: frame.PeerAddr.Bytes(),
+				Err:         &rpc.Error{Code: rpc.ErrCode_PAY_ROUTE_LOOP},
+			}
+			payPath := &rpc.PayPath{}
+			err = h.prependPayPath(payPath, payHop)
+			if err != nil {
+				return err
+			}
+			err = h.dal.PutPayPath(payID, payPath)
+			if err != nil {
+				return fmt.Errorf("PutPayPath err: %w", err)
+			}
+		}
 		return h.messager.SendOnePaySettleRequest(
-			&pay, payAmt, rpc.PaymentSettleReason_PAY_DEST_UNREACHABLE, logEntry)
+			&pay, new(big.Int).SetUint64(0), rpc.PaymentSettleReason_PAY_DEST_UNREACHABLE, logEntry)
 	}
 
 	return nil
@@ -255,7 +278,7 @@ func (h *CelerMsgHandler) processAckMsgs(ackedMsgs []*rpc.CelerMsg, logEntry *pe
 					h.notifyPayComplete(settledPay, pay)
 				} else {
 					// I'm not the sender, forward request to upstream
-					go h.forwardToUpstream(settledPay, pay, logEntry)
+					h.forwardToUpstream(settledPay, pay, logEntry)
 				}
 			}
 		}
@@ -336,13 +359,27 @@ func (h *CelerMsgHandler) forwardToUpstream(
 
 	payID := ctype.Bytes2PayID(settledPay.GetSettledPayId())
 	if settledPay.GetReason() == rpc.PaymentSettleReason_PAY_REJECTED ||
-		settledPay.GetReason() == rpc.PaymentSettleReason_PAY_DEST_UNREACHABLE ||
 		settledPay.GetReason() == rpc.PaymentSettleReason_PAY_RESOLVED_ONCHAIN {
-
-		log.Debugln("forward rejected pay to upstream", payID.Hex())
+		log.Debugln("forward pay to upstream", payID.Hex(), settledPay.GetReason())
 		err := h.messager.SendOnePaySettleProof(payID, settledPay.GetReason(), logEntry)
 		if err != nil {
-			log.Error(err)
+			logEntry.Error = append(logEntry.Error, "SendOnePaySettleProof err: "+err.Error())
+			return
+		}
+	} else if settledPay.GetReason() == rpc.PaymentSettleReason_PAY_DEST_UNREACHABLE {
+		payPath, err := h.dal.GetPayPath(payID)
+		if err != nil {
+			logEntry.Error = append(logEntry.Error, "GetPayPath err: "+err.Error())
+			payPath = nil
+		} else {
+			err = h.dal.DeletePayPath(payID)
+			if err != nil {
+				logEntry.Error = append(logEntry.Error, "DeletePayPath err: "+err.Error())
+			}
+		}
+		err = h.messager.SendPayUnreachableSettleProof(payID, payPath, logEntry)
+		if err != nil {
+			logEntry.Error = append(logEntry.Error, "SendPayUnreachableSettleProof err: "+err.Error())
 			return
 		}
 	}
@@ -527,8 +564,4 @@ func (h *CelerMsgHandler) getChanMessage(tx *storage.DALTx, cid ctype.CidType, s
 		}
 	}
 	return msg, nil
-}
-
-func (h *CelerMsgHandler) payFromSelf(pay *entity.ConditionalPay) bool {
-	return bytes.Compare(pay.GetSrc(), h.nodeConfig.GetOnChainAddr().Bytes()) == 0
 }

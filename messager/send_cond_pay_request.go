@@ -46,21 +46,22 @@ func (m *Messager) SendCondPayRequest(payBytes []byte, note *any.Any, logEntry *
 	return m.sendCondPayRequest(payBytes, pay, note, cid, peer, logEntry)
 }
 
-func (m *Messager) ForwardCondPayRequest(payBytes []byte, note *any.Any, delegable bool, logEntry *pem.PayEventMessage) error {
+func (m *Messager) ForwardCondPayRequest(
+	payBytes []byte, note *any.Any, delegable bool, logEntry *pem.PayEventMessage) (ctype.Addr, error) {
 	pay, cid, peer, celerMsg, _, err := m.getPayNextHopAndCelerMsg(payBytes, note, logEntry)
 	if err != nil {
-		return err
+		return peer, err
 	}
 	// if delegable, do not retry on multiserver forward failure
 	isLocalPeer, err := m.serverForwarder(peer, !delegable, celerMsg)
 	if err != nil {
-		return err
+		return peer, err
 	}
 	if isLocalPeer {
-		return m.sendCondPayRequest(payBytes, pay, note, cid, peer, logEntry)
+		return peer, m.sendCondPayRequest(payBytes, pay, note, cid, peer, logEntry)
 	}
 
-	return nil
+	return peer, nil
 }
 
 func (m *Messager) ForwardCondPayRequestMsg(frame *common.MsgFrame) error {

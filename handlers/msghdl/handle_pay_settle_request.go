@@ -248,12 +248,12 @@ func (h *CelerMsgHandler) processPaySettleRequestTx(tx *storage.DALTx, args ...i
 	resolvedAmt := new(big.Int).SetUint64(0)
 	for _, pi := range payInfos {
 		payID := ctype.Bytes2PayID(pi.req.GetSettledPayId())
-		pi.pay, pi.note, pi.igcid, pi.igstate, pi.egstate, found, err = tx.GetPayForRecvSettle(payID)
+		pi.pay, pi.note, pi.igcid, pi.igstate, pi.egstate, found, err = tx.GetPayForRecvSettleReq(payID)
 		if err != nil {
-			return fmt.Errorf("GetPayForRecvSettle %x err %w", payID, err)
+			return fmt.Errorf("GetPayForRecvSettleReq %x err %w", payID, err)
 		}
 		if !found {
-			return fmt.Errorf("GetPayForRecvSettle %x %w", payID, common.ErrPayNotFound) // db error
+			return fmt.Errorf("GetPayForRecvSettleReq %x %w", payID, common.ErrPayNotFound) // db error
 		}
 		amt := new(big.Int).SetBytes(pi.pay.GetTransferFunc().GetMaxTransfer().GetReceiver().GetAmt())
 		resolvedAmt = resolvedAmt.Add(resolvedAmt, amt)
@@ -364,13 +364,20 @@ func (h *CelerMsgHandler) processPaySettleRequestTx(tx *storage.DALTx, args ...i
 			}
 		}
 
-	case rpc.PaymentSettleReason_PAY_REJECTED, rpc.PaymentSettleReason_PAY_DEST_UNREACHABLE:
+	case rpc.PaymentSettleReason_PAY_REJECTED:
+		pi := payInfos[0]
+		payID := ctype.Bytes2PayID(pi.req.GetSettledPayId())
+		if pi.igstate != enums.PayState_INGRESS_REJECTED {
+			return fmt.Errorf("invalid status for rejected pay %x", payID)
+		}
+
+	case rpc.PaymentSettleReason_PAY_DEST_UNREACHABLE:
 		pi := payInfos[0]
 		payID := ctype.Bytes2PayID(pi.req.GetSettledPayId())
 		h.checkPayRouteLoop(cid, pi)
 		if !pi.routeLoop {
 			if pi.igstate != enums.PayState_INGRESS_REJECTED {
-				return fmt.Errorf("invalid status for rejected or unreachable pay %x", payID)
+				return fmt.Errorf("invalid status for unreachable pay %x", payID)
 			}
 		}
 	}

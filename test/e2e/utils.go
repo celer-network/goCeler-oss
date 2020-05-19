@@ -97,7 +97,7 @@ func waitForPaymentPending(payID string, sender, receiver *tf.ClientController) 
 			if status == celersdkintf.PAY_STATUS_PENDING {
 				return nil
 			}
-			time.Sleep(200 * time.Millisecond)
+			time.Sleep(300 * time.Millisecond)
 		}
 		return fmt.Errorf("payment not received successfully, payID %s", payID)
 	}
@@ -110,7 +110,7 @@ func waitForPaymentPending(payID string, sender, receiver *tf.ClientController) 
 			if status == celersdkintf.PAY_STATUS_PENDING {
 				return nil
 			}
-			time.Sleep(200 * time.Millisecond)
+			time.Sleep(300 * time.Millisecond)
 		}
 		return fmt.Errorf("payment not sent successfully, payID %s", payID)
 	}

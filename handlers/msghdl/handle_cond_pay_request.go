@@ -404,8 +404,9 @@ func (h *CelerMsgHandler) verifyCommonPayRequest(
 	return nil
 }
 
-func (h *CelerMsgHandler) condPayRequestOutbound(msg *common.MsgFrame) error {
-	request := msg.Message.GetCondPayRequest()
+func (h *CelerMsgHandler) condPayRequestOutbound(frame *common.MsgFrame) error {
+	peerFrom := frame.PeerAddr
+	request := frame.Message.GetCondPayRequest()
 	if request.GetDirectPay() {
 		log.Debugln("Skip pay receipt for direct pay")
 		return nil
@@ -419,7 +420,7 @@ func (h *CelerMsgHandler) condPayRequestOutbound(msg *common.MsgFrame) error {
 	payID := ctype.Pay2PayID(&pay)
 
 	dest := ctype.Bytes2Addr(pay.GetDest())
-	logEntry := msg.LogEntry
+	logEntry := frame.LogEntry
 	if logEntry.GetPayId() == "" {
 		logEntry.PayId = ctype.PayID2Hex(payID)
 	} else if logEntry.GetPayId() != ctype.PayID2Hex(payID) {
@@ -442,7 +443,7 @@ func (h *CelerMsgHandler) condPayRequestOutbound(msg *common.MsgFrame) error {
 				CondPayReceipt: receipt,
 			},
 		}
-		err2 = h.streamWriter.WriteCelerMsg(msg.PeerAddr, celerMsg)
+		err2 = h.streamWriter.WriteCelerMsg(peerFrom, celerMsg)
 		if err2 != nil {
 			return fmt.Errorf(err2.Error() + ", FAIL_SEND_RECEIPT")
 		}
@@ -452,14 +453,38 @@ func (h *CelerMsgHandler) condPayRequestOutbound(msg *common.MsgFrame) error {
 	// Forward condPay to next hop if I am not the destination
 	log.Debugln("Forward", payID.Hex())
 	delegable, proof, description := h.checkPayDelegable(&pay, ctype.Bytes2Addr(pay.GetDest()), logEntry)
-	err = h.messager.ForwardCondPayRequest(payBytes, request.GetNote(), delegable, logEntry)
+	peerTo, err := h.messager.ForwardCondPayRequest(payBytes, request.GetNote(), delegable, logEntry)
 	if err != nil {
-		if delegable && err == common.ErrPeerNotOnline {
-			return h.delegatePay(payID, &pay, payBytes, description, proof, msg.PeerAddr, dest, logEntry)
+		if delegable && errors.Is(err, common.ErrPeerNotOnline) {
+			return h.delegatePay(payID, &pay, payBytes, description, proof, peerFrom, dest, logEntry)
 		}
 		logEntry.Error = append(logEntry.Error, err.Error()+", DST_UNREACHABLE")
+		errmsg := &rpc.Error{
+			Reason: err.Error(),
+		}
+		if errors.Is(err, common.ErrPeerNotOnline) {
+			errmsg.Code = rpc.ErrCode_PEER_NOT_ONLINE
+		} else if errors.Is(err, common.ErrNoEnoughBalance) {
+			errmsg.Code = rpc.ErrCode_NOT_ENOUGH_BALANCE
+		} else if errors.Is(err, common.ErrRouteNotFound) {
+			errmsg.Code = rpc.ErrCode_NO_ROUTE_TO_DST
+		} else {
+			errmsg.Code = rpc.ErrCode_MISC_ERROR
+		}
+		payHop := &rpc.PayHop{
+			PayId:       payID.Bytes(),
+			PrevHopAddr: peerFrom.Bytes(),
+			NextHopAddr: peerTo.Bytes(),
+			Err:         errmsg,
+		}
+		payPath := &rpc.PayPath{}
+		err = h.prependPayPath(payPath, payHop)
+		if err != nil {
+			return err
+		}
+
 		// Cancel the payment upfront
-		return h.messager.SendOnePaySettleProof(payID, rpc.PaymentSettleReason_PAY_DEST_UNREACHABLE, logEntry)
+		return h.messager.SendPayUnreachableSettleProof(payID, payPath, logEntry)
 	}
 
 	return nil

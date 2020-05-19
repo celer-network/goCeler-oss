@@ -272,7 +272,7 @@ func (c *CNode) sendSettleRequestForExpiredPays(expiredPays []*entity.Conditiona
 func (c *CNode) sendSettleProofForExpiredPays(expiredPayIDs []ctype.PayIDType) error {
 	logEntry := pem.NewPem(c.nodeConfig.GetRPCAddr())
 	logEntry.Type = pem.PayMessageType_DST_SETTLE_EXPIRED_PAY_API
-	err := c.messager.SendPaysSettleProof(expiredPayIDs, rpc.PaymentSettleReason_PAY_EXPIRED, logEntry)
+	err := c.messager.SendPaysSettleProof(expiredPayIDs, rpc.PaymentSettleReason_PAY_EXPIRED, nil, logEntry)
 	if err != nil {
 		logEntry.Error = append(logEntry.Error, err.Error())
 	}

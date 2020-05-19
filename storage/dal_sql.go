@@ -1221,7 +1221,7 @@ func getPayStates(st SqlStorage, payID ctype.PayIDType) (int, int, bool, error) 
 	return inState, outState, found, err
 }
 
-func getPayForRecvSettle(st SqlStorage, payID ctype.PayIDType) (*entity.ConditionalPay, *any.Any, ctype.CidType, int, int, bool, error) {
+func getPayForRecvSettleReq(st SqlStorage, payID ctype.PayIDType) (*entity.ConditionalPay, *any.Any, ctype.CidType, int, int, bool, error) {
 	var payBytes, noteBytes []byte
 	var inState, outState int
 	var inCid string
@@ -1237,6 +1237,37 @@ func getPayForRecvSettle(st SqlStorage, payID ctype.PayIDType) (*entity.Conditio
 		}
 	}
 	return &pay, &note, ctype.Hex2Cid(inCid), inState, outState, found, err
+}
+
+func getPayForRecvSettleProof(st SqlStorage, payID ctype.PayIDType) (*entity.ConditionalPay, ctype.Addr, bool, error) {
+	var payBytes []byte
+	var peer string
+	q := `
+		SELECT p.pay, c.peer
+		FROM payments AS p
+		JOIN channels AS c ON p.outcid = c.cid
+		WHERE payid = $1
+	`
+	err := st.QueryRow(q, ctype.PayID2Hex(payID)).Scan(&payBytes, &peer)
+	found, err := chkQueryRow(err)
+	var pay entity.ConditionalPay
+	if found {
+		err = proto.Unmarshal(payBytes, &pay)
+	}
+	return &pay, ctype.Hex2Addr(peer), found, err
+}
+
+func getPayIngressPeer(st SqlStorage, payID ctype.PayIDType) (ctype.Addr, bool, error) {
+	var peer string
+	q := `
+		SELECT c.peer
+		FROM payments AS p
+		JOIN channels AS c ON p.incid = c.cid
+		WHERE payid = $1
+	`
+	err := st.QueryRow(q, ctype.PayID2Hex(payID)).Scan(&peer)
+	found, err := chkQueryRow(err)
+	return ctype.Hex2Addr(peer), found, err
 }
 
 func getPayForRecvSecret(st SqlStorage, payID ctype.PayIDType) (*entity.ConditionalPay, *any.Any, int, bool, error) {

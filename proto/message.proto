@@ -1,4 +1,5 @@
 // Copyright 2018-2020 Celer Network
+
 syntax = "proto3";
 option go_package = "github.com/celer-network/goCeler/rpc";
 package rpc;
@@ -74,7 +75,7 @@ message CelerMsg {
   }
 }
 
-// Next Tag: 8
+// Next Tag: 11
 enum ErrCode {
   // reserve 0 so not setting this is not a valid error code
   OK = 0;
@@ -92,12 +93,18 @@ enum ErrCode {
   PAY_ROUTE_LOOP = 6;
   // can't find a route to dst.
   NO_ROUTE_TO_DST = 7;
+  // not enough balance
+  NOT_ENOUGH_BALANCE = 8;
+  // peer not online
+  PEER_NOT_ONLINE = 9;
+  // no specified error code
+  MISC_ERROR = 10;
 }
 
 message Error {
   ErrCode code = 1;
   string reason = 2;
-  // sequence number of the errored message, needed for non-unary rpc
+  // sequence number (if exists) of the errored message
   uint64 seq = 3;
 }
 
@@ -111,7 +118,8 @@ message AuthReq {
   bytes expect_peer = 4;
   // whether to require peer proving it owns expect_peer
   bool mutual_auth = 5;
-  // v0.16 has 1 to support sync in auth
+  // r0.15 doesn't have this field so it's 0
+  // r0.16 has 1 to support sync in auth
   uint64 protocol_version = 6;
   // client's view of channels. empty if never openchan or recover case
   repeated ChannelSummary opened_channels = 7;
@@ -175,11 +183,32 @@ enum PaymentSettleReason {
   PAY_VOUCHED = 6;
 }
 
+// Next Tag: 5
+message PayHop {
+  bytes pay_id = 1;
+  bytes prev_hop_addr = 2;
+  bytes next_hop_addr = 3;
+  Error err = 4;
+}
+
 // Next Tag: 3
+message SignedPayHop {
+  bytes pay_hop_bytes = 1;
+  bytes sig = 2;
+}
+
+// Next Tag: 2
+message PayPath {
+  repeated SignedPayHop hops = 1;
+}
+
+// Next Tag: 5
 message SettledPayment {
   bytes settled_pay_id = 1; // confirmed, rejected or expired
   PaymentSettleReason reason = 2;
   bytes amount = 3;
+  // used in pay settle proof to track path for failed payments
+  PayPath path = 4;
 }
 
 // PaymentSettleProof provides all condition results to settle a pay.
@@ -415,7 +444,7 @@ message GetPayHistoryRequest {
   // signature to verify peer.
   bytes ts_sig = 4;
   uint64 ts = 5;
-  // if result has pays that have payIDs equal to before_ts, only return those that have higher pay ids than smallesest_pay_id.
+  // if result has pays that have payIDs equal to before_ts, only return those that have higher pay ids than smallest_pay_id.
   string smallest_pay_id = 6;
 }
 
@@ -427,7 +456,7 @@ message OneHistoricalPay {
   string token = 2;
   // amount of the payment
   string amt = 3;
-  // pay status
+  // pay status defined at https://github.com/celer-network/goCeler-oss/blob/v0.16.7/common/structs/types.go#L43-L52.
   int64 state = 4;
   // pay id
   string pay_id = 5;

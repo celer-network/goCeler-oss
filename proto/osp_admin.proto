@@ -1,4 +1,5 @@
 // Copyright 2018-2020 Celer Network
+
 syntax = "proto3";
 package rpc;
 option go_package = "github.com/celer-network/goCeler/rpc";

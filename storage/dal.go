@@ -25,6 +25,8 @@ import (
 const (
 	// OSP only. to avoid handling concurrent openchan requests
 	openChannelTs = "oct" // peer@token -> OpenChannelTs
+	// OSP only, track path of failed payments
+	payPathTable = "ppt" // payID -> rpc.PayPath
 
 	transactionalMaxRetry   = 10
 	transactionalRetryDelay = 10 * time.Millisecond
@@ -452,6 +454,14 @@ func (d *DAL) GetPayNote(payID ctype.PayIDType) (*any.Any, bool, error) {
 	return getPayNote(d.st, payID)
 }
 
+func (d *DAL) GetPayForRecvSettleProof(payID ctype.PayIDType) (*entity.ConditionalPay, ctype.Addr, bool, error) {
+	return getPayForRecvSettleProof(d.st, payID)
+}
+
+func (d *DAL) GetPayIngressPeer(payID ctype.PayIDType) (ctype.Addr, bool, error) {
+	return getPayIngressPeer(d.st, payID)
+}
+
 // GetPayAndEgressState returns (pay, pay_bytes, egress_state, found, error)
 func (d *DAL) GetPayAndEgressState(payID ctype.PayIDType) (*entity.ConditionalPay, []byte, int, bool, error) {
 	return getPayAndEgressState(d.st, payID)
@@ -515,8 +525,8 @@ func (dtx *DALTx) GetPayNote(payID ctype.PayIDType) (*any.Any, bool, error) {
 	return getPayNote(dtx.stx, payID)
 }
 
-func (dtx *DALTx) GetPayForRecvSettle(payID ctype.PayIDType) (*entity.ConditionalPay, *any.Any, ctype.CidType, int, int, bool, error) {
-	return getPayForRecvSettle(dtx.stx, payID)
+func (dtx *DALTx) GetPayForRecvSettleReq(payID ctype.PayIDType) (*entity.ConditionalPay, *any.Any, ctype.CidType, int, int, bool, error) {
+	return getPayForRecvSettleReq(dtx.stx, payID)
 }
 
 func (dtx *DALTx) GetPayForRecvSecret(payID ctype.PayIDType) (*entity.ConditionalPay, *any.Any, int, bool, error) {
@@ -962,31 +972,56 @@ func (dtx *DALTx) DeleteLease(id string) error {
 // ====================== DAL APIs for K/V store ======================
 
 // PendingOpenChannel
-func hasOpenChannelTs(st Storage, peerAddr ctype.Addr, tokenAddr ctype.Addr) (bool, error) {
-	return st.Has(openChannelTs, ctype.Addr2Hex(peerAddr)+"@"+ctype.Addr2Hex(tokenAddr))
+func openChannelTsKey(peerAddr, tokenAddr ctype.Addr) string {
+	return ctype.Addr2Hex(peerAddr) + "@" + ctype.Addr2Hex(tokenAddr)
 }
-func deleteOpenChannelTs(st Storage, peerAddr ctype.Addr, tokenAddr ctype.Addr) error {
-	return st.Delete(openChannelTs, ctype.Addr2Hex(peerAddr)+"@"+ctype.Addr2Hex(tokenAddr))
+func hasOpenChannelTs(st Storage, peerAddr, tokenAddr ctype.Addr) (bool, error) {
+	return st.Has(openChannelTs, openChannelTsKey(peerAddr, tokenAddr))
 }
-func getOpenChannelTs(st Storage, peerAddr ctype.Addr, tokenAddr ctype.Addr) (*openchannelts.OpenChannelTs, error) {
+func deleteOpenChannelTs(st Storage, peerAddr, tokenAddr ctype.Addr) error {
+	return st.Delete(openChannelTs, openChannelTsKey(peerAddr, tokenAddr))
+}
+func getOpenChannelTs(st Storage, peerAddr, tokenAddr ctype.Addr) (*openchannelts.OpenChannelTs, error) {
 	var ts openchannelts.OpenChannelTs
-	err := st.Get(openChannelTs, ctype.Addr2Hex(peerAddr)+"@"+ctype.Addr2Hex(tokenAddr), &ts)
+	err := st.Get(openChannelTs, openChannelTsKey(peerAddr, tokenAddr), &ts)
 	return &ts, err
 }
-func putOpenChannelTs(st Storage, peerAddr ctype.Addr, tokenAddr ctype.Addr, ts *openchannelts.OpenChannelTs) error {
-	return st.Put(openChannelTs, ctype.Addr2Hex(peerAddr)+"@"+ctype.Addr2Hex(tokenAddr), ts)
+func putOpenChannelTs(st Storage, peerAddr, tokenAddr ctype.Addr, ts *openchannelts.OpenChannelTs) error {
+	return st.Put(openChannelTs, openChannelTsKey(peerAddr, tokenAddr), ts)
 }
-func (dtx *DALTx) HasOpenChannelTs(peerAddr ctype.Addr, tokenAddr ctype.Addr) (bool, error) {
+func (dtx *DALTx) HasOpenChannelTs(peerAddr, tokenAddr ctype.Addr) (bool, error) {
 	return hasOpenChannelTs(dtx.stx, peerAddr, tokenAddr)
 }
-func (dtx *DALTx) DeleteOpenChannelTs(peerAddr ctype.Addr, tokenAddr ctype.Addr) error {
+func (dtx *DALTx) DeleteOpenChannelTs(peerAddr, tokenAddr ctype.Addr) error {
 	return deleteOpenChannelTs(dtx.stx, peerAddr, tokenAddr)
 }
-func (dtx *DALTx) GetOpenChannelTs(peerAddr ctype.Addr, tokenAddr ctype.Addr) (*openchannelts.OpenChannelTs, error) {
+func (dtx *DALTx) GetOpenChannelTs(peerAddr, tokenAddr ctype.Addr) (*openchannelts.OpenChannelTs, error) {
 	return getOpenChannelTs(dtx.stx, peerAddr, tokenAddr)
 }
-func (dtx *DALTx) PutOpenChannelTs(peerAddr ctype.Addr, tokenAddr ctype.Addr, openChannelTs *openchannelts.OpenChannelTs) error {
+func (dtx *DALTx) PutOpenChannelTs(peerAddr, tokenAddr ctype.Addr, openChannelTs *openchannelts.OpenChannelTs) error {
 	return putOpenChannelTs(dtx.stx, peerAddr, tokenAddr, openChannelTs)
+}
+
+// payPathTable
+func putPayPath(st Storage, payID ctype.PayIDType, path *rpc.PayPath) error {
+	return st.Put(payPathTable, ctype.PayID2Hex(payID), path)
+}
+func getPayPath(st Storage, payID ctype.PayIDType) (*rpc.PayPath, error) {
+	var path rpc.PayPath
+	err := st.Get(payPathTable, ctype.PayID2Hex(payID), &path)
+	return &path, err
+}
+func deletePayPath(st Storage, payID ctype.PayIDType) error {
+	return st.Delete(payPathTable, ctype.PayID2Hex(payID))
+}
+func (d *DAL) PutPayPath(payID ctype.PayIDType, path *rpc.PayPath) error {
+	return putPayPath(d.st, payID, path)
+}
+func (d *DAL) GetPayPath(payID ctype.PayIDType) (*rpc.PayPath, error) {
+	return getPayPath(d.st, payID)
+}
+func (d *DAL) DeletePayPath(payID ctype.PayIDType) error {
+	return deletePayPath(d.st, payID)
 }
 
 // DAL for on chain balances

@@ -3,6 +3,8 @@
 package msghdl
 
 import (
+	"bytes"
+	"fmt"
 	"sync"
 
 	"github.com/celer-network/goCeler/common"
@@ -10,6 +12,7 @@ import (
 	"github.com/celer-network/goCeler/common/intfs"
 	"github.com/celer-network/goCeler/ctype"
 	"github.com/celer-network/goCeler/dispute"
+	"github.com/celer-network/goCeler/entity"
 	"github.com/celer-network/goCeler/handlers"
 	"github.com/celer-network/goCeler/messager"
 	"github.com/celer-network/goCeler/pem"
@@ -17,6 +20,7 @@ import (
 	"github.com/celer-network/goCeler/rpc"
 	"github.com/celer-network/goCeler/storage"
 	"github.com/celer-network/goutils/log"
+	"github.com/golang/protobuf/proto"
 )
 
 type CooperativeWithdraw interface {
@@ -158,4 +162,25 @@ func (h *CelerMsgHandler) GetMsgName() string {
 
 func validRecvdSeqNum(stored, recvd, base uint64) bool {
 	return stored == base && recvd > stored
+}
+
+func (h *CelerMsgHandler) payFromSelf(pay *entity.ConditionalPay) bool {
+	return bytes.Compare(pay.GetSrc(), h.nodeConfig.GetOnChainAddr().Bytes()) == 0
+}
+
+func (h *CelerMsgHandler) prependPayPath(payPath *rpc.PayPath, payHop *rpc.PayHop) error {
+	payHopBytes, err := proto.Marshal(payHop)
+	if err != nil {
+		return fmt.Errorf("marshal payHop err: %w", err)
+	}
+	sig, err := h.signer.SignEthMessage(payHopBytes)
+	if err != nil {
+		return fmt.Errorf("sign payHop err: %w", err)
+	}
+	signedPayHop := &rpc.SignedPayHop{
+		PayHopBytes: payHopBytes,
+		Sig:         sig,
+	}
+	payPath.Hops = append([]*rpc.SignedPayHop{signedPayHop}, payPath.Hops...)
+	return nil
 }

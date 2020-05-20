@@ -32,7 +32,7 @@ export PATH=$PATH:$PWD/goceler
    - **note 2**: `-blkdelay` specifies how many blocks to wait to confirm the on-chain transactions.
 
 ### Run OSP server
-#### Option 1: run OSP using SQLite as storage backend (easier)
+#### Option 1: run OSP using SQLite as storage backend (easier setup)
 5. Choose a store path (e.g., `${HOME}/celerdb`), the OSP data will be located at `${HOME}/celerdb/[ospAddr]`.
 6. Start OSP: **`server -profile $GOCELER/deploy/mainnet/profile.json -ks ospks.json -svrname s0 -storedir ${HOME}/celerdb -rtc $GOCELER/deploy/mainnet/rt_config.json -routedata $GOCELER/deploy/mainnet/channels_2020_05_08.json`**.
 - **note 1**: use `-routedata` only when starting OSP from scracth for the first time.

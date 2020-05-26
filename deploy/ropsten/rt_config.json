@@ -2,7 +2,7 @@
 	"log_level": "info",
 	"open_chan_wait_s": 5,
 	"min_gas_gwei": 2,
-	"max_gas_gwei": 20,
+	"max_gas_gwei": 30,
 	"max_dispute_timeout": 20000,
 	"min_dispute_timeout": 5,
 	"standard_configs": {

@@ -158,3 +158,24 @@ func GetCelerErrCode(e error) int {
 	}
 	return -1
 }
+
+type LogCallback interface {
+	// msg is the log output
+	OnLog(msg string)
+}
+
+// SetLogCallback set the self-defined writer in the log module.
+// Once set, logs will be written to cb.Onlog() instead of os.Stderr
+func SetLogCallback(cb LogCallback) {
+	writer := &logCallbackWriter{cb: cb}
+	log.SetOutput(writer)
+}
+
+type logCallbackWriter struct {
+	cb LogCallback
+}
+
+func (w *logCallbackWriter) Write(output []byte) (n int, err error) {
+	w.cb.OnLog(string(output))
+	return len(output), nil
+}

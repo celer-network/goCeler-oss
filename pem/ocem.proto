@@ -10,7 +10,7 @@ package pem;
 
 // Next tag: 17
 enum OpenChannelEventType {
-    UNDEFINED_TYPE = 0;
+    UNDEFINED_OPEN_CHANNEL_EVENT_TYPE = 0;
     OPEN_CHANNEL_REQUEST = 1;
     OPEN_CHANNEL_API = 2;
     CHANNEL_MINED = 3;

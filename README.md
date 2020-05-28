@@ -69,7 +69,7 @@ Otherwise, the builtin cert supports DDNS with the following domain names:
 *.sytes.net
 *.ddns.net
 ```
-You can register free account with the DDNS provider, eg. mycelernode.ddns.net, update host field in profile.json to it, and run OSP, no need to specify tlscert or tlskey flag.
+and all domains in 1st and 2nd pages at https://freedns.afraid.org/domain/registry/. You can register free account with the DDNS provider, eg. mycelernode.ddns.net, update host field in profile.json to it, and run OSP, no need to specify tlscert or tlskey flag.
 
 If you prefer using IP address directly, please contact cert@celer.network and we'll email you a unique cert for requested IP address.
 

@@ -56,6 +56,7 @@ var (
 	ErrChannelNotFound             = errors.New("channel not found")
 	ErrInvalidChannelState         = errors.New("invalid channel state")
 	ErrNoCelerStream               = errors.New("no celer stream")
+	ErrStreamAleadyExists          = errors.New("celer stream already exists")
 	ErrCelerMsgTimeout             = errors.New("celer message send timeout")
 	ErrDelegateProofNotFound       = errors.New("delegate proof not found")
 	ErrTcbNotFound                 = errors.New("tcb entry not found")

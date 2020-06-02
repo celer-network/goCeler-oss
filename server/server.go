@@ -80,8 +80,6 @@ var (
 	payDoneNotifyee      = flag.String("fmsenddone", "localhost:8092/notify/osp/sendcomplete", "end point to notify for a pay send complete")
 	redisAddr            = flag.String("redisaddr", "", "Redis address to publish pay event")
 	pubRetryInterval     = flag.Int64("pubretryintervalsec", 10, "retry interval in seconds for pay event publish")
-	ospMaxRedial         = flag.Int("ospmaxredial", 10, "max retry for osp to dial to another osp")
-	ospRedialDelay       = flag.Int64("ospredialdelay", 5, "retry delay (in sec) for osp to dial to another osp")
 	routingData          = flag.String("routedata", "", "Path to routing data json file")
 	tlsCert              = flag.String("tlscert", "", "Path to TLS cert file")
 	tlsKey               = flag.String("tlskey", "", "Path to TLS private key file")
@@ -97,8 +95,11 @@ var (
 
 var selfHostPort string
 
-const maxItemsPerPage int32 = 1000
-const defaultItemsPerPage int32 = 50
+const (
+	maxItemsPerPage       = int32(1000)
+	defaultItemsPerPage   = int32(50)
+	ospStreamRetryTimeout = 24 * time.Hour
+)
 
 type server struct {
 	cNode        *cnode.CNode
@@ -136,8 +137,7 @@ func newAdminService(cNode *cnode.CNode) *adminService {
 		// RegisterStream() and before RegisterStreamErrCallback() is done.
 		// The next design should either allow them both to be done atomically
 		// or allow RegisterStreamErrCallback() before RegisterStream().
-		log.Infoln("streamRetryCb triggered for", addr.Hex(), streamErr)
-		delay := time.Duration(*ospRedialDelay) * time.Second
+		log.Warnln("stream re-register triggered for", ctype.Addr2Hex(addr), streamErr)
 		adminS.ospEthToRPCLock.Lock()
 		ospRPC, ok := adminS.ospEthToRPC[addr]
 		delete(adminS.ospEthToRPC, addr)
@@ -148,24 +148,34 @@ func newAdminService(cNode *cnode.CNode) *adminService {
 			return
 		}
 
-		for i := 0; i < *ospMaxRedial; i++ {
-			log.Debugln("streamRetryCb: try to register again", addr.Hex())
+		delay := 10 * time.Second
+		maxdelay := 5 * time.Minute
+		retryDeadline := time.Now().Add(ospStreamRetryTimeout)
+		for time.Now().Before(retryDeadline) {
+			log.Debugf("try to register %x again", addr)
 			adminS.ospEthToRPCLock.Lock()
 			if peerRPC := adminS.ospEthToRPC[addr]; peerRPC == ospRPC {
 				return
 			}
 			err := adminS.cNode.RegisterStream(addr, ospRPC)
 			if err == nil {
-				log.Infoln("streamRetry:Cb successful re-register", addr.Hex())
+				log.Infof("successful re-register stream to %x", addr)
 				adminS.ospEthToRPC[addr] = ospRPC
+				adminS.ospEthToRPCLock.Unlock()
+				return
+			} else if strings.Contains(err.Error(), common.ErrStreamAleadyExists.Error()) {
+				log.Infof("abort retry re-register stream to %x, as stream already exists", addr)
 				adminS.ospEthToRPCLock.Unlock()
 				return
 			}
 			adminS.ospEthToRPCLock.Unlock()
-			log.Errorln("streamRetryCb: register failed", addr.Hex(), err)
+			log.Warnf("unsuccessful re-register stream to %x, err: %s, retry later after %s", addr, err, delay)
 			time.Sleep(delay)
+			if delay < maxdelay {
+				delay += 10 * time.Second
+			}
 		}
-		log.Errorln("streamRetry:Cb retry dial", addr.Hex(), "for", *ospMaxRedial, "times, giving up")
+		log.Errorf("failed to re-register stream to %x", addr)
 	}
 	return adminS
 }
@@ -543,7 +553,7 @@ func (s *adminService) RegisterStream(ctx context.Context, in *rpc.RegisterStrea
 	s.ospEthToRPCLock.Lock()
 	defer s.ospEthToRPCLock.Unlock()
 	if peerRPC := s.ospEthToRPC[ctype.Bytes2Addr(in.PeerEthAddress)]; peerRPC == in.PeerRpcAddress {
-		return &empty.Empty{}, status.Errorf(codes.AlreadyExists, "connection to %s already exist", in.PeerRpcAddress)
+		return &empty.Empty{}, status.Errorf(codes.AlreadyExists, common.ErrStreamAleadyExists.Error())
 	}
 	err := s.cNode.RegisterStream(ctype.Bytes2Addr(in.PeerEthAddress), in.PeerRpcAddress)
 	if err != nil {

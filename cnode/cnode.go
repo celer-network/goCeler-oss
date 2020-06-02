@@ -133,16 +133,17 @@ func (c *CNode) dialOpts(drop bool) []grpc.DialOption {
 
 // WARNING: msg drop interceptor only supports single stream, and should only be used in testing
 func (c *CNode) RegisterStream(peerAddr ctype.Addr, peerHTTPTarget string) error {
+	if s := c.connManager.GetCelerStream(peerAddr); s != nil {
+		return common.ErrStreamAleadyExists
+	}
 	conn, err := grpc.Dial(peerHTTPTarget, c.dialOpts(*dropMsg)...)
 	if err != nil {
-		log.Errorln("RegisterStream:", err, peerHTTPTarget)
 		return fmt.Errorf("grpcDial %s failed: %w", peerHTTPTarget, err)
 	}
 	c.connManager.AddConnection(peerAddr, conn)
 	dialClient := rpc.NewRpcClient(conn)
 	celerStream, err := dialClient.CelerStream(context.Background())
 	if err != nil {
-		log.Errorln("CelerStream failed:", err)
 		return fmt.Errorf("CelerStream failed: %w", err)
 	}
 	authReq, err := c.getAuthReq(peerAddr)
@@ -154,8 +155,7 @@ func (c *CNode) RegisterStream(peerAddr ctype.Addr, peerHTTPTarget string) error
 		Message: &rpc.CelerMsg_AuthReq{AuthReq: authReq},
 	})
 	if err != nil {
-		log.Errorln(err)
-		return err
+		return fmt.Errorf("celerStream Send failed %w", err)
 	}
 	// after NewStream, dispatcher spins goroutine blocks on reading from msgChan
 	msgChan := c.celerMsgDispatcher.NewStream(peerAddr)
@@ -165,7 +165,7 @@ func (c *CNode) RegisterStream(peerAddr ctype.Addr, peerHTTPTarget string) error
 	// have timeout to avoid blocking forever (esp. for sdk/mobile)
 	celerMsg, err := waitRecvWithTimeout(celerStream, config.AuthAckTimeout)
 	if err != nil {
-		return err
+		return fmt.Errorf("waitRecvWithTimeout failed %w", err)
 	}
 	ackMsg := celerMsg.GetAuthAck()
 	if ackMsg == nil {

@@ -197,7 +197,7 @@ func (m *ConnectionManager) AddCelerStream(peerAddr ctype.Addr, stream CelerStre
 		if m.disableMsgQueue != nil {
 			err = m.disableMsgQueue(peerAddr)
 			if err != nil {
-				log.Warnln("CelerStream: disable peer message queue error:", peerAddr.Hex(), ":", err)
+				log.Warnf("CelerStream: disable peer %x message queue error: %s", peerAddr, err)
 			}
 		}
 		m.CloseConnection(peerAddr)

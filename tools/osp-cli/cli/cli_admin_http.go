@@ -29,7 +29,7 @@ func OpenChannel() {
 		log.Error(err)
 		return
 	}
-	log.Infof("channel opened with %s, token %s, deposit: <self %f peer %f>",
+	log.Infof("requested to open channel with %s, token %s, deposit: <self %f peer %f>",
 		*peeraddr, utils.PrintTokenAddr(ctype.Hex2Addr(*tokenaddr)), *selfdeposit, *peerdeposit)
 }
 
@@ -41,7 +41,7 @@ func SendToken() {
 		log.Error(err)
 		return
 	}
-	log.Infof("sent payment %x to %s, token %s, amount %f",
+	log.Infof("requested to send payment %x to %s, token %s, amount %f",
 		payID, *receiver, utils.PrintTokenAddr(ctype.Hex2Addr(*tokenaddr)), *amount)
 }
 
@@ -53,7 +53,7 @@ func MakeDeposit() {
 		log.Error(err)
 		return
 	}
-	log.Infof("made deposit %s, peer %s, token %s, amount %f, topeer %t",
+	log.Infof("requested to make deposit %s, peer %s, token %s, amount %f, topeer %t",
 		depositID, *peeraddr, utils.PrintTokenAddr(ctype.Hex2Addr(*tokenaddr)), *amount, *topeer)
 }
 

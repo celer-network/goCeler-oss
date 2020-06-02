@@ -605,7 +605,7 @@ func slidingWindow(t *testing.T, tokenType entity.TokenType, tokenAddr string) {
 		return
 	}
 
-	err = waitForPaymentCompletion(p12, c1, c2)
+	err = waitForPaymentCompletion(p12, c1, nil)
 	if err != nil {
 		t.Error(err)
 		return

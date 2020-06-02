@@ -21,9 +21,9 @@ Take a look at the constants in [setup.go](./setup.go). In addition to start a t
 
 ## 3. Prepare two OSP accounts
 
-Open a new terminal for CLI commands, run **`./osp-cli -profile /tmp/celer_manual_test/profile/o1_profile.json -ks ../../testing/env/keystore/osp1.json -ethpooldeposit -amount 10000 -register -nopassword`** to deposit 1000 ETH of OSP1 to the EthPool contract and approve to the CelerLedger contract, then register OSP1 as a state channel network router.
+Open a new terminal for CLI commands, run **`./osp-cli -profile /tmp/celer_manual_test/profile/o1_profile.json -ks $GOCELER/testing/env/keystore/osp1.json -ethpooldeposit -amount 10000 -register -nopassword`** to deposit 1000 ETH of OSP1 to the EthPool contract and approve to the CelerLedger contract, then register OSP1 as a state channel network router.
 
-Then do the same for OSP2, run **`./osp-cli -profile /tmp/celer_manual_test/profile/o2_profile.json -ks ../../testing/env/keystore/osp2.json -ethpooldeposit -amount 10000 -register -nopassword`**
+Then do the same for OSP2, run **`./osp-cli -profile /tmp/celer_manual_test/profile/o2_profile.json -ks $GOCELER/testing/env/keystore/osp2.json -ethpooldeposit -amount 10000 -register -nopassword`**
 
 ## 4. Run two OSPs
 

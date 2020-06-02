@@ -51,14 +51,9 @@ func (p *Processor) IntendWithdraw(cidFrom ctype.CidType, amount *big.Int, cidTo
 		return fmt.Errorf("insufficient balance: %s", balance.MyFree)
 	}
 
-	receiptChan := make(chan *types.Receipt, 1)
-	_, err = p.transactor.Transact(
-		&transactor.TransactionMinedHandler{
-			OnMined: func(receipt *types.Receipt) {
-				receiptChan <- receipt
-			},
-		},
-		big.NewInt(0),
+	receipt, err := p.transactor.TransactWaitMined(
+		fmt.Sprintf("IntendWithdraw from channel %x", cidFrom),
+		&transactor.TxConfig{},
 		func(transactor bind.ContractTransactor, opts *bind.TransactOpts) (*types.Transaction, error) {
 			chanLedger := p.nodeConfig.GetLedgerContractOf(cidFrom)
 			if chanLedger == nil {
@@ -75,13 +70,9 @@ func (p *Processor) IntendWithdraw(cidFrom ctype.CidType, amount *big.Int, cidTo
 		log.Error(err)
 		return err
 	}
-	receipt := <-receiptChan
 	if receipt.Status != types.ReceiptStatusSuccessful {
-		err2 := fmt.Errorf("IntendWithdraw transaction 0x%x failed", receipt.TxHash.String())
-		log.Error(err2)
-		return err2
+		return fmt.Errorf("IntendWithdraw transaction %x failed", receipt.TxHash)
 	}
-	log.Infof("IntendWithdraw transaction 0x%x succeeded", receipt.TxHash.String())
 	return nil
 }
 
@@ -107,14 +98,10 @@ func (p *Processor) ConfirmWithdraw(cid ctype.CidType) error {
 		log.Error(err2)
 		return err2
 	}
-	receiptChan := make(chan *types.Receipt, 1)
-	_, err = p.transactor.Transact(
-		&transactor.TransactionMinedHandler{
-			OnMined: func(receipt *types.Receipt) {
-				receiptChan <- receipt
-			},
-		},
-		big.NewInt(0),
+
+	receipt, err := p.transactor.TransactWaitMined(
+		fmt.Sprintf("ConfirmWithdraw from channel %x", cid),
+		&transactor.TxConfig{},
 		func(transactor bind.ContractTransactor, opts *bind.TransactOpts) (*types.Transaction, error) {
 			chanLedger := p.nodeConfig.GetLedgerContractOf(cid)
 			if chanLedger == nil {
@@ -131,32 +118,22 @@ func (p *Processor) ConfirmWithdraw(cid ctype.CidType) error {
 		log.Error(err)
 		return err
 	}
-	receipt := <-receiptChan
 	if receipt.Status != types.ReceiptStatusSuccessful {
-		err2 := fmt.Errorf("ConfirmWithdraw transaction 0x%x failed", receipt.TxHash.String())
-		log.Error(err2)
-		return err2
+		return fmt.Errorf("ConfirmWithdraw transaction %x failed", receipt.TxHash)
 	}
-	log.Infof("ConfirmWithdraw transaction 0x%x succeeded", receipt.TxHash.String())
 	err = ledgerview.SyncOnChainBalance(p.dal, cid, p.nodeConfig)
 	if err != nil {
-		err2 := fmt.Errorf("SyncOnChainBalance error: %w", err)
-		log.Error(err2)
-		return err2
+		log.Error(err)
+		return fmt.Errorf("SyncOnChainBalance error: %w", err)
 	}
 	return nil
 }
 
 func (p *Processor) VetoWithdraw(cid ctype.CidType) error {
 	log.Infoln("Veto withdraw", cid.Hex())
-	receiptChan := make(chan *types.Receipt, 1)
-	_, err := p.transactor.Transact(
-		&transactor.TransactionMinedHandler{
-			OnMined: func(receipt *types.Receipt) {
-				receiptChan <- receipt
-			},
-		},
-		big.NewInt(0),
+	receipt, err := p.transactor.TransactWaitMined(
+		fmt.Sprintf("VetoWithdraw from channel %x", cid),
+		&transactor.TxConfig{},
 		func(transactor bind.ContractTransactor, opts *bind.TransactOpts) (*types.Transaction, error) {
 			chanLedger := p.nodeConfig.GetLedgerContractOf(cid)
 			if chanLedger == nil {
@@ -173,13 +150,9 @@ func (p *Processor) VetoWithdraw(cid ctype.CidType) error {
 		log.Error(err)
 		return err
 	}
-	receipt := <-receiptChan
 	if receipt.Status != types.ReceiptStatusSuccessful {
-		err2 := fmt.Errorf("VetoWithdraw transaction 0x%x failed", receipt.TxHash.String())
-		log.Error(err2)
-		return err2
+		return fmt.Errorf("VetoWithdraw transaction %x failed", receipt.TxHash)
 	}
-	log.Infof("VetoWithdraw transaction 0x%x succeeded", receipt.TxHash.String())
 	return nil
 }
 

@@ -19,6 +19,7 @@ import (
 	"github.com/celer-network/goCeler/metrics"
 	"github.com/celer-network/goCeler/rtconfig"
 	"github.com/celer-network/goCeler/storage"
+	"github.com/celer-network/goCeler/transactor"
 	"github.com/celer-network/goCeler/utils"
 	"github.com/celer-network/goCeler/utils/lease"
 	"github.com/celer-network/goutils/log"
@@ -221,7 +222,7 @@ func (p *Processor) depositInBatch(chanDeposits []*channelDeposit, ledgerAddr ct
 	} else {
 		tx, err = p.transactor.Transact(
 			nil,
-			big.NewInt(0),
+			&transactor.TxConfig{},
 			func(transactor bind.ContractTransactor, opts *bind.TransactOpts) (*types.Transaction, error) {
 				contract, contractErr := ledger.NewCelerLedgerTransactor(ledgerAddr, transactor)
 				if contractErr != nil {

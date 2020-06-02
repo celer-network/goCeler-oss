@@ -62,6 +62,11 @@ func cooperativeWithdraw(t *testing.T, tokenType entity.TokenType, tokenAddr str
 		t.Error(err)
 		return
 	}
+	err = c.AssertBalance(tokenAddr, initialBalance, "0", initialBalance)
+	if err != nil {
+		t.Error(err)
+		return
+	}
 
 	resp, err := c.CooperativeWithdraw(tokenType, tokenAddr, "123")
 	if err != nil {

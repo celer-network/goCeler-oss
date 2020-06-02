@@ -63,7 +63,7 @@ func (c *callbackImpl) HandleRecvStart(pay *celersdkintf.Payment) {
 
 // Callback triggered when pay settle request processed.
 func (c *callbackImpl) HandleRecvDone(pay *celersdkintf.Payment) {
-	log.Infoln("payID", pay.UID, "recv done. Status:", payStatusName(pay.Status))
+	log.Infoln("payID", pay.UID, "recv done. Status:", PayStatusName(pay.Status))
 	select {
 	case c.recvDone <- pay:
 	default:
@@ -71,7 +71,7 @@ func (c *callbackImpl) HandleRecvDone(pay *celersdkintf.Payment) {
 }
 
 func (c *callbackImpl) HandleSendComplete(pay *celersdkintf.Payment) {
-	log.Infoln("payID", pay.UID, "send complete. Status:", payStatusName(pay.Status))
+	log.Infoln("payID", pay.UID, "send complete. Status:", PayStatusName(pay.Status))
 	select {
 	case c.sendComplete <- pay:
 	default:
@@ -86,7 +86,7 @@ func (c *callbackImpl) HandleSendErr(pay *celersdkintf.Payment, e *celersdkintf.
 	}
 }
 
-func payStatusName(status int) string {
+func PayStatusName(status int) string {
 	switch status {
 	case celersdkintf.PAY_STATUS_INVALID:
 		return "PAY_STATUS_INVALID"

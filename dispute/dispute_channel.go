@@ -26,8 +26,6 @@ import (
 	"github.com/golang/protobuf/proto"
 )
 
-type txMethod func(transactor bind.ContractTransactor, opts *bind.TransactOpts) (*types.Transaction, error)
-
 func (p *Processor) IntendSettlePaymentChannel(cid ctype.CidType, waitMined bool) error {
 	log.Infoln("Intend settle payment channel", cid.Hex())
 	err := p.dal.Transactional(fsm.OnChannelIntendSettle, cid)
@@ -87,13 +85,16 @@ func (p *Processor) IntendSettlePaymentChannel(cid ctype.CidType, waitMined bool
 }
 
 func (p *Processor) intendSettleAndWaitMined(cid ctype.CidType, stateArrayBytes []byte) error {
-	_, err := p.transactorPool.SubmitAndWaitMinedWithGenericHandler(
-		"intend settle payment channel",
-		big.NewInt(0),
+	receipt, err := p.transactorPool.SubmitWaitMined(
+		fmt.Sprintf("intend settle payment channel %x", cid),
+		&transactor.TxConfig{},
 		p.intendSettleTxMethod(cid, stateArrayBytes))
 	if err != nil {
 		log.Errorf("intend settle payment channel error %s, cid %x", err, cid)
 		return err
+	}
+	if receipt.Status != types.ReceiptStatusSuccessful {
+		return fmt.Errorf("intend settle transaction %x failed", receipt.TxHash)
 	}
 	return nil
 }
@@ -101,7 +102,7 @@ func (p *Processor) intendSettleAndWaitMined(cid ctype.CidType, stateArrayBytes 
 func (p *Processor) intendSettle(cid ctype.CidType, stateArrayBytes []byte) error {
 	tx, err := p.transactorPool.Submit(
 		newGenericTransactionHandler("intend settle", cid),
-		big.NewInt(0),
+		&transactor.TxConfig{},
 		p.intendSettleTxMethod(cid, stateArrayBytes))
 	if err != nil {
 		log.Errorf("intend settle payment channel error %s, cid %x", err, cid)
@@ -138,13 +139,16 @@ func (p *Processor) ConfirmSettlePaymentChannel(cid ctype.CidType, waitMined boo
 }
 
 func (p *Processor) confirmSettleAndWaitMined(cid ctype.CidType) error {
-	_, err := p.transactorPool.SubmitAndWaitMinedWithGenericHandler(
-		"confirm settle payment channel",
-		big.NewInt(0),
+	receipt, err := p.transactorPool.SubmitWaitMined(
+		fmt.Sprintf("confirm settle payment channel %x", cid),
+		&transactor.TxConfig{},
 		p.confirmSettleTxMethod(cid))
 	if err != nil {
 		log.Errorf("confirm settle payment channel error %s, cid %x", err, cid)
 		return err
+	}
+	if receipt.Status != types.ReceiptStatusSuccessful {
+		return fmt.Errorf("confirm settle transaction %x failed", receipt.TxHash)
 	}
 
 	if p.isOSP {
@@ -157,7 +161,7 @@ func (p *Processor) confirmSettleAndWaitMined(cid ctype.CidType) error {
 func (p *Processor) confirmSettle(cid ctype.CidType) error {
 	tx, err := p.transactorPool.Submit(
 		newGenericTransactionHandler("confirm settle", cid),
-		big.NewInt(0),
+		&transactor.TxConfig{},
 		p.confirmSettleTxMethod(cid))
 	if err != nil {
 		log.Errorf("confirm settle payment channel error %s, cid %x", err, cid)
@@ -167,8 +171,8 @@ func (p *Processor) confirmSettle(cid ctype.CidType) error {
 	return nil
 }
 
-func newGenericTransactionHandler(description string, cid ctype.CidType) *transactor.TransactionMinedHandler {
-	return &transactor.TransactionMinedHandler{
+func newGenericTransactionHandler(description string, cid ctype.CidType) *transactor.TransactionStateHandler {
+	return &transactor.TransactionStateHandler{
 		OnMined: func(receipt *types.Receipt) {
 			if receipt.Status == types.ReceiptStatusSuccessful {
 				log.Infof("%s transaction %x succeeded, cid %x", description, receipt.TxHash, cid)
@@ -179,7 +183,7 @@ func newGenericTransactionHandler(description string, cid ctype.CidType) *transa
 	}
 }
 
-func (p *Processor) intendSettleTxMethod(cid ctype.CidType, stateArrayBytes []byte) txMethod {
+func (p *Processor) intendSettleTxMethod(cid ctype.CidType, stateArrayBytes []byte) transactor.TxMethod {
 	return func(transactor bind.ContractTransactor, opts *bind.TransactOpts) (*types.Transaction, error) {
 		chanLedger := p.nodeConfig.GetLedgerContractOf(cid)
 		if chanLedger == nil {
@@ -193,7 +197,7 @@ func (p *Processor) intendSettleTxMethod(cid ctype.CidType, stateArrayBytes []by
 	}
 }
 
-func (p *Processor) confirmSettleTxMethod(cid ctype.CidType) txMethod {
+func (p *Processor) confirmSettleTxMethod(cid ctype.CidType) transactor.TxMethod {
 	return func(transactor bind.ContractTransactor, opts *bind.TransactOpts) (*types.Transaction, error) {
 		chanLedger := p.nodeConfig.GetLedgerContractOf(cid)
 		if chanLedger == nil {

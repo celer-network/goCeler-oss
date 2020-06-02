@@ -387,14 +387,9 @@ func (p *openChannelProcessor) approveErc20Allowance(ledgerAddr ctype.Addr, amtS
 		return err
 	}
 	if allowance.Cmp(amtSelf) < 0 {
-		receiptChan := make(chan *types.Receipt, 1)
-		_, err = p.transactor.Transact(
-			&transactor.TransactionMinedHandler{
-				OnMined: func(receipt *types.Receipt) {
-					receiptChan <- receipt
-				},
-			},
-			big.NewInt(0),
+		receipt, approveErr := p.transactor.TransactWaitMined(
+			"Approve",
+			&transactor.TxConfig{},
 			func(
 				transactor bind.ContractTransactor,
 				opts *bind.TransactOpts) (*types.Transaction, error) {
@@ -404,14 +399,11 @@ func (p *openChannelProcessor) approveErc20Allowance(ledgerAddr ctype.Addr, amtS
 				}
 				return erc20.Approve(opts, spender, amtSelf)
 			})
-		receipt := <-receiptChan
-		approveTxHash := receipt.TxHash.String()
-		if receipt.Status == types.ReceiptStatusSuccessful {
-			log.Debugf("Approve transaction 0x%x succeeded", approveTxHash)
-		} else {
-			errMsg := fmt.Sprintf("Approve transaction 0x%x failed", approveTxHash)
-			log.Error(errMsg)
-			approveErr := errors.New(errMsg)
+		if approveErr == nil && receipt.Status != types.ReceiptStatusSuccessful {
+			approveErr = fmt.Errorf("Approve transaction %x failed", receipt.TxHash)
+		}
+		if approveErr != nil {
+			log.Error(approveErr)
 			p.processOpenError(openCallback, ledgerAddr, approveErr)
 			return approveErr
 		}
@@ -450,7 +442,7 @@ func (p *openChannelProcessor) sendOpenChannelTransaction(
 	log.Infoln("Sending OpenChannel:", utils.PrintChannelInitializer(initializer))
 	cid := ctype.Bytes2Cid(peerResponse.GetPaymentChannelId())
 	_, err = p.transactor.Transact(
-		&transactor.TransactionMinedHandler{
+		&transactor.TransactionStateHandler{
 			OnMined: func(receipt *types.Receipt) {
 				txHash := receipt.TxHash
 				tokenAddr := utils.GetTokenAddr(initializer.GetInitDistribution().GetToken())
@@ -474,10 +466,8 @@ func (p *openChannelProcessor) sendOpenChannelTransaction(
 				}
 			},
 		},
-		txValue,
-		func(
-			transactor bind.ContractTransactor,
-			opts *bind.TransactOpts) (*types.Transaction, error) {
+		&transactor.TxConfig{EthValue: txValue},
+		func(transactor bind.ContractTransactor, opts *bind.TransactOpts) (*types.Transaction, error) {
 			contract, err2 := ledger.NewCelerLedgerTransactor(ledgerAddr, transactor)
 			if err2 != nil {
 				p.processOpenError(openCallback, ledgerAddr, err2)

@@ -4,7 +4,6 @@ package transactor
 
 import (
 	"fmt"
-	"math/big"
 	"sync"
 
 	"github.com/celer-network/goutils/log"
@@ -51,83 +50,17 @@ func NewPoolFromConfig(
 }
 
 func (p *Pool) Submit(
-	handler *TransactionMinedHandler,
-	value *big.Int,
-	method func(
-		transactor bind.ContractTransactor, opts *bind.TransactOpts) (*types.Transaction, error),
-) (*types.Transaction, error) {
-	return p.nextTransactor().Transact(handler, value, method)
+	handler *TransactionStateHandler,
+	txconfig *TxConfig,
+	method TxMethod) (*types.Transaction, error) {
+	return p.nextTransactor().Transact(handler, txconfig, method)
 }
 
-func (p *Pool) SubmitWithGasLimit(
-	handler *TransactionMinedHandler,
-	value *big.Int,
-	gasLimit uint64,
-	quickCatch bool,
-	method func(
-		transactor bind.ContractTransactor, opts *bind.TransactOpts) (*types.Transaction, error),
-) (*types.Transaction, error) {
-	return p.nextTransactor().TransactWithGasLimit(handler, value, gasLimit, quickCatch, method)
-}
-
-func (p *Pool) SubmitAndWaitMinedWithGenericHandler(
+func (p *Pool) SubmitWaitMined(
 	description string,
-	value *big.Int,
-	method func(
-		transactor bind.ContractTransactor, opts *bind.TransactOpts) (*types.Transaction, error),
-) (*types.Receipt, error) {
-	return p.submitAndWaitMinedWithGenericHandler(description, value, 0 /* gasLimit */, false /* quickCatch */, method)
-}
-
-func (p *Pool) SubmitAndQuickWaitMinedWithGenericHandler(
-	description string,
-	value *big.Int,
-	method func(
-		transactor bind.ContractTransactor, opts *bind.TransactOpts) (*types.Transaction, error),
-) (*types.Receipt, error) {
-	return p.submitAndWaitMinedWithGenericHandler(description, value, 0 /* gasLimit */, true /* quickCatch */, method)
-}
-
-func (p *Pool) SubmitAndWaitMinedWithGasLimitAndGenericHandler(
-	description string,
-	value *big.Int,
-	gasLimit uint64,
-	method func(
-		transactor bind.ContractTransactor, opts *bind.TransactOpts) (*types.Transaction, error),
-) (*types.Receipt, error) {
-	return p.submitAndWaitMinedWithGenericHandler(description, value, gasLimit, false /* quickCatch */, method)
-}
-
-func (p *Pool) SubmitAndQuickWaitMinedWithGasLimitAndGenericHandler(
-	description string,
-	value *big.Int,
-	gasLimit uint64,
-	method func(
-		transactor bind.ContractTransactor, opts *bind.TransactOpts) (*types.Transaction, error),
-) (*types.Receipt, error) {
-	return p.submitAndWaitMinedWithGenericHandler(description, value, gasLimit, true /* quickCatch */, method)
-}
-
-func (p *Pool) submitAndWaitMinedWithGenericHandler(
-	description string,
-	value *big.Int,
-	gasLimit uint64,
-	quickCatch bool,
-	method func(
-		transactor bind.ContractTransactor, opts *bind.TransactOpts) (*types.Transaction, error),
-) (*types.Receipt, error) {
-	receiptChan := make(chan *types.Receipt, 1)
-	_, err := p.SubmitWithGasLimit(
-		newGenericTransactionHandler(description, receiptChan),
-		value,
-		gasLimit,
-		quickCatch,
-		method)
-	if err != nil {
-		return nil, err
-	}
-	res := <-receiptChan
-	return res, nil
+	txconfig *TxConfig,
+	method TxMethod) (*types.Receipt, error) {
+	return p.nextTransactor().TransactWaitMined(description, txconfig, method)
 }
 
 func (p *Pool) nextTransactor() *Transactor {
@@ -144,18 +77,4 @@ func (p *Pool) ContractCaller() bind.ContractCaller {
 
 func (p *Pool) WaitMined(txHash string) (*types.Receipt, error) {
 	return p.nextTransactor().WaitMined(txHash)
-}
-
-func newGenericTransactionHandler(
-	description string, receiptChan chan *types.Receipt) *TransactionMinedHandler {
-	return &TransactionMinedHandler{
-		OnMined: func(receipt *types.Receipt) {
-			if receipt.Status == types.ReceiptStatusSuccessful {
-				log.Debugf("%s transaction %s succeeded", description, receipt.TxHash.String())
-			} else {
-				log.Errorf("%s transaction %s failed", description, receipt.TxHash.String())
-			}
-			receiptChan <- receipt
-		},
-	}
 }

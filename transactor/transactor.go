@@ -36,8 +36,20 @@ type Transactor struct {
 	lock    sync.Mutex
 }
 
-type TransactionMinedHandler struct {
-	OnMined func(receipt *types.Receipt)
+type TxConfig struct {
+	EthValue   *big.Int
+	GasLimit   uint64
+	QuickCatch bool
+	Urgent     bool
+	Retry      bool
+}
+
+type TxMethod func(transactor bind.ContractTransactor, opts *bind.TransactOpts) (*types.Transaction, error)
+
+type TransactionStateHandler struct {
+	OnMined   func(receipt *types.Receipt)
+	OnDropped func(tx *types.Transaction)
+	OnTimeout func(tx *types.Transaction)
 }
 
 func NewTransactor(
@@ -71,42 +83,29 @@ func NewTransactorByExternalSigner(
 }
 
 func (t *Transactor) Transact(
-	handler *TransactionMinedHandler,
-	value *big.Int,
-	method func(
-		transactor bind.ContractTransactor, opts *bind.TransactOpts) (*types.Transaction, error),
-) (*types.Transaction, error) {
-	return t.transact(handler, value, 0 /* gasLimit */, false /* quickCatch */, method)
+	handler *TransactionStateHandler,
+	txconfig *TxConfig,
+	method TxMethod) (*types.Transaction, error) {
+	return t.transact(handler, txconfig, method)
 }
 
-func (t *Transactor) TransactWithQuickCatch(
-	handler *TransactionMinedHandler,
-	value *big.Int,
-	method func(
-		transactor bind.ContractTransactor, opts *bind.TransactOpts) (*types.Transaction, error),
-) (*types.Transaction, error) {
-	return t.transact(handler, value, 0 /* gasLimit */, true /* quickCatch */, method)
-}
-
-func (t *Transactor) TransactWithGasLimit(
-	handler *TransactionMinedHandler,
-	value *big.Int,
-	gasLimit uint64,
-	quickCatch bool,
-	method func(
-		transactor bind.ContractTransactor, opts *bind.TransactOpts) (*types.Transaction, error),
-) (*types.Transaction, error) {
-	return t.transact(handler, value, gasLimit, quickCatch, method)
+func (t *Transactor) TransactWaitMined(
+	description string,
+	txconfig *TxConfig,
+	method TxMethod) (*types.Receipt, error) {
+	receiptChan := make(chan *types.Receipt, 1)
+	_, err := t.transact(newTxWaitMinedHandler(description, receiptChan), txconfig, method)
+	if err != nil {
+		return nil, err
+	}
+	res := <-receiptChan
+	return res, nil
 }
 
 func (t *Transactor) transact(
-	handler *TransactionMinedHandler,
-	value *big.Int,
-	gasLimit uint64,
-	quickCatch bool,
-	method func(
-		transactor bind.ContractTransactor, opts *bind.TransactOpts) (*types.Transaction, error),
-) (*types.Transaction, error) {
+	handler *TransactionStateHandler,
+	txconfig *TxConfig,
+	method TxMethod) (*types.Transaction, error) {
 	t.lock.Lock()
 	defer t.lock.Unlock()
 	signer := t.newTransactOpts()
@@ -135,8 +134,12 @@ func (t *Transactor) transact(
 			signer.GasPrice = capPrice
 		}
 	}
-	signer.GasLimit = gasLimit
-	signer.Value = value
+	signer.GasLimit = txconfig.GasLimit
+	if txconfig.EthValue != nil {
+		signer.Value = txconfig.EthValue
+	} else {
+		signer.Value = big.NewInt(0)
+	}
 	pendingNonce, err := t.client.PendingNonceAt(context.Background(), t.address)
 	if err != nil {
 		return nil, err
@@ -167,20 +170,23 @@ func (t *Transactor) transact(
 					txHash := tx.Hash().Hex()
 					log.Debugf("Waiting for tx %s to be mined", txHash)
 					blockDelay := config.BlockDelay
-					if quickCatch {
+					if txconfig.QuickCatch && config.QuickCatchBlockDelay < blockDelay {
 						blockDelay = config.QuickCatchBlockDelay
 					}
-					receipt, err := utils.WaitMined(context.Background(), client, tx, blockDelay)
-					if err == nil {
-						log.Debugf(
-							"Tx %s mined, status: %d, gas estimate: %d, gas used: %d",
-							txHash,
-							receipt.Status,
-							tx.Gas(),
-							receipt.GasUsed)
-						handler.OnMined(receipt)
-					} else {
+					receipt, err := WaitMined(context.Background(), client, tx, blockDelay, config.BlockIntervalSec)
+					if err != nil {
 						log.Error(err)
+						if errors.Is(err, ErrTxDropped) && handler.OnDropped != nil {
+							handler.OnDropped(tx)
+						} else if errors.Is(err, ErrTxTimeout) && handler.OnTimeout != nil {
+							handler.OnTimeout(tx)
+						}
+						return
+					}
+					log.Debugf("Tx %s mined, status: %d, gas estimate: %d, gas used: %d",
+						txHash, receipt.Status, tx.Gas(), receipt.GasUsed)
+					if handler.OnMined != nil {
+						handler.OnMined(receipt)
 					}
 				}()
 			}
@@ -198,7 +204,7 @@ func (t *Transactor) Address() ctype.Addr {
 }
 
 func (t *Transactor) WaitMined(txHash string) (*types.Receipt, error) {
-	return utils.WaitMinedWithTxHash(context.Background(), t.client, txHash, config.BlockDelay)
+	return WaitMinedWithTxHash(context.Background(), t.client, txHash, config.BlockDelay, config.BlockIntervalSec)
 }
 
 func (t *Transactor) newTransactOpts() *bind.TransactOpts {
@@ -225,6 +231,20 @@ func (t *Transactor) newTransactOpts() *bind.TransactOpts {
 				return nil, err
 			}
 			return tx, nil
+		},
+	}
+}
+
+func newTxWaitMinedHandler(
+	description string, receiptChan chan *types.Receipt) *TransactionStateHandler {
+	return &TransactionStateHandler{
+		OnMined: func(receipt *types.Receipt) {
+			if receipt.Status == types.ReceiptStatusSuccessful {
+				log.Infof("%s transaction %x succeeded", description, receipt.TxHash)
+			} else {
+				log.Errorf("%s transaction %x failed", description, receipt.TxHash)
+			}
+			receiptChan <- receipt
 		},
 	}
 }

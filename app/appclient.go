@@ -161,7 +161,7 @@ func (c *AppClient) NewAppChannelOnVirtualContract(
 		Nonce:          nonce,
 		ByteCode:       byteCode,
 		Constructor:    constructor,
-		DeployedAddr:   ctype.Addr{},
+		DeployedAddr:   ctype.ZeroAddr,
 		OnChainTimeout: onchainTimeout,
 		Callback:       sc,
 		client:         c,
@@ -258,10 +258,10 @@ func (c *AppClient) SettleAppChannel(cid string, stateproof []byte) error {
 func (c *AppClient) GetAppChannelDeployedAddr(cid string) (ctype.Addr, error) {
 	appChannel := c.GetAppChannel(cid)
 	if appChannel == nil {
-		return ctype.Addr{}, fmt.Errorf("app channel not found")
+		return ctype.ZeroAddr, fmt.Errorf("app channel not found")
 	}
 	addr := appChannel.getDeployedAddr()
-	if addr != (ctype.Addr{}) || appChannel.Type == entity.ConditionType_DEPLOYED_CONTRACT {
+	if addr != (ctype.ZeroAddr) || appChannel.Type == entity.ConditionType_DEPLOYED_CONTRACT {
 		return addr, nil
 	}
 	virtAddr := GetVirtualAddress(appChannel.ByteCode, appChannel.Constructor, appChannel.Nonce)
@@ -270,7 +270,7 @@ func (c *AppClient) GetAppChannelDeployedAddr(cid string) (ctype.Addr, error) {
 		return addr, err
 	}
 	if !deployed {
-		return ctype.Addr{}, fmt.Errorf("virtual contract not deployed")
+		return ctype.ZeroAddr, fmt.Errorf("virtual contract not deployed")
 	}
 	appChannel.setDeployedAddr(addr)
 	return addr, nil
@@ -327,17 +327,12 @@ func (c *AppClient) ApplyAction(cid string, action []byte) error {
 		return fmt.Errorf("ApplyAction error: app channel not found")
 	}
 
-	receiptChan := make(chan *types.Receipt, 1)
-	_, err := c.transactor.TransactWithQuickCatch(
-		&transactor.TransactionMinedHandler{
-			OnMined: func(receipt *types.Receipt) {
-				receiptChan <- receipt
-			},
-		},
-		big.NewInt(0),
+	receipt, err := c.transactor.TransactWaitMined(
+		"ApplyAction",
+		&transactor.TxConfig{QuickCatch: true},
 		func(transactor bind.ContractTransactor, opts *bind.TransactOpts) (*types.Transaction, error) {
 			addr := appChannel.getDeployedAddr()
-			if addr == (ctype.Addr{}) {
+			if addr == (ctype.ZeroAddr) {
 				return nil, fmt.Errorf("FinalizeOnActionTimeout error: app channel not deployed")
 			}
 			if appChannel.Type == entity.ConditionType_VIRTUAL_CONTRACT {
@@ -359,13 +354,9 @@ func (c *AppClient) ApplyAction(cid string, action []byte) error {
 		log.Error(err)
 		return err
 	}
-	receipt := <-receiptChan
 	if receipt.Status != types.ReceiptStatusSuccessful {
-		err2 := fmt.Errorf("ApplyAction transaction 0x%x failed", receipt.TxHash.String())
-		log.Error(err2)
-		return err2
+		return fmt.Errorf("ApplyAction transaction %x failed", receipt.TxHash)
 	}
-	log.Debugf("ApplyAction transaction 0x%x succeeded", receipt.TxHash.String())
 	return nil
 }
 
@@ -376,17 +367,12 @@ func (c *AppClient) FinalizeAppChannelOnActionTimeout(cid string) error {
 		return fmt.Errorf("FinalizeOnActionTimeout error: app channel not found")
 	}
 
-	receiptChan := make(chan *types.Receipt, 1)
-	_, err := c.transactor.TransactWithQuickCatch(
-		&transactor.TransactionMinedHandler{
-			OnMined: func(receipt *types.Receipt) {
-				receiptChan <- receipt
-			},
-		},
-		big.NewInt(0),
+	receipt, err := c.transactor.TransactWaitMined(
+		"FinalizeOnActionTimeout",
+		&transactor.TxConfig{QuickCatch: true},
 		func(transactor bind.ContractTransactor, opts *bind.TransactOpts) (*types.Transaction, error) {
 			addr := appChannel.getDeployedAddr()
-			if addr == (ctype.Addr{}) {
+			if addr == (ctype.ZeroAddr) {
 				return nil, fmt.Errorf("FinalizeOnActionTimeout error: app channel not deployed")
 			}
 			if appChannel.Type == entity.ConditionType_VIRTUAL_CONTRACT {
@@ -408,13 +394,9 @@ func (c *AppClient) FinalizeAppChannelOnActionTimeout(cid string) error {
 		log.Error(err)
 		return err
 	}
-	receipt := <-receiptChan
 	if receipt.Status != types.ReceiptStatusSuccessful {
-		err2 := fmt.Errorf("FinalizeOnActionTimeout transaction 0x%x failed", receipt.TxHash.String())
-		log.Error(err2)
-		return err2
+		return fmt.Errorf("FinalizeOnActionTimeout transaction %x failed", receipt.TxHash)
 	}
-	log.Debugf("FinalizeOnActionTimeout transaction 0x%x succeeded", receipt.TxHash.String())
 	return nil
 }
 
@@ -424,7 +406,7 @@ func (c *AppClient) GetAppChannelSettleFinalizedTime(cid string) (uint64, error)
 		return 0, fmt.Errorf("GetSettleFinalizedTime error: app channel not found")
 	}
 	deployedAddr := appChannel.getDeployedAddr()
-	if deployedAddr == (ctype.Addr{}) {
+	if deployedAddr == (ctype.ZeroAddr) {
 		return 0, fmt.Errorf("GetSettleFinalizedTime error: app channel not deployed")
 	}
 	if appChannel.Type == entity.ConditionType_VIRTUAL_CONTRACT {
@@ -463,7 +445,7 @@ func (c *AppClient) GetAppChannelActionDeadline(cid string) (uint64, error) {
 		return 0, fmt.Errorf("GetActionDeadline error: app channel not found")
 	}
 	deployedAddr := appChannel.getDeployedAddr()
-	if deployedAddr == (ctype.Addr{}) {
+	if deployedAddr == (ctype.ZeroAddr) {
 		return 0, fmt.Errorf("GetActionDeadline error: app channel not deployed")
 	}
 	if appChannel.Type == entity.ConditionType_VIRTUAL_CONTRACT {
@@ -502,7 +484,7 @@ func (c *AppClient) GetAppChannelSeqNum(cid string) (uint64, error) {
 		return 0, fmt.Errorf("GetSeqNum error: app channel not found")
 	}
 	deployedAddr := appChannel.getDeployedAddr()
-	if deployedAddr == (ctype.Addr{}) {
+	if deployedAddr == (ctype.ZeroAddr) {
 		return 0, fmt.Errorf("GetSeqNum error: app channel not deployed")
 	}
 	if appChannel.Type == entity.ConditionType_VIRTUAL_CONTRACT {
@@ -541,7 +523,7 @@ func (c *AppClient) GetAppChannelStatus(cid string) (uint8, error) {
 		return 0, fmt.Errorf("GetStatus error: app channel not found")
 	}
 	deployedAddr := appChannel.getDeployedAddr()
-	if deployedAddr == (ctype.Addr{}) {
+	if deployedAddr == (ctype.ZeroAddr) {
 		return 0, fmt.Errorf("GetStatus error: app channel not deployed")
 	}
 	if appChannel.Type == entity.ConditionType_VIRTUAL_CONTRACT {
@@ -566,7 +548,7 @@ func (c *AppClient) GetAppChannelState(cid string, key *big.Int) ([]byte, error)
 		return nil, fmt.Errorf("GetState error: app channel not found")
 	}
 	deployedAddr := appChannel.getDeployedAddr()
-	if deployedAddr == (ctype.Addr{}) {
+	if deployedAddr == (ctype.ZeroAddr) {
 		return nil, fmt.Errorf("GetState error: app channel not deployed")
 	}
 	if appChannel.Type == entity.ConditionType_VIRTUAL_CONTRACT {
@@ -609,17 +591,12 @@ func (c *AppClient) SettleBySigTimeout(gcid string, oracleProof []byte) error {
 		return fmt.Errorf("SettleBySigTimeout error: app channel not found")
 	}
 
-	receiptChan := make(chan *types.Receipt, 1)
-	_, err := c.transactor.TransactWithQuickCatch(
-		&transactor.TransactionMinedHandler{
-			OnMined: func(receipt *types.Receipt) {
-				receiptChan <- receipt
-			},
-		},
-		big.NewInt(0),
+	receipt, err := c.transactor.TransactWaitMined(
+		"SettleBySigTimeout",
+		&transactor.TxConfig{QuickCatch: true},
 		func(transactor bind.ContractTransactor, opts *bind.TransactOpts) (*types.Transaction, error) {
 			addr := appChannel.getDeployedAddr()
-			if addr == (ctype.Addr{}) {
+			if addr == (ctype.ZeroAddr) {
 				return nil, fmt.Errorf("FinalizeOnActionTimeout error: app channel not deployed")
 			}
 			if appChannel.Type == entity.ConditionType_VIRTUAL_CONTRACT {
@@ -642,14 +619,9 @@ func (c *AppClient) SettleBySigTimeout(gcid string, oracleProof []byte) error {
 		log.Error(err)
 		return err
 	}
-	receipt := <-receiptChan
-
 	if receipt.Status != types.ReceiptStatusSuccessful {
-		err2 := fmt.Errorf("SettleBySigTimeout transaction 0x%x failed", receipt.TxHash.String())
-		log.Error(err2)
-		return err2
+		return fmt.Errorf("SettleBySigTimeout transaction %x failed", receipt.TxHash)
 	}
-	log.Debugf("SettleBySigTimeout transaction 0x%x succeeded", receipt.TxHash.String())
 	return nil
 }
 
@@ -660,17 +632,12 @@ func (c *AppClient) SettleByMoveTimeout(gcid string, oracleProof []byte) error {
 		return fmt.Errorf("SettleByMoveTimeout error: app channel not found")
 	}
 
-	receiptChan := make(chan *types.Receipt, 1)
-	_, err := c.transactor.TransactWithQuickCatch(
-		&transactor.TransactionMinedHandler{
-			OnMined: func(receipt *types.Receipt) {
-				receiptChan <- receipt
-			},
-		},
-		big.NewInt(0),
+	receipt, err := c.transactor.TransactWaitMined(
+		"SettleByMoveTimeout",
+		&transactor.TxConfig{QuickCatch: true},
 		func(transactor bind.ContractTransactor, opts *bind.TransactOpts) (*types.Transaction, error) {
 			addr := appChannel.getDeployedAddr()
-			if addr == (ctype.Addr{}) {
+			if addr == (ctype.ZeroAddr) {
 				return nil, fmt.Errorf("FinalizeOnActionTimeout error: app channel not deployed")
 			}
 			if appChannel.Type == entity.ConditionType_VIRTUAL_CONTRACT {
@@ -692,13 +659,9 @@ func (c *AppClient) SettleByMoveTimeout(gcid string, oracleProof []byte) error {
 		log.Error(err)
 		return err
 	}
-	receipt := <-receiptChan
 	if receipt.Status != types.ReceiptStatusSuccessful {
-		err2 := fmt.Errorf("SettleByMoveTimeout transaction 0x%x failed", receipt.TxHash.String())
-		log.Error(err2)
-		return err2
+		return fmt.Errorf("SettleByMoveTimeout transaction %x failed", receipt.TxHash)
 	}
-	log.Debugf("SettleByMoveTimeout transaction 0x%x succeeded", receipt.TxHash.String())
 	return nil
 }
 
@@ -709,17 +672,12 @@ func (c *AppClient) SettleByInvalidTurn(gcid string, oracleProof []byte, cosigne
 		return fmt.Errorf("SettleByInvalidTurn error: app channel not found")
 	}
 
-	receiptChan := make(chan *types.Receipt, 1)
-	_, err := c.transactor.TransactWithQuickCatch(
-		&transactor.TransactionMinedHandler{
-			OnMined: func(receipt *types.Receipt) {
-				receiptChan <- receipt
-			},
-		},
-		big.NewInt(0),
+	receipt, err := c.transactor.TransactWaitMined(
+		"SettleByInvalidTurn",
+		&transactor.TxConfig{QuickCatch: true},
 		func(transactor bind.ContractTransactor, opts *bind.TransactOpts) (*types.Transaction, error) {
 			addr := appChannel.getDeployedAddr()
-			if addr == (ctype.Addr{}) {
+			if addr == (ctype.ZeroAddr) {
 				return nil, fmt.Errorf("FinalizeOnActionTimeout error: app channel not deployed")
 			}
 			if appChannel.Type == entity.ConditionType_VIRTUAL_CONTRACT {
@@ -741,13 +699,9 @@ func (c *AppClient) SettleByInvalidTurn(gcid string, oracleProof []byte, cosigne
 		log.Error(err)
 		return err
 	}
-	receipt := <-receiptChan
 	if receipt.Status != types.ReceiptStatusSuccessful {
-		err2 := fmt.Errorf("SettleByInvalidTurn transaction 0x%x failed", receipt.TxHash.String())
-		log.Error(err2)
-		return err2
+		return fmt.Errorf("SettleByInvalidTurn transaction %x failed", receipt.TxHash)
 	}
-	log.Debugf("SettleByInvalidTurn transaction 0x%x succeeded", receipt.TxHash.String())
 	return nil
 }
 
@@ -758,17 +712,12 @@ func (c *AppClient) SettleByInvalidState(gcid string, oracleProof []byte, cosign
 		return fmt.Errorf("SettleByInvalidState error: app channel not found")
 	}
 
-	receiptChan := make(chan *types.Receipt, 1)
-	_, err := c.transactor.TransactWithQuickCatch(
-		&transactor.TransactionMinedHandler{
-			OnMined: func(receipt *types.Receipt) {
-				receiptChan <- receipt
-			},
-		},
-		big.NewInt(0),
+	receipt, err := c.transactor.TransactWaitMined(
+		"SettleByInvalidState",
+		&transactor.TxConfig{QuickCatch: true},
 		func(transactor bind.ContractTransactor, opts *bind.TransactOpts) (*types.Transaction, error) {
 			addr := appChannel.getDeployedAddr()
-			if addr == (ctype.Addr{}) {
+			if addr == (ctype.ZeroAddr) {
 				return nil, fmt.Errorf("FinalizeOnActionTimeout error: app channel not deployed")
 			}
 			if appChannel.Type == entity.ConditionType_VIRTUAL_CONTRACT {
@@ -790,20 +739,16 @@ func (c *AppClient) SettleByInvalidState(gcid string, oracleProof []byte, cosign
 		log.Error(err)
 		return err
 	}
-	receipt := <-receiptChan
 	if receipt.Status != types.ReceiptStatusSuccessful {
-		err2 := fmt.Errorf("SettleByInvalidState transaction 0x%x failed", receipt.TxHash.String())
-		log.Error(err2)
-		return err2
+		return fmt.Errorf("SettleByInvalidState transaction %x failed", receipt.TxHash)
 	}
-	log.Debugf("SettleByInvalidState transaction 0x%x succeeded", receipt.TxHash.String())
 	return nil
 }
 
 func (c *AppClient) deployIfNeeded(appChannel *AppChannel) error {
 	deployedAddr := appChannel.getDeployedAddr()
 	// Deploy virtual contract
-	if appChannel.Type == entity.ConditionType_VIRTUAL_CONTRACT && deployedAddr == (ctype.Addr{}) {
+	if appChannel.Type == entity.ConditionType_VIRTUAL_CONTRACT && deployedAddr == (ctype.ZeroAddr) {
 		deployedAddr, err :=
 			c.deployVirtualContract(appChannel.Nonce, appChannel.ByteCode, appChannel.Constructor)
 		if err != nil {
@@ -823,7 +768,7 @@ func (c *AppClient) deployVirtualContract(
 	deployed, addr, err := c.isDeployed(virtAddr)
 	if err != nil {
 		log.Error(err)
-		return ctype.Addr{}, err
+		return ctype.ZeroAddr, err
 	}
 	if deployed {
 		return addr, nil
@@ -831,10 +776,9 @@ func (c *AppClient) deployVirtualContract(
 	log.Debugln("deploying virtual contract...")
 	codeWithCons := append(byteCode, constructor...)
 
-	tx, err := c.transactorPool.SubmitAndQuickWaitMinedWithGasLimitAndGenericHandler(
+	receipt, err := c.transactorPool.SubmitWaitMined(
 		"deploy virtual contract",
-		big.NewInt(0),
-		4000000,
+		&transactor.TxConfig{QuickCatch: true, GasLimit: 4000000},
 		func(transactor bind.ContractTransactor, opts *bind.TransactOpts) (*types.Transaction, error) {
 			contract, err2 :=
 				virtresolver.NewVirtContractResolverTransactor(virtResolverContract.GetAddr(), transactor)
@@ -844,15 +788,18 @@ func (c *AppClient) deployVirtualContract(
 			return contract.Deploy(opts, codeWithCons, new(big.Int).SetUint64(nonce))
 		})
 	if err != nil {
-		log.Errorf("deploy virtual contract tx %s error %s", tx.TxHash.String(), err)
-		return ctype.Addr{}, err
+		log.Errorf("deploy virtual contract tx %x error %s", receipt.TxHash, err)
+		return ctype.ZeroAddr, err
 	}
 	deployed, addr, err = c.isDeployed(virtAddr)
+	if err != nil {
+		return ctype.ZeroAddr, err
+	}
 	if deployed {
 		log.Debugln("deployed virtual contract at", ctype.Addr2Hex(addr))
 		return addr, nil
 	}
-	return ctype.Addr{}, err
+	return ctype.ZeroAddr, fmt.Errorf("virtual contract not deployed")
 }
 
 // isDeployed checks if the given virtual address has been deployed on-chain
@@ -861,12 +808,12 @@ func (c *AppClient) isDeployed(virtAddr []byte) (bool, ctype.Addr, error) {
 	contract, err := virtresolver.NewVirtContractResolverCaller(
 		c.nodeConfig.GetVirtResolverContract().GetAddr(), c.transactorPool.ContractCaller())
 	if err != nil {
-		return false, ctype.Addr{}, err
+		return false, ctype.ZeroAddr, err
 	}
 	var virt [32]byte
 	copy(virt[:], virtAddr[:])
 	deployedAddr, err := contract.Resolve(&bind.CallOpts{}, virt)
-	if deployedAddr == (ctype.Addr{}) {
+	if deployedAddr == (ctype.ZeroAddr) {
 		return false, deployedAddr, nil
 	}
 	return true, deployedAddr, nil
@@ -880,9 +827,9 @@ func (c *AppClient) intendSettle(appChannel *AppChannel, stateproof []byte) erro
 			return err
 		}
 	}
-	_, err = c.transactorPool.SubmitAndQuickWaitMinedWithGenericHandler(
+	_, err = c.transactorPool.SubmitWaitMined(
 		"intend settle app channel",
-		big.NewInt(0),
+		&transactor.TxConfig{QuickCatch: true},
 		func(transactor bind.ContractTransactor, opts *bind.TransactOpts) (*types.Transaction, error) {
 			addr := appChannel.getDeployedAddr()
 			// intendSettle API for SingleSession and MultiSession contracts are same

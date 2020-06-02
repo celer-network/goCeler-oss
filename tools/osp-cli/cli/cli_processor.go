@@ -3,8 +3,6 @@
 package cli
 
 import (
-	"math/big"
-
 	"github.com/celer-network/goCeler/common"
 	"github.com/celer-network/goCeler/config"
 	"github.com/celer-network/goCeler/ctype"
@@ -30,10 +28,9 @@ type Processor struct {
 func (p *Processor) Setup(db, ospkey, disputer bool) {
 	log.Debug("setup processor...")
 	p.profile = common.ParseProfile(*pjson)
-	overrideConfig(p.profile)
+	overrideProfile(p.profile)
+	config.SetGlobalConfigFromProfile(p.profile)
 	p.myAddr = ctype.Hex2Addr(p.profile.SvrETHAddr)
-	config.ChainID = big.NewInt(p.profile.ChainId)
-	config.BlockDelay = p.profile.BlockDelayNum
 	if db {
 		p.dal = toolsetup.NewDAL(p.profile)
 	}
@@ -65,11 +62,7 @@ func (p *Processor) Setup(db, ospkey, disputer bool) {
 			if err != nil {
 				log.Fatal(err)
 			}
-			var pollingInterval uint64 = 10
-			if p.profile.PollingInterval != 0 {
-				pollingInterval = p.profile.PollingInterval
-			}
-			watch := watcher.NewWatchService(ethclient, p.dal, pollingInterval)
+			watch := watcher.NewWatchService(ethclient, p.dal, config.BlockIntervalSec)
 			monitorService := monitor.NewService(
 				watch, p.profile.BlockDelayNum, false, p.nodeConfig.GetRPCAddr())
 			p.disputer = dispute.NewProcessor(
@@ -78,7 +71,7 @@ func (p *Processor) Setup(db, ospkey, disputer bool) {
 	}
 }
 
-func overrideConfig(profile *common.CProfile) {
+func overrideProfile(profile *common.CProfile) {
 	profile.BlockDelayNum = uint64(*blkdelay)
 	if *storesql != "" {
 		profile.StoreSql = *storesql

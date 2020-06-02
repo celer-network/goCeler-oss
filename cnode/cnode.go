@@ -306,8 +306,7 @@ func newCNode(
 	c := &CNode{quit: make(chan bool)}
 
 	log.Infoln("CNode config:", profile)
-	config.ChainID = big.NewInt(profile.ChainId)
-	config.BlockDelay = profile.BlockDelayNum
+	config.SetGlobalConfigFromProfile(&profile)
 
 	err := c.setupEthClient(&profile)
 	if err != nil {
@@ -464,10 +463,6 @@ func (c *CNode) initialize(
 		c.listenOnChain = true
 	}
 
-	if profile.DisputeTimeout != 0 {
-		config.ChannelDisputeTimeout = profile.DisputeTimeout
-	}
-
 	// Initialize the storage layer.
 	err := c.setupKVStore(profile, c.EthAddress)
 	if err != nil {
@@ -486,13 +481,7 @@ func (c *CNode) initialize(
 	c.connManager = rpc.NewConnectionManager(regClient)
 
 	// Initialize the watcher service.
-	blockDelay := profile.BlockDelayNum
-	log.Infof("Setting up watch service (block delay %d)", blockDelay)
-	var pollingInterval uint64 = 10
-	if profile.PollingInterval != 0 {
-		pollingInterval = profile.PollingInterval
-	}
-	c.watch = watcher.NewWatchService(c.ethclient, c.dal, pollingInterval)
+	c.watch = watcher.NewWatchService(c.ethclient, c.dal, config.BlockIntervalSec)
 	if c.watch == nil {
 		log.Error("Cannot setup watch service")
 		c.Close()
@@ -524,7 +513,7 @@ func (c *CNode) initialize(
 	}
 
 	// Init monitor service
-	monitorService := monitor.NewService(c.watch, blockDelay, !c.isOSP || c.listenOnChain, c.GetRPCAddr())
+	monitorService := monitor.NewService(c.watch, config.BlockDelay, !c.isOSP || c.listenOnChain, c.GetRPCAddr())
 	monitorService.Init()
 	c.monitorService = monitorService
 	c.streamWriter = cobj.NewCelerStreamWriter(c.connManager)

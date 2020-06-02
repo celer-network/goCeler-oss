@@ -13,8 +13,12 @@ import (
 
 	"github.com/celer-network/goCeler/celersdkintf"
 	"github.com/celer-network/goCeler/common"
+	"github.com/celer-network/goCeler/common/structs"
 	"github.com/celer-network/goCeler/ctype"
+	"github.com/celer-network/goCeler/fsm"
+	"github.com/celer-network/goCeler/storage"
 	tf "github.com/celer-network/goCeler/testing"
+	"github.com/celer-network/goCeler/webapi"
 	"github.com/celer-network/goutils/log"
 	"github.com/ethereum/go-ethereum/ethclient"
 	ethrpc "github.com/ethereum/go-ethereum/rpc"
@@ -55,66 +59,160 @@ func sleep(second time.Duration) {
 	time.Sleep(second * time.Second)
 }
 
+func payStatusFinalized(status int) bool {
+	if status == celersdkintf.PAY_STATUS_PAID || status == celersdkintf.PAY_STATUS_PAID_RESOLVED_ONCHAIN ||
+		status == celersdkintf.PAY_STATUS_UNPAID || status == celersdkintf.PAY_STATUS_UNPAID_EXPIRED ||
+		status == celersdkintf.PAY_STATUS_UNPAID_REJECTED || status == celersdkintf.PAY_STATUS_UNPAID_DEST_UNREACHABLE {
+		return true
+	}
+	return false
+}
+
 func waitForPaymentCompletion(payID string, sender, receiver *tf.ClientController) error {
+	time.Sleep(200 * time.Millisecond)
 	const retryLimit = 20
+	var status int
+	var err error
 	if sender != nil {
+		var done bool
 		for retry := 0; retry < retryLimit; retry++ {
-			status, err := sender.GetOutgoingPaymentStatus(payID)
+			status, err = sender.GetOutgoingPaymentStatus(payID)
 			if err != nil {
 				return err
 			}
-			if status == celersdkintf.PAY_STATUS_PAID || status == celersdkintf.PAY_STATUS_UNPAID {
-				return nil
+			if payStatusFinalized(status) {
+				done = true
+				break
 			}
-			time.Sleep(300 * time.Millisecond)
+			time.Sleep(400 * time.Millisecond)
 		}
-		return fmt.Errorf("payment not sent successfully, payID %s", payID)
+		if !done {
+			return fmt.Errorf("payment not sent successfully, payID %s %s", payID, webapi.PayStatusName(status))
+		}
 	}
 	if receiver != nil {
 		for retry := 0; retry < retryLimit; retry++ {
-			status, err := receiver.GetIncomingPaymentStatus(payID)
+			status, err = receiver.GetIncomingPaymentStatus(payID)
 			if err != nil {
 				return err
 			}
-			if status == celersdkintf.PAY_STATUS_PAID || status == celersdkintf.PAY_STATUS_UNPAID {
+			if payStatusFinalized(status) {
 				return nil
 			}
-			time.Sleep(300 * time.Millisecond)
+			time.Sleep(400 * time.Millisecond)
 		}
-		return fmt.Errorf("payment not received successfully, payID %s", payID)
+		return fmt.Errorf("payment not received successfully, payID %s %s", payID, webapi.PayStatusName(status))
 	}
 	return nil
 }
 
 func waitForPaymentPending(payID string, sender, receiver *tf.ClientController) error {
+	time.Sleep(200 * time.Millisecond)
 	const retryLimit = 20
+	var status int
+	var err error
 	if sender != nil {
+		var done bool
 		for retry := 0; retry < retryLimit; retry++ {
-			status, err := sender.GetOutgoingPaymentStatus(payID)
+			status, err = sender.GetOutgoingPaymentStatus(payID)
 			if err != nil {
 				return err
 			}
 			if status == celersdkintf.PAY_STATUS_PENDING {
-				return nil
+				done = true
+				break
 			}
-			time.Sleep(300 * time.Millisecond)
+			time.Sleep(400 * time.Millisecond)
 		}
-		return fmt.Errorf("payment not received successfully, payID %s", payID)
+		if !done {
+			return fmt.Errorf("payment not sent successfully, payID %s %s", payID, webapi.PayStatusName(status))
+		}
 	}
 	if receiver != nil {
 		for retry := 0; retry < retryLimit; retry++ {
-			status, err := receiver.GetIncomingPaymentStatus(payID)
+			status, err = receiver.GetIncomingPaymentStatus(payID)
 			if err != nil {
 				return err
 			}
 			if status == celersdkintf.PAY_STATUS_PENDING {
 				return nil
 			}
-			time.Sleep(300 * time.Millisecond)
+			time.Sleep(400 * time.Millisecond)
 		}
-		return fmt.Errorf("payment not sent successfully, payID %s", payID)
+		return fmt.Errorf("payment not received successfully, payID %s %s", payID, webapi.PayStatusName(status))
 	}
 	return nil
+}
+
+func waitForPayStatus(payID string, sender, receiver *tf.ClientController, expStatus, timeoutSec int) error {
+	time.Sleep(200 * time.Millisecond)
+	deadline := time.Now().Add(time.Duration(timeoutSec) * time.Second)
+	var status int
+	var err error
+	if sender != nil {
+		var done bool
+		for time.Now().Before(deadline) {
+			status, err = sender.GetOutgoingPaymentStatus(payID)
+			if err != nil {
+				return err
+			}
+			if status == expStatus {
+				done = true
+				break
+			}
+			time.Sleep(400 * time.Millisecond)
+		}
+		if !done {
+			return fmt.Errorf("payment not sent successfully, payID %s %s", payID, webapi.PayStatusName(status))
+		}
+	}
+	if receiver != nil {
+		for time.Now().Before(deadline) {
+			status, err = sender.GetIncomingPaymentStatus(payID)
+			if err != nil {
+				return err
+			}
+			if status == expStatus {
+				return nil
+			}
+			time.Sleep(400 * time.Millisecond)
+		}
+		return fmt.Errorf("payment not received successfully, payID %s %s", payID, webapi.PayStatusName(status))
+	}
+	return nil
+}
+
+func checkOspPayState(dal *storage.DAL, payID string,
+	expInCid ctype.CidType, expInState int, expOutCid ctype.CidType, expOutState, timeoutSec int) error {
+	deadline := time.Now().Add(time.Duration(timeoutSec) * time.Second)
+	var inCid, outCid ctype.CidType
+	var inState, outState int
+	var err error
+	for time.Now().Before(deadline) {
+		_, _, inCid, inState, outCid, outState, _, _, err = dal.GetPaymentInfo(ctype.Hex2PayID(payID))
+		if err != nil {
+			return err
+		}
+		if inCid == expInCid && inState == expInState && outCid == expOutCid && outState == expOutState {
+			return nil
+		}
+		// value finalized but no match
+		if (inCid != ctype.ZeroCid && inCid != expInCid) || (outCid != ctype.ZeroCid && outCid != expOutCid) ||
+			(payStateFinalized(inState) && inState != expInState) || (payStateFinalized(outState) && outState != expOutState) {
+			break
+		}
+		time.Sleep(400 * time.Millisecond)
+	}
+	return fmt.Errorf("payID %s, in: %x %s out: %x %s, expect in: %x %s out: %x %s",
+		payID, inCid, fsm.PayStateName(inState), outCid, fsm.PayStateName(outState),
+		expInCid, fsm.PayStateName(expInState), expOutCid, fsm.PayStateName(expOutState))
+}
+
+func payStateFinalized(state int) bool {
+	if state == structs.PayState_COSIGNED_PAID || state == structs.PayState_COSIGNED_CANCELED {
+		return true
+	}
+	return false
 }
 
 // save json as file path

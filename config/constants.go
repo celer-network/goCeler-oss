@@ -6,18 +6,23 @@ import (
 	"math/big"
 	"time"
 
+	"github.com/celer-network/goCeler/common"
 	"google.golang.org/grpc/keepalive"
 )
 
-var ChannelDisputeTimeout = uint64(10000)
-var ChainID *big.Int
-var BlockDelay = uint64(5)
-var EventListenerHttp = ""
-var RouterBcastInterval = 293 * time.Second
-var RouterBuildInterval = 367 * time.Second
-var RouterAliveTimeout = 900 * time.Second
-var OspClearPaysInterval = 613 * time.Second
-var OspReportInverval = 887 * time.Second
+// NOTE: not protected by lock, only set once at initialization
+var (
+	ChannelDisputeTimeout = uint64(10000)
+	ChainID               *big.Int
+	BlockDelay            = uint64(5)
+	BlockIntervalSec      = uint64(10)
+	EventListenerHttp     = ""
+	RouterBcastInterval   = 293 * time.Second
+	RouterBuildInterval   = 367 * time.Second
+	RouterAliveTimeout    = 900 * time.Second
+	OspClearPaysInterval  = 613 * time.Second
+	OspReportInverval     = 887 * time.Second
+)
 
 const (
 	ClientCacheSize            = 1000
@@ -64,4 +69,15 @@ var KeepAliveServerParams = keepalive.ServerParameters{
 var KeepAliveEnforcePolicy = keepalive.EnforcementPolicy{
 	MinTime:             12 * time.Second, // must be smaller than clientParam.Time
 	PermitWithoutStream: true,
+}
+
+func SetGlobalConfigFromProfile(profile *common.CProfile) {
+	ChainID = big.NewInt(profile.ChainId)
+	BlockDelay = profile.BlockDelayNum
+	if profile.PollingInterval != 0 {
+		BlockIntervalSec = profile.PollingInterval
+	}
+	if profile.DisputeTimeout != 0 {
+		ChannelDisputeTimeout = profile.DisputeTimeout
+	}
 }

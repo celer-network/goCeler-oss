@@ -45,6 +45,8 @@ message RuntimeConfig {
     RefillConfigs refill_configs = 16;
     // deposit configuration
     DepositConfig deposit_config = 18;
+    // config to wait mined tx
+    WaitMinedConfig wait_mined_config = 19;
 }
 
 // Next Tag: 3
@@ -118,4 +120,10 @@ message DepositConfig {
     uint64 polling_interval_s = 1;
     uint64 min_batch_size = 2;
     uint64 max_batch_size = 3;
+}
+
+message WaitMinedConfig {
+    uint64 tx_timeout_s = 1;
+    uint64 tx_query_timeout_s = 2;
+    uint64 tx_query_retry_interval_s = 3;
 }

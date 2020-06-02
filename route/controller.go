@@ -219,7 +219,7 @@ func (c *Controller) refreshRouterRegistry() {
 	log.Infoln("sending RefreshRouter tx")
 	routerRegistryAddr := c.nodeConfig.GetRouterRegistryContract().GetAddr()
 	_, err := c.transactor.Transact(
-		&transactor.TransactionMinedHandler{
+		&transactor.TransactionStateHandler{
 			OnMined: func(receipt *types.Receipt) {
 				if receipt.Status == types.ReceiptStatusSuccessful {
 					log.Infof("RefreshRouter transaction %x succeeded", receipt.TxHash)
@@ -228,7 +228,7 @@ func (c *Controller) refreshRouterRegistry() {
 				}
 			},
 		},
-		big.NewInt(0),
+		&transactor.TxConfig{},
 		func(transactor bind.ContractTransactor, opts *bind.TransactOpts) (*types.Transaction, error) {
 			contract, err2 := rt.NewRouterRegistryTransactor(routerRegistryAddr, transactor)
 			if err2 != nil {

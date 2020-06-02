@@ -20,6 +20,7 @@ import (
 	"github.com/celer-network/goCeler/chain/channel-eth-go/routerregistry"
 	profile "github.com/celer-network/goCeler/common"
 	"github.com/celer-network/goCeler/ctype"
+	"github.com/celer-network/goCeler/transactor"
 	"github.com/celer-network/goCeler/utils"
 	"github.com/celer-network/goutils/log"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -163,7 +164,7 @@ func fundAccount(amount string, recipients []*common.Address) error {
 	}
 	for i, r := range recipients {
 		tx := txs[i]
-		receipt, err := utils.WaitMined(ctx, conn, tx, 0)
+		receipt, err := transactor.WaitMined(ctx, conn, tx, 0, 1)
 		if err != nil {
 			log.Error(err)
 		}
@@ -276,7 +277,7 @@ func RegisterRouters(ksfiles []string) error {
 	ctx := context.Background()
 	for _, tx := range txs {
 		log.Infof("RegisterRouter tx waiting %x", tx.Hash())
-		_, err = utils.WaitMined(ctx, conn, tx, 0 /*blkDelay*/)
+		_, err = transactor.WaitMined(ctx, conn, tx, 0, 1)
 		if err != nil {
 			log.Errorln(err)
 			return err
@@ -302,7 +303,7 @@ func UnregisterRouter(ksfile string) error {
 		return err
 	}
 	ctx := context.Background()
-	_, err = utils.WaitMined(ctx, conn, tx, 0 /*blkDelay*/)
+	_, err = transactor.WaitMined(ctx, conn, tx, 0, 1)
 	if err != nil {
 		return err
 	}
@@ -330,7 +331,7 @@ func FundAccountsWithErc20(erc20Addr string, addrs []string, amount string) erro
 		if err != nil {
 			return err
 		}
-		utils.WaitMined(ctx, conn, tx, 0)
+		transactor.WaitMined(ctx, conn, tx, 0, 1)
 	}
 	return nil
 }

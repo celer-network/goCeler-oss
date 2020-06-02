@@ -9,7 +9,6 @@ import (
 	"github.com/celer-network/goCeler/common/structs"
 	"github.com/celer-network/goCeler/ctype"
 	"github.com/celer-network/goCeler/entity"
-	"github.com/celer-network/goCeler/fsm"
 	"github.com/celer-network/goCeler/storage"
 	tf "github.com/celer-network/goCeler/testing"
 	"github.com/celer-network/goCeler/testing/testapp"
@@ -194,54 +193,21 @@ func multiOspRouting(args ...*tf.ServerController) func(*testing.T) {
 			return
 		}
 
-		_, _, inCid, inState, outCid, outState, _, found, err := dal3.GetPaymentInfo(ctype.Hex2PayID(p1))
+		err = checkOspPayState(dal3, p1, c3cid, structs.PayState_COSIGNED_PAID, cid34, structs.PayState_COSIGNED_PAID, 5)
 		if err != nil {
-			t.Error(err)
-			return
-		}
-		if !found {
-			t.Error("p1 not found in o3")
-			return
-		}
-		expInCid, expInState, expOutCid, expOutState := c3cid, structs.PayState_COSIGNED_PAID, cid34, structs.PayState_COSIGNED_PAID
-		if inCid != expInCid || inState != expInState || outCid != expOutCid || outState != expOutState {
-			t.Errorf("pay states error get in: %x %s out: %x %s, exp int: %x %s out: %x %s",
-				inCid, fsm.PayStateName(inState), outCid, fsm.PayStateName(outState),
-				expInCid, fsm.PayStateName(expInState), expOutCid, fsm.PayStateName(expOutState))
+			t.Errorf("p1 err at o3: %s", err)
 			return
 		}
 
-		_, _, inCid, inState, outCid, outState, _, found, err = dal4.GetPaymentInfo(ctype.Hex2PayID(p1))
+		err = checkOspPayState(dal4, p1, cid34, structs.PayState_COSIGNED_PAID, cid45, structs.PayState_COSIGNED_PAID, 5)
 		if err != nil {
-			t.Error(err)
-			return
-		}
-		if !found {
-			t.Error("p1 not found in o4")
-			return
-		}
-		expInCid, expInState, expOutCid, expOutState = cid34, structs.PayState_COSIGNED_PAID, cid45, structs.PayState_COSIGNED_PAID
-		if inCid != expInCid || inState != expInState || outCid != expOutCid || outState != expOutState {
-			t.Errorf("pay states error get in: %x %s out: %x %s, exp int: %x %s out: %x %s",
-				inCid, fsm.PayStateName(inState), outCid, fsm.PayStateName(outState),
-				expInCid, fsm.PayStateName(expInState), expOutCid, fsm.PayStateName(expOutState))
+			t.Errorf("p1 err at o4: %s", err)
 			return
 		}
 
-		_, _, inCid, inState, outCid, outState, _, found, err = dal5.GetPaymentInfo(ctype.Hex2PayID(p1))
+		err = checkOspPayState(dal5, p1, cid45, structs.PayState_COSIGNED_PAID, c5cid, structs.PayState_COSIGNED_PAID, 5)
 		if err != nil {
-			t.Error(err)
-			return
-		}
-		if !found {
-			t.Error("p1 not found in o5")
-			return
-		}
-		expInCid, expInState, expOutCid, expOutState = cid45, structs.PayState_COSIGNED_PAID, c5cid, structs.PayState_COSIGNED_PAID
-		if inCid != expInCid || inState != expInState || outCid != expOutCid || outState != expOutState {
-			t.Errorf("pay states error get in: %x %s out: %x %s, exp int: %x %s out: %x %s",
-				inCid, fsm.PayStateName(inState), outCid, fsm.PayStateName(outState),
-				expInCid, fsm.PayStateName(expInState), expOutCid, fsm.PayStateName(expOutState))
+			t.Errorf("p1 err at o5: %s", err)
 			return
 		}
 
@@ -256,73 +222,28 @@ func multiOspRouting(args ...*tf.ServerController) func(*testing.T) {
 			t.Error(err)
 			return
 		}
-		sleep(3)
 
-		_, _, inCid, inState, outCid, outState, _, found, err = dal3.GetPaymentInfo(ctype.Hex2PayID(p2))
+		err = checkOspPayState(dal3, p2, ctype.ZeroCid, structs.PayState_NULL, cid13, structs.PayState_COSIGNED_PAID, 5)
 		if err != nil {
-			t.Error(err)
-			return
-		}
-		if !found {
-			t.Error("p2 not found in o3")
-			return
-		}
-		expInCid, expInState, expOutCid, expOutState = ctype.ZeroCid, structs.PayState_NULL, cid13, structs.PayState_COSIGNED_PAID
-		if inCid != expInCid || inState != expInState || outCid != expOutCid || outState != expOutState {
-			t.Errorf("pay states error get in: %x %s out: %x %s, exp int: %x %s out: %x %s",
-				inCid, fsm.PayStateName(inState), outCid, fsm.PayStateName(outState),
-				expInCid, fsm.PayStateName(expInState), expOutCid, fsm.PayStateName(expOutState))
+			t.Errorf("p2 err at o3: %s", err)
 			return
 		}
 
-		_, _, inCid, inState, outCid, outState, _, found, err = dal1.GetPaymentInfo(ctype.Hex2PayID(p2))
+		err = checkOspPayState(dal1, p2, cid13, structs.PayState_COSIGNED_PAID, cid12, structs.PayState_COSIGNED_PAID, 5)
 		if err != nil {
-			t.Error(err)
-			return
-		}
-		if !found {
-			t.Error("p2 not found in o1")
-			return
-		}
-		expInCid, expInState, expOutCid, expOutState = cid13, structs.PayState_COSIGNED_PAID, cid12, structs.PayState_COSIGNED_PAID
-		if inCid != expInCid || inState != expInState || outCid != expOutCid || outState != expOutState {
-			t.Errorf("pay states error get in: %x %s out: %x %s, exp int: %x %s out: %x %s",
-				inCid, fsm.PayStateName(inState), outCid, fsm.PayStateName(outState),
-				expInCid, fsm.PayStateName(expInState), expOutCid, fsm.PayStateName(expOutState))
+			t.Errorf("p2 err at o1: %s", err)
 			return
 		}
 
-		_, _, inCid, inState, outCid, outState, _, found, err = dal2.GetPaymentInfo(ctype.Hex2PayID(p2))
+		err = checkOspPayState(dal2, p2, cid12, structs.PayState_COSIGNED_PAID, cid25, structs.PayState_COSIGNED_PAID, 5)
 		if err != nil {
-			t.Error(err)
-			return
-		}
-		if !found {
-			t.Error("p2 not found in o2")
-			return
-		}
-		expInCid, expInState, expOutCid, expOutState = cid12, structs.PayState_COSIGNED_PAID, cid25, structs.PayState_COSIGNED_PAID
-		if inCid != expInCid || inState != expInState || outCid != expOutCid || outState != expOutState {
-			t.Errorf("pay states error get in: %x %s out: %x %s, exp int: %x %s out: %x %s",
-				inCid, fsm.PayStateName(inState), outCid, fsm.PayStateName(outState),
-				expInCid, fsm.PayStateName(expInState), expOutCid, fsm.PayStateName(expOutState))
+			t.Errorf("p2 err at o2: %s", err)
 			return
 		}
 
-		_, _, inCid, inState, outCid, outState, _, found, err = dal5.GetPaymentInfo(ctype.Hex2PayID(p2))
+		err = checkOspPayState(dal5, p2, cid25, structs.PayState_COSIGNED_PAID, ctype.ZeroCid, structs.PayState_NULL, 5)
 		if err != nil {
-			t.Error(err)
-			return
-		}
-		if !found {
-			t.Error("p2 not found in o5")
-			return
-		}
-		expInCid, expInState, expOutCid, expOutState = cid25, structs.PayState_COSIGNED_PAID, ctype.ZeroCid, structs.PayState_NULL
-		if inCid != expInCid || inState != expInState || outCid != expOutCid || outState != expOutState {
-			t.Errorf("pay states error get in: %x %s out: %x %s, exp int: %x %s out: %x %s",
-				inCid, fsm.PayStateName(inState), outCid, fsm.PayStateName(outState),
-				expInCid, fsm.PayStateName(expInState), expOutCid, fsm.PayStateName(expOutState))
+			t.Errorf("p2 err at o5: %s", err)
 			return
 		}
 
@@ -372,75 +293,32 @@ func multiOspRouting(args ...*tf.ServerController) func(*testing.T) {
 			t.Error(err)
 			return
 		}
-		sleep(3)
+		sleep(1)
 		// register streams after pay
 		utils.RequestRegisterStream(o4AdminWeb, ctype.Hex2Addr(osp1EthAddr), localhost+o1Port)
 		utils.RequestRegisterStream(o4AdminWeb, ctype.Hex2Addr(osp3EthAddr), localhost+o3Port)
-		_, _, inCid, inState, outCid, outState, _, found, err = dal5.GetPaymentInfo(ctype.Hex2PayID(p4))
+
+		err = checkOspPayState(dal5, p4, ctype.ZeroCid, structs.PayState_NULL, cid25, structs.PayState_COSIGNED_PAID, 5)
 		if err != nil {
-			t.Error(err)
-			return
-		}
-		if !found {
-			t.Error("p4 not found in o5")
-			return
-		}
-		expInCid, expInState, expOutCid, expOutState = ctype.ZeroCid, structs.PayState_NULL, cid25, structs.PayState_COSIGNED_PAID
-		if inCid != expInCid || inState != expInState || outCid != expOutCid || outState != expOutState {
-			t.Errorf("pay states error get in: %x %s out: %x %s, exp int: %x %s out: %x %s",
-				inCid, fsm.PayStateName(inState), outCid, fsm.PayStateName(outState),
-				expInCid, fsm.PayStateName(expInState), expOutCid, fsm.PayStateName(expOutState))
+			t.Errorf("p4 err at o5: %s", err)
 			return
 		}
 
-		_, _, inCid, inState, outCid, outState, _, found, err = dal2.GetPaymentInfo(ctype.Hex2PayID(p4))
+		err = checkOspPayState(dal2, p4, cid25, structs.PayState_COSIGNED_PAID, cid12, structs.PayState_COSIGNED_PAID, 5)
 		if err != nil {
-			t.Error(err)
-			return
-		}
-		if !found {
-			t.Error("p4 not found in o2")
-			return
-		}
-		expInCid, expInState, expOutCid, expOutState = cid25, structs.PayState_COSIGNED_PAID, cid12, structs.PayState_COSIGNED_PAID
-		if inCid != expInCid || inState != expInState || outCid != expOutCid || outState != expOutState {
-			t.Errorf("pay states error get in: %x %s out: %x %s, exp int: %x %s out: %x %s",
-				inCid, fsm.PayStateName(inState), outCid, fsm.PayStateName(outState),
-				expInCid, fsm.PayStateName(expInState), expOutCid, fsm.PayStateName(expOutState))
+			t.Errorf("p4 err at o2: %s", err)
 			return
 		}
 
-		_, _, inCid, inState, outCid, outState, _, found, err = dal1.GetPaymentInfo(ctype.Hex2PayID(p4))
+		err = checkOspPayState(dal1, p4, cid12, structs.PayState_COSIGNED_PAID, cid13, structs.PayState_COSIGNED_PAID, 5)
 		if err != nil {
-			t.Error(err)
-			return
-		}
-		if !found {
-			t.Error("p4 not found in o1")
-			return
-		}
-		expInCid, expInState, expOutCid, expOutState = cid12, structs.PayState_COSIGNED_PAID, cid13, structs.PayState_COSIGNED_PAID
-		if inCid != expInCid || inState != expInState || outCid != expOutCid || outState != expOutState {
-			t.Errorf("pay states error get in: %x %s out: %x %s, exp int: %x %s out: %x %s",
-				inCid, fsm.PayStateName(inState), outCid, fsm.PayStateName(outState),
-				expInCid, fsm.PayStateName(expInState), expOutCid, fsm.PayStateName(expOutState))
+			t.Errorf("p4 err at o1: %s", err)
 			return
 		}
 
-		_, _, inCid, inState, outCid, outState, _, found, err = dal3.GetPaymentInfo(ctype.Hex2PayID(p4))
+		err = checkOspPayState(dal3, p4, cid13, structs.PayState_COSIGNED_PAID, ctype.ZeroCid, structs.PayState_NULL, 5)
 		if err != nil {
-			t.Error(err)
-			return
-		}
-		if !found {
-			t.Error("p4 not found in o3")
-			return
-		}
-		expInCid, expInState, expOutCid, expOutState = cid13, structs.PayState_COSIGNED_PAID, ctype.ZeroCid, structs.PayState_NULL
-		if inCid != expInCid || inState != expInState || outCid != expOutCid || outState != expOutState {
-			t.Errorf("pay states error get in: %x %s out: %x %s, exp int: %x %s out: %x %s",
-				inCid, fsm.PayStateName(inState), outCid, fsm.PayStateName(outState),
-				expInCid, fsm.PayStateName(expInState), expOutCid, fsm.PayStateName(expOutState))
+			t.Errorf("p4 err at o3: %s", err)
 			return
 		}
 
@@ -474,20 +352,10 @@ func multiOspRouting(args ...*tf.ServerController) func(*testing.T) {
 			t.Error(err)
 			return
 		}
-		_, _, inCid, inState, outCid, outState, _, found, err = dal4.GetPaymentInfo(ctype.Hex2PayID(p5))
+
+		err = checkOspPayState(dal4, p5, cid45, structs.PayState_COSIGNED_PAID, cid34, structs.PayState_COSIGNED_PAID, 5)
 		if err != nil {
-			t.Error(err)
-			return
-		}
-		if !found {
-			t.Error("p5 not found in o4")
-			return
-		}
-		expInCid, expInState, expOutCid, expOutState = cid45, structs.PayState_COSIGNED_PAID, cid34, structs.PayState_COSIGNED_PAID
-		if inCid != expInCid || inState != expInState || outCid != expOutCid || outState != expOutState {
-			t.Errorf("pay states error get in: %x %s out: %x %s, exp int: %x %s out: %x %s",
-				inCid, fsm.PayStateName(inState), outCid, fsm.PayStateName(outState),
-				expInCid, fsm.PayStateName(expInState), expOutCid, fsm.PayStateName(expOutState))
+			t.Errorf("p5 err at o4: %s", err)
 			return
 		}
 
@@ -516,71 +384,27 @@ func multiOspRouting(args ...*tf.ServerController) func(*testing.T) {
 			return
 		}
 
-		_, _, inCid, inState, outCid, outState, _, found, err = dal5.GetPaymentInfo(ctype.Hex2PayID(p6))
+		err = checkOspPayState(dal5, p6, c5cid, structs.PayState_COSIGNED_CANCELED, cid45, structs.PayState_COSIGNED_CANCELED, 5)
 		if err != nil {
-			t.Error(err)
-			return
-		}
-		if !found {
-			t.Error("p6 not found in o5")
-			return
-		}
-		expInCid, expInState, expOutCid, expOutState = c5cid, structs.PayState_COSIGNED_CANCELED, cid45, structs.PayState_COSIGNED_CANCELED
-		if inCid != expInCid || inState != expInState || outCid != expOutCid || outState != expOutState {
-			t.Errorf("pay states error get in: %x %s out: %x %s, exp int: %x %s out: %x %s",
-				inCid, fsm.PayStateName(inState), outCid, fsm.PayStateName(outState),
-				expInCid, fsm.PayStateName(expInState), expOutCid, fsm.PayStateName(expOutState))
+			t.Errorf("p6 err at o5: %s", err)
 			return
 		}
 
-		_, _, inCid, inState, outCid, outState, _, found, err = dal4.GetPaymentInfo(ctype.Hex2PayID(p6))
+		err = checkOspPayState(dal4, p6, cid45, structs.PayState_COSIGNED_CANCELED, cid14, structs.PayState_COSIGNED_CANCELED, 5)
 		if err != nil {
-			t.Error(err)
-			return
-		}
-		if !found {
-			t.Error("p6 not found in o4")
-			return
-		}
-		expInCid, expInState, expOutCid, expOutState = cid45, structs.PayState_COSIGNED_CANCELED, cid14, structs.PayState_COSIGNED_CANCELED
-		if inCid != expInCid || inState != expInState || outCid != expOutCid || outState != expOutState {
-			t.Errorf("pay states error get in: %x %s out: %x %s, exp int: %x %s out: %x %s",
-				inCid, fsm.PayStateName(inState), outCid, fsm.PayStateName(outState),
-				expInCid, fsm.PayStateName(expInState), expOutCid, fsm.PayStateName(expOutState))
+			t.Errorf("p6 err at o4: %s", err)
 			return
 		}
 
-		_, _, inCid, inState, outCid, outState, _, found, err = dal1.GetPaymentInfo(ctype.Hex2PayID(p6))
+		err = checkOspPayState(dal1, p6, cid14, structs.PayState_COSIGNED_CANCELED, cid13, structs.PayState_COSIGNED_CANCELED, 5)
 		if err != nil {
-			t.Error(err)
-			return
-		}
-		if !found {
-			t.Error("p6 not found in o1")
-			return
-		}
-		expInCid, expInState, expOutCid, expOutState = cid14, structs.PayState_COSIGNED_CANCELED, cid13, structs.PayState_COSIGNED_CANCELED
-		if inCid != expInCid || inState != expInState || outCid != expOutCid || outState != expOutState {
-			t.Errorf("pay states error get in: %x %s out: %x %s, exp int: %x %s out: %x %s",
-				inCid, fsm.PayStateName(inState), outCid, fsm.PayStateName(outState),
-				expInCid, fsm.PayStateName(expInState), expOutCid, fsm.PayStateName(expOutState))
+			t.Errorf("p6 err at o1: %s", err)
 			return
 		}
 
-		_, _, inCid, inState, outCid, outState, _, found, err = dal3.GetPaymentInfo(ctype.Hex2PayID(p6))
+		err = checkOspPayState(dal3, p6, cid13, structs.PayState_COSIGNED_CANCELED, cid34, structs.PayState_COSIGNED_CANCELED, 5)
 		if err != nil {
-			t.Error(err)
-			return
-		}
-		if !found {
-			t.Error("p6 not found in o3")
-			return
-		}
-		expInCid, expInState, expOutCid, expOutState = cid13, structs.PayState_COSIGNED_CANCELED, cid34, structs.PayState_COSIGNED_CANCELED
-		if inCid != expInCid || inState != expInState || outCid != expOutCid || outState != expOutState {
-			t.Errorf("pay states error get in: %x %s out: %x %s, exp int: %x %s out: %x %s",
-				inCid, fsm.PayStateName(inState), outCid, fsm.PayStateName(outState),
-				expInCid, fsm.PayStateName(expInState), expOutCid, fsm.PayStateName(expOutState))
+			t.Errorf("p6 err at o3: %s", err)
 			return
 		}
 
@@ -641,54 +465,21 @@ func multiOspRouting(args ...*tf.ServerController) func(*testing.T) {
 			return
 		}
 
-		_, _, inCid, inState, outCid, outState, _, found, err = dal3.GetPaymentInfo(ctype.Hex2PayID(p7))
+		err = checkOspPayState(dal3, p7, c3cid, structs.PayState_COSIGNED_PENDING, cid34, structs.PayState_COSIGNED_PENDING, 5)
 		if err != nil {
-			t.Error(err)
-			return
-		}
-		if !found {
-			t.Error("p7 not found in o3")
-			return
-		}
-		expInCid, expInState, expOutCid, expOutState = c3cid, structs.PayState_COSIGNED_PENDING, cid34, structs.PayState_COSIGNED_PENDING
-		if inCid != expInCid || inState != expInState || outCid != expOutCid || outState != expOutState {
-			t.Errorf("pay states error get in: %x %s out: %x %s, exp int: %x %s out: %x %s",
-				inCid, fsm.PayStateName(inState), outCid, fsm.PayStateName(outState),
-				expInCid, fsm.PayStateName(expInState), expOutCid, fsm.PayStateName(expOutState))
+			t.Errorf("p7 err at o3: %s", err)
 			return
 		}
 
-		_, _, inCid, inState, outCid, outState, _, found, err = dal4.GetPaymentInfo(ctype.Hex2PayID(p7))
+		err = checkOspPayState(dal4, p7, cid34, structs.PayState_COSIGNED_PENDING, cid45, structs.PayState_COSIGNED_PENDING, 5)
 		if err != nil {
-			t.Error(err)
-			return
-		}
-		if !found {
-			t.Error("p7 not found in o4")
-			return
-		}
-		expInCid, expInState, expOutCid, expOutState = cid34, structs.PayState_COSIGNED_PENDING, cid45, structs.PayState_COSIGNED_PENDING
-		if inCid != expInCid || inState != expInState || outCid != expOutCid || outState != expOutState {
-			t.Errorf("pay states error get in: %x %s out: %x %s, exp int: %x %s out: %x %s",
-				inCid, fsm.PayStateName(inState), outCid, fsm.PayStateName(outState),
-				expInCid, fsm.PayStateName(expInState), expOutCid, fsm.PayStateName(expOutState))
+			t.Errorf("p7 err at o4: %s", err)
 			return
 		}
 
-		_, _, inCid, inState, outCid, outState, _, found, err = dal5.GetPaymentInfo(ctype.Hex2PayID(p7))
+		err = checkOspPayState(dal5, p7, cid45, structs.PayState_COSIGNED_PENDING, c5cid, structs.PayState_COSIGNED_PENDING, 5)
 		if err != nil {
-			t.Error(err)
-			return
-		}
-		if !found {
-			t.Error("p7 not found in o5")
-			return
-		}
-		expInCid, expInState, expOutCid, expOutState = cid45, structs.PayState_COSIGNED_PENDING, c5cid, structs.PayState_COSIGNED_PENDING
-		if inCid != expInCid || inState != expInState || outCid != expOutCid || outState != expOutState {
-			t.Errorf("pay states error get in: %x %s out: %x %s, exp int: %x %s out: %x %s",
-				inCid, fsm.PayStateName(inState), outCid, fsm.PayStateName(outState),
-				expInCid, fsm.PayStateName(expInState), expOutCid, fsm.PayStateName(expOutState))
+			t.Errorf("p7 err at o5: %s", err)
 			return
 		}
 
@@ -699,54 +490,21 @@ func multiOspRouting(args ...*tf.ServerController) func(*testing.T) {
 			return
 		}
 
-		_, _, inCid, inState, outCid, outState, _, found, err = dal3.GetPaymentInfo(ctype.Hex2PayID(p7))
+		err = checkOspPayState(dal3, p7, c3cid, structs.PayState_COSIGNED_PENDING, cid34, structs.PayState_COSIGNED_CANCELED, 15)
 		if err != nil {
-			t.Error(err)
-			return
-		}
-		if !found {
-			t.Error("p7 not found in o3")
-			return
-		}
-		expInCid, expInState, expOutCid, expOutState = c3cid, structs.PayState_COSIGNED_PENDING, cid34, structs.PayState_COSIGNED_CANCELED
-		if inCid != expInCid || inState != expInState || outCid != expOutCid || outState != expOutState {
-			t.Errorf("pay states error get in: %x %s out: %x %s, exp int: %x %s out: %x %s",
-				inCid, fsm.PayStateName(inState), outCid, fsm.PayStateName(outState),
-				expInCid, fsm.PayStateName(expInState), expOutCid, fsm.PayStateName(expOutState))
+			t.Errorf("p7 err at o3: %s", err)
 			return
 		}
 
-		_, _, inCid, inState, outCid, outState, _, found, err = dal4.GetPaymentInfo(ctype.Hex2PayID(p7))
+		err = checkOspPayState(dal4, p7, cid34, structs.PayState_COSIGNED_CANCELED, cid45, structs.PayState_COSIGNED_CANCELED, 5)
 		if err != nil {
-			t.Error(err)
-			return
-		}
-		if !found {
-			t.Error("p7 not found in o4")
-			return
-		}
-		expInCid, expInState, expOutCid, expOutState = cid34, structs.PayState_COSIGNED_CANCELED, cid45, structs.PayState_COSIGNED_CANCELED
-		if inCid != expInCid || inState != expInState || outCid != expOutCid || outState != expOutState {
-			t.Errorf("pay states error get in: %x %s out: %x %s, exp int: %x %s out: %x %s",
-				inCid, fsm.PayStateName(inState), outCid, fsm.PayStateName(outState),
-				expInCid, fsm.PayStateName(expInState), expOutCid, fsm.PayStateName(expOutState))
+			t.Errorf("p7 err at o4: %s", err)
 			return
 		}
 
-		_, _, inCid, inState, outCid, outState, _, found, err = dal5.GetPaymentInfo(ctype.Hex2PayID(p7))
+		err = checkOspPayState(dal5, p7, cid45, structs.PayState_COSIGNED_CANCELED, c5cid, structs.PayState_COSIGNED_PENDING, 5)
 		if err != nil {
-			t.Error(err)
-			return
-		}
-		if !found {
-			t.Error("p7 not found in o5")
-			return
-		}
-		expInCid, expInState, expOutCid, expOutState = cid45, structs.PayState_COSIGNED_CANCELED, c5cid, structs.PayState_COSIGNED_PENDING
-		if inCid != expInCid || inState != expInState || outCid != expOutCid || outState != expOutState {
-			t.Errorf("pay states error get in: %x %s out: %x %s, exp int: %x %s out: %x %s",
-				inCid, fsm.PayStateName(inState), outCid, fsm.PayStateName(outState),
-				expInCid, fsm.PayStateName(expInState), expOutCid, fsm.PayStateName(expOutState))
+			t.Errorf("p7 err at o5: %s", err)
 			return
 		}
 	}

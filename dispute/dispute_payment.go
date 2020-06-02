@@ -3,6 +3,7 @@
 package dispute
 
 import (
+	"fmt"
 	"math/big"
 
 	"github.com/celer-network/goCeler/chain"
@@ -11,6 +12,7 @@ import (
 	"github.com/celer-network/goCeler/common"
 	"github.com/celer-network/goCeler/ctype"
 	"github.com/celer-network/goCeler/entity"
+	"github.com/celer-network/goCeler/transactor"
 	"github.com/celer-network/goCeler/utils"
 	"github.com/celer-network/goutils/log"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -80,9 +82,9 @@ func (p *Processor) resolvePaymentByConditions(payID ctype.PayIDType) error {
 	}
 	serializedRequest, err := proto.Marshal(request)
 
-	_, err = p.transactorPool.SubmitAndWaitMinedWithGenericHandler(
-		"resolve payment by conditions",
-		big.NewInt(0),
+	receipt, err := p.transactorPool.SubmitWaitMined(
+		fmt.Sprintf("resolve payment %x by conditions", payID),
+		&transactor.TxConfig{},
 		func(transactor bind.ContractTransactor, opts *bind.TransactOpts) (*types.Transaction, error) {
 			contract, err2 :=
 				payresolver.NewPayResolverTransactor(ctype.Bytes2Addr(pay.GetPayResolver()), transactor)
@@ -92,7 +94,7 @@ func (p *Processor) resolvePaymentByConditions(payID ctype.PayIDType) error {
 			return contract.ResolvePaymentByConditions(opts, serializedRequest)
 		})
 	if err != nil {
-		// check onchain again to handle cases when client call it multiple time
+		// check onchain again to handle cases when client call it multiple times
 		// TODO: change later for support numeric conditions
 		amt, _, _ := p.GetCondPayInfoFromRegistry(payID)
 		if amt.Cmp(maxAmt) == 0 {
@@ -100,6 +102,9 @@ func (p *Processor) resolvePaymentByConditions(payID ctype.PayIDType) error {
 		}
 		log.Errorln("ResolvePaymentByConditions tx error", err, "pay:", utils.PrintConditionalPay(pay))
 		return err
+	}
+	if receipt.Status != types.ReceiptStatusSuccessful {
+		return fmt.Errorf("resolve payment by conditions transaction %x failed", receipt.TxHash)
 	}
 	return nil
 }

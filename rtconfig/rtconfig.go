@@ -26,18 +26,21 @@ var (
 )
 
 const (
-	defaultStreamSendTimeoutS     = uint64(1)
-	defaultOspDepositMultiplier   = int64(10)
-	defaultMaxDisputeTimeout      = uint64(20000)
-	defaultMinDisputeTimeout      = uint64(8000)
-	defaultColdBootstrapDeposit   = uint64(1e18)
-	defaultMaxPaymentTimeout      = uint64(10000)
-	defaultMaxNumPendingPays      = uint64(200)
-	defaultRefillMaxWait          = uint64(180)
-	defaultRefillPoolLowRatio     = float64(0.2)
-	defaultDepositPollingInterval = uint64(10)
-	defaultDepositMinBatchSize    = uint64(10)
-	defaultDepositMaxBatchSize    = uint64(30) // upper bound is around 60 limited by gas
+	defaultStreamSendTimeoutS            = uint64(1)
+	defaultOspDepositMultiplier          = int64(10)
+	defaultMaxDisputeTimeout             = uint64(20000)
+	defaultMinDisputeTimeout             = uint64(8000)
+	defaultColdBootstrapDeposit          = uint64(1e18)
+	defaultMaxPaymentTimeout             = uint64(10000)
+	defaultMaxNumPendingPays             = uint64(200)
+	defaultRefillMaxWait                 = uint64(180)
+	defaultRefillPoolLowRatio            = float64(0.2)
+	defaultDepositPollingInterval        = uint64(10)
+	defaultDepositMinBatchSize           = uint64(10)
+	defaultDepositMaxBatchSize           = uint64(30)    // upper bound is around 60 limited by gas
+	defaultWaitMinedTxTimeout            = uint64(21600) // 6 hours
+	defaultWaitMinedTxQueryTimeout       = uint64(120)   // 2 minutes
+	defaultWaitMinedTxQueryRetryInterval = uint64(10)    // 10 seconds
 )
 
 // Init parse the json config file at path and start a goroutine to reload upon syscall.SIGHUP
@@ -309,4 +312,31 @@ func GetDepositMaxBatchSize() uint64 {
 		return defaultDepositMaxBatchSize
 	}
 	return rtc.GetDepositConfig().GetMaxBatchSize()
+}
+
+func GetWaitMinedTxTimeout() uint64 {
+	lock.RLock()
+	defer lock.RUnlock()
+	if rtc.GetWaitMinedConfig().GetTxTimeoutS() == 0 {
+		return defaultWaitMinedTxTimeout
+	}
+	return rtc.GetWaitMinedConfig().GetTxTimeoutS()
+}
+
+func GetWaitMinedTxQueryTimeout() uint64 {
+	lock.RLock()
+	defer lock.RUnlock()
+	if rtc.GetWaitMinedConfig().GetTxQueryTimeoutS() == 0 {
+		return defaultWaitMinedTxQueryTimeout
+	}
+	return rtc.GetWaitMinedConfig().GetTxQueryTimeoutS()
+}
+
+func GetWaitMinedTxQueryRetryInterval() uint64 {
+	lock.RLock()
+	defer lock.RUnlock()
+	if rtc.GetWaitMinedConfig().GetTxQueryRetryIntervalS() == 0 {
+		return defaultWaitMinedTxQueryRetryInterval
+	}
+	return rtc.GetWaitMinedConfig().GetTxQueryRetryIntervalS()
 }

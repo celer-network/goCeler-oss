@@ -73,14 +73,10 @@ func (p *Processor) depositEthPool() error {
 	log.Infof("deposit %f ETH to EthPool and wait transaction to be mined...", *amount)
 	amtWei := utils.Float2Wei(*amount)
 	ethPoolAddr := ctype.Hex2Addr(p.profile.EthPoolAddr)
-	receiptChan := make(chan *types.Receipt, 1)
-	_, err := p.transactor.Transact(
-		&transactor.TransactionMinedHandler{
-			OnMined: func(receipt *types.Receipt) {
-				receiptChan <- receipt
-			},
-		},
-		amtWei,
+
+	receipt, err := p.transactor.TransactWaitMined(
+		"ethpool deposit",
+		&transactor.TxConfig{EthValue: amtWei},
 		func(transactor bind.ContractTransactor, opts *bind.TransactOpts) (*types.Transaction, error) {
 			contract, err2 := ethpool.NewEthPoolTransactor(ethPoolAddr, transactor)
 			if err2 != nil {
@@ -92,12 +88,8 @@ func (p *Processor) depositEthPool() error {
 		log.Error(err)
 		return err
 	}
-	receipt := <-receiptChan
-	if receipt.Status == types.ReceiptStatusSuccessful {
-		log.Infof("ethpool deposit transaction %x succeeded", receipt.TxHash)
-	} else {
-		log.Errorf("ethpool deposit transaction %x failed", receipt.TxHash)
-		return fmt.Errorf("tx failed")
+	if receipt.Status != types.ReceiptStatusSuccessful {
+		return fmt.Errorf("ethpool deposit transaction %x failed", receipt.TxHash)
 	}
 	return nil
 }
@@ -111,14 +103,9 @@ func (p *Processor) approveEthPoolToLedger() error {
 	ethPoolAddr := ctype.Hex2Addr(p.profile.EthPoolAddr)
 	ledgerAddr := ctype.Hex2Addr(p.profile.LedgerAddr)
 
-	receiptChan := make(chan *types.Receipt, 1)
-	_, err = p.transactor.Transact(
-		&transactor.TransactionMinedHandler{
-			OnMined: func(receipt *types.Receipt) {
-				receiptChan <- receipt
-			},
-		},
-		big.NewInt(0),
+	receipt, err := p.transactor.TransactWaitMined(
+		"ethpool approve",
+		&transactor.TxConfig{},
 		func(transactor bind.ContractTransactor, opts *bind.TransactOpts) (*types.Transaction, error) {
 			contract, err2 := ethpool.NewEthPoolTransactor(ethPoolAddr, transactor)
 			if err2 != nil {
@@ -130,12 +117,8 @@ func (p *Processor) approveEthPoolToLedger() error {
 		log.Error(err)
 		return err
 	}
-	receipt := <-receiptChan
-	if receipt.Status == types.ReceiptStatusSuccessful {
-		log.Infof("approve ethpool to ledger transaction %x succeeded", receipt.TxHash)
-	} else {
-		log.Errorf("approve ethpool to ledger transaction %x failed", receipt.TxHash)
-		return fmt.Errorf("tx failed")
+	if receipt.Status != types.ReceiptStatusSuccessful {
+		return fmt.Errorf("ethpool approve transaction %x failed", receipt.TxHash)
 	}
 	return nil
 }
@@ -177,14 +160,10 @@ func (p *Processor) withdrawEthPool() error {
 	log.Infof("withdraw %f ETH from EthPool and wait transaction to be mined...", *amount)
 	amtWei := utils.Float2Wei(*amount)
 	ethPoolAddr := ctype.Hex2Addr(p.profile.EthPoolAddr)
-	receiptChan := make(chan *types.Receipt, 1)
-	_, err := p.transactor.Transact(
-		&transactor.TransactionMinedHandler{
-			OnMined: func(receipt *types.Receipt) {
-				receiptChan <- receipt
-			},
-		},
-		big.NewInt(0),
+
+	receipt, err := p.transactor.TransactWaitMined(
+		"ethpool withdraw",
+		&transactor.TxConfig{},
 		func(transactor bind.ContractTransactor, opts *bind.TransactOpts) (*types.Transaction, error) {
 			contract, err2 := ethpool.NewEthPoolTransactor(ethPoolAddr, transactor)
 			if err2 != nil {
@@ -196,12 +175,8 @@ func (p *Processor) withdrawEthPool() error {
 		log.Error(err)
 		return err
 	}
-	receipt := <-receiptChan
-	if receipt.Status == types.ReceiptStatusSuccessful {
-		log.Infof("ethpool withdraw transaction %x succeeded", receipt.TxHash)
-	} else {
-		log.Errorf("ethpool withdraw transaction %x failed", receipt.TxHash)
-		return fmt.Errorf("tx failed")
+	if receipt.Status != types.ReceiptStatusSuccessful {
+		return fmt.Errorf("ethpool withdraw transaction %x failed", receipt.TxHash)
 	}
 	return nil
 }
@@ -228,14 +203,10 @@ func (p *Processor) queryRouterRegistry() (uint64, error) {
 func (p *Processor) registerRouter() error {
 	log.Info("register OSP as state channel router and wait transaction to be mined...")
 	routerRegistryAddr := ctype.Hex2Addr(p.profile.RouterRegistryAddr)
-	receiptChan := make(chan *types.Receipt, 1)
-	_, err := p.transactor.Transact(
-		&transactor.TransactionMinedHandler{
-			OnMined: func(receipt *types.Receipt) {
-				receiptChan <- receipt
-			},
-		},
-		big.NewInt(0),
+
+	receipt, err := p.transactor.TransactWaitMined(
+		"register router",
+		&transactor.TxConfig{},
 		func(transactor bind.ContractTransactor, opts *bind.TransactOpts) (*types.Transaction, error) {
 			contract, err2 := routerregistry.NewRouterRegistryTransactor(routerRegistryAddr, transactor)
 			if err2 != nil {
@@ -247,12 +218,8 @@ func (p *Processor) registerRouter() error {
 		log.Error(err)
 		return err
 	}
-	receipt := <-receiptChan
-	if receipt.Status == types.ReceiptStatusSuccessful {
-		log.Infof("register router transaction %x succeeded", receipt.TxHash)
-	} else {
-		log.Errorf("register router transaction %x failed", receipt.TxHash)
-		return fmt.Errorf("tx failed")
+	if receipt.Status != types.ReceiptStatusSuccessful {
+		return fmt.Errorf("register router transaction %x failed", receipt.TxHash)
 	}
 	return nil
 }
@@ -261,14 +228,9 @@ func (p *Processor) deregisterRouter() error {
 	log.Info("deregister OSP as state channel router and wait transaction to be mined...")
 	routerRegistryAddr := ctype.Hex2Addr(p.profile.RouterRegistryAddr)
 
-	receiptChan := make(chan *types.Receipt, 1)
-	_, err := p.transactor.Transact(
-		&transactor.TransactionMinedHandler{
-			OnMined: func(receipt *types.Receipt) {
-				receiptChan <- receipt
-			},
-		},
-		big.NewInt(0),
+	receipt, err := p.transactor.TransactWaitMined(
+		"deregister router",
+		&transactor.TxConfig{},
 		func(transactor bind.ContractTransactor, opts *bind.TransactOpts) (*types.Transaction, error) {
 			contract, err2 := routerregistry.NewRouterRegistryTransactor(routerRegistryAddr, transactor)
 			if err2 != nil {
@@ -280,12 +242,8 @@ func (p *Processor) deregisterRouter() error {
 		log.Error(err)
 		return err
 	}
-	receipt := <-receiptChan
-	if receipt.Status == types.ReceiptStatusSuccessful {
-		log.Infof("deregister router transaction %x succeeded", receipt.TxHash)
-	} else {
-		log.Errorf("deregister router transaction %x failed", receipt.TxHash)
-		return fmt.Errorf("tx failed")
+	if receipt.Status != types.ReceiptStatusSuccessful {
+		return fmt.Errorf("deregister router transaction %x failed", receipt.TxHash)
 	}
 	return nil
 }

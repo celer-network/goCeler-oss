@@ -189,7 +189,7 @@ func sendCondPayNoEnoughFundAtOsp(t *testing.T, tokenType entity.TokenType, toke
 		return
 	}
 
-	err = waitForPaymentCompletion(p1, c1, c2)
+	err = waitForPaymentCompletion(p1, c1, nil)
 	if err != nil {
 		t.Error(err)
 		return
@@ -300,7 +300,7 @@ func sendCondPayDstOffline(t *testing.T, tokenType entity.TokenType, tokenAddr s
 		return
 	}
 
-	err = waitForPaymentCompletion(p1, c1, c2)
+	err = waitForPaymentCompletion(p1, c1, nil)
 	if err != nil {
 		t.Error(err)
 		return

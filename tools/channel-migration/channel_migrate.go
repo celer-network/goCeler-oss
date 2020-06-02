@@ -30,12 +30,13 @@ import (
 	"github.com/celer-network/goCeler/chain"
 	"github.com/celer-network/goCeler/chain/channel-eth-go/ledger"
 	"github.com/celer-network/goCeler/common"
+	"github.com/celer-network/goCeler/config"
 	"github.com/celer-network/goCeler/ctype"
 	"github.com/celer-network/goCeler/entity"
 	"github.com/celer-network/goCeler/migrate"
 	"github.com/celer-network/goCeler/storage"
 	"github.com/celer-network/goCeler/tools/toolsetup"
-	"github.com/celer-network/goCeler/utils"
+	"github.com/celer-network/goCeler/transactor"
 	"github.com/celer-network/goutils/log"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -51,6 +52,7 @@ var (
 	storedir  = flag.String("storedir", "", "local database directory")
 	chanLimit = flag.Int("limit", 50, "limits of channel number per migration")
 	maxGas    = flag.Int("maxgas", 4, "maximum gas price allowed in gwei")
+	blkdelay  = flag.Int("blkdelay", 0, "block delay for wait mined")
 )
 
 const (
@@ -86,11 +88,8 @@ func main() {
 	}
 
 	cp := common.ParseProfile(*profile)
-	if *storesql != "" {
-		cp.StoreSql = *storesql
-	} else if *storedir != "" {
-		cp.StoreDir = *storedir
-	}
+	overrideProfile(cp)
+	config.SetGlobalConfigFromProfile(cp)
 
 	dal := toolsetup.NewDAL(cp)
 	client, err := ethclient.Dial(cp.ETHInstance)
@@ -194,7 +193,7 @@ func handleSingleOnchainTx(
 	ctx2, cancel := context.WithTimeout(ctx, waitMinedTimeout)
 	defer cancel()
 
-	receipt, err := utils.WaitMined(ctx2, client, tx, blockDelay)
+	receipt, err := transactor.WaitMined(ctx2, client, tx, blockDelay, config.BlockIntervalSec)
 	if err != nil {
 		log.Errorf("channel migration tx failed for channel(%x): %w", cid, err)
 		return txFailed
@@ -283,4 +282,13 @@ func getFromLedger(onchainReq []byte) (ctype.Addr, error) {
 	}
 
 	return ctype.Bytes2Addr(info.GetFromLedgerAddress()), nil
+}
+
+func overrideProfile(profile *common.CProfile) {
+	profile.BlockDelayNum = uint64(*blkdelay)
+	if *storesql != "" {
+		profile.StoreSql = *storesql
+	} else if *storedir != "" {
+		profile.StoreDir = *storedir
+	}
 }

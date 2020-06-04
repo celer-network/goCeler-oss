@@ -10,11 +10,11 @@ import (
 	"testing"
 
 	"github.com/celer-network/goCeler/app"
-	"github.com/celer-network/goCeler/common/cobj"
 	"github.com/celer-network/goCeler/ctype"
 	"github.com/celer-network/goCeler/entity"
 	tf "github.com/celer-network/goCeler/testing"
 	"github.com/celer-network/goCeler/testing/testapp"
+	"github.com/celer-network/goutils/eth"
 	"github.com/celer-network/goutils/log"
 	"github.com/ethereum/go-ethereum/accounts/keystore"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -232,7 +232,7 @@ func getOracleProofBytes(stateProofBytes []byte, players []string, updater strin
 	oracleKsBytes, _ := ioutil.ReadFile(oracleKeyStore)
 	key, _ := keystore.DecryptKey(oracleKsBytes, "")
 	privKey := hex.EncodeToString(crypto.FromECDSA(key.PrivateKey))
-	oracle, err := cobj.NewCelerSigner(privKey)
+	oracle, err := eth.NewSigner(privKey)
 	if err != nil {
 		return nil, err
 	}

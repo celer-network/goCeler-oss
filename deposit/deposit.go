@@ -17,7 +17,7 @@ import (
 	"github.com/celer-network/goCeler/metrics"
 	"github.com/celer-network/goCeler/monitor"
 	"github.com/celer-network/goCeler/storage"
-	"github.com/celer-network/goCeler/transactor"
+	"github.com/celer-network/goutils/eth"
 	"github.com/celer-network/goutils/log"
 	"github.com/ethereum/go-ethereum/core/types"
 )
@@ -29,7 +29,7 @@ type DepositCallback interface {
 
 type Processor struct {
 	nodeConfig     common.GlobalNodeConfig
-	transactor     *transactor.Transactor
+	transactor     *eth.Transactor
 	dal            *storage.DAL
 	monitorService intfs.MonitorService
 	isOSP          bool // server mode (true) or client mode (false)
@@ -52,7 +52,7 @@ type Processor struct {
 
 func StartProcessor(
 	nodeConfig common.GlobalNodeConfig,
-	transactor *transactor.Transactor,
+	transactor *eth.Transactor,
 	dal *storage.DAL,
 	monitorService intfs.MonitorService,
 	isOSP bool,
@@ -109,13 +109,12 @@ func (p *Processor) monitorOnAllLedgers() {
 
 // Continuously monitor the on-chain "Deposit" event.
 func (p *Processor) monitorEvent(ledgerContract chain.Contract) {
-	p.monitorService.Monitor(
-		event.Deposit,
-		ledgerContract,
-		p.monitorService.GetCurrentBlockNumber(),
-		nil,
-		false, /* quickCatch */
-		false,
+	monitorCfg := &monitor.Config{
+		EventName:  event.Deposit,
+		Contract:   ledgerContract,
+		StartBlock: p.monitorService.GetCurrentBlockNumber(),
+	}
+	p.monitorService.Monitor(monitorCfg,
 		func(id monitor.CallbackID, eLog types.Log) {
 			e := &ledger.CelerLedgerDeposit{}
 			err := ledgerContract.ParseEvent(event.Deposit, eLog, e)

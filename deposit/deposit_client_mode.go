@@ -11,8 +11,8 @@ import (
 	"github.com/celer-network/goCeler/common"
 	"github.com/celer-network/goCeler/common/structs"
 	"github.com/celer-network/goCeler/ctype"
-	"github.com/celer-network/goCeler/transactor"
 	"github.com/celer-network/goCeler/utils"
+	"github.com/celer-network/goutils/eth"
 	"github.com/celer-network/goutils/log"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -177,7 +177,7 @@ func (p *Processor) sendApproveTx(
 	amtInt *big.Int) (string, error) {
 	tx, err := p.transactor.Transact(
 		nil,
-		&transactor.TxConfig{},
+		&eth.TxConfig{},
 		func(
 			transactor bind.ContractTransactor,
 			opts *bind.TransactOpts) (*types.Transaction, error) {
@@ -197,7 +197,7 @@ func (p *Processor) sendDepositTx(
 	cid ctype.CidType, txValue *big.Int, amt *big.Int) (string, error) {
 	tx, err := p.transactor.Transact(
 		nil,
-		&transactor.TxConfig{EthValue: txValue},
+		&eth.TxConfig{EthValue: txValue},
 		func(
 			transactor bind.ContractTransactor,
 			opts *bind.TransactOpts) (*types.Transaction, error) {

@@ -19,8 +19,9 @@ import (
 )
 
 const (
-	// log watch polling as a multiplier of block number polling
-	watchBlockInterval = uint64(1)
+	// default log watch polling as a multiplier of block number if not specified
+	// ie. 1 means check log every block
+	defaultCheckInterval = uint64(1)
 )
 
 // CallbackID is the unique callback ID for deadlines and events
@@ -56,17 +57,31 @@ func (dq *DeadlineQueue) Top() (top interface{}) {
 	return
 }
 
+// Config is used by external callers to pass in info, will be converted to Event for internal use
+// Reason not use Event directly: Event is more like internal struct
+// most fields are from previous MonitorService Monitor func args
+// CheckInterval is newly added, meanging to check log for event every x blocks.
+// if 0 or not set, defaultCheckInterval (1) will be used
+type Config struct {
+	EventName            string
+	Contract             chain.Contract
+	StartBlock, EndBlock *big.Int
+	QuickCatch, Reset    bool
+	CheckInterval        uint64
+}
+
 // Event is the metadata for an event
 type Event struct {
-	Addr       ctype.Addr
-	RawAbi     string
-	Name       string
-	WatchName  string
-	StartBlock *big.Int
-	EndBlock   *big.Int
-	BlockDelay uint64
-	Callback   func(CallbackID, ethtypes.Log)
-	watch      *watcher.Watch
+	Addr          ctype.Addr
+	RawAbi        string
+	Name          string
+	WatchName     string
+	StartBlock    *big.Int
+	EndBlock      *big.Int
+	BlockDelay    uint64
+	CheckInterval uint64
+	Callback      func(CallbackID, ethtypes.Log)
+	watch         *watcher.Watch
 }
 
 // Service struct stores service parameters and registered deadlines and events
@@ -191,37 +206,37 @@ func (s *Service) createEventWatch(
 	if err != nil {
 		return nil, err
 	}
-	return s.watch.NewWatch(e.WatchName, q, e.BlockDelay, watchBlockInterval, reset)
+	if e.CheckInterval == 0 {
+		e.CheckInterval = defaultCheckInterval
+	}
+	return s.watch.NewWatch(e.WatchName, q, e.BlockDelay, e.CheckInterval, reset)
 }
 
-func (s *Service) Monitor(
-	eventName string,
-	contract chain.Contract,
-	startBlock *big.Int,
-	endBlock *big.Int,
-	quickCatch bool,
-	reset bool,
-	callback func(CallbackID, ethtypes.Log)) (CallbackID, error) {
+func (s *Service) Monitor(cfg *Config, callback func(CallbackID, ethtypes.Log)) (CallbackID, error) {
 	if !s.enabled {
 		log.Infof("OSP (%s) not listening to on-chain logs", s.rpcAddr)
 		return 0, nil
 	}
-	addr := contract.GetAddr()
-	watchName := fmt.Sprintf("%s-%s", addr.String(), eventName)
+	addr := cfg.Contract.GetAddr()
+	watchName := fmt.Sprintf("%s-%s", addr.String(), cfg.EventName)
 	eventToListen := &Event{
-		Addr:       addr,
-		RawAbi:     contract.GetABI(),
-		Name:       eventName,
-		WatchName:  watchName,
-		StartBlock: startBlock,
-		EndBlock:   endBlock,
-		BlockDelay: s.blockDelay,
-		Callback:   callback,
+		Addr:          addr,
+		RawAbi:        cfg.Contract.GetABI(),
+		Name:          cfg.EventName,
+		WatchName:     watchName,
+		StartBlock:    cfg.StartBlock,
+		EndBlock:      cfg.EndBlock,
+		BlockDelay:    s.blockDelay,
+		CheckInterval: cfg.CheckInterval,
+		Callback:      callback,
 	}
-	if quickCatch {
+	if cfg.QuickCatch {
 		eventToListen.BlockDelay = config.QuickCatchBlockDelay
 	}
-	id, err := s.MonitorEvent(*eventToListen, reset)
+	if eventToListen.CheckInterval == 0 {
+		eventToListen.CheckInterval = defaultCheckInterval
+	}
+	id, err := s.MonitorEvent(*eventToListen, cfg.Reset)
 	if err != nil {
 		log.Errorf("Cannot register event %s: %s", watchName, err)
 		return 0, err

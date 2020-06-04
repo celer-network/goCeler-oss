@@ -19,6 +19,7 @@ import (
 	"github.com/celer-network/goCeler/route"
 	"github.com/celer-network/goCeler/rpc"
 	"github.com/celer-network/goCeler/storage"
+	"github.com/celer-network/goutils/eth"
 	"github.com/celer-network/goutils/log"
 )
 
@@ -31,7 +32,7 @@ type CelerMsgDispatcher struct {
 	stop                bool
 	nodeConfig          common.GlobalNodeConfig
 	streamWriter        common.StreamWriter
-	signer              common.Signer
+	signer              eth.Signer
 	monitorService      intfs.MonitorService
 	dal                 *storage.DAL
 	cooperativeWithdraw CooperativeWithdraw
@@ -49,7 +50,7 @@ type CelerMsgDispatcher struct {
 func NewCelerMsgDispatcher(
 	nodeConfig common.GlobalNodeConfig,
 	streamWriter common.StreamWriter,
-	signer common.Signer,
+	signer eth.Signer,
 	monitorService intfs.MonitorService,
 	dal *storage.DAL,
 	cooperativeWithdraw CooperativeWithdraw,

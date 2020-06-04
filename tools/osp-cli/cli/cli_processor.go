@@ -10,9 +10,8 @@ import (
 	"github.com/celer-network/goCeler/monitor"
 	"github.com/celer-network/goCeler/storage"
 	"github.com/celer-network/goCeler/tools/toolsetup"
-	"github.com/celer-network/goCeler/transactor"
-	"github.com/celer-network/goCeler/utils"
 	"github.com/celer-network/goCeler/watcher"
+	"github.com/celer-network/goutils/eth"
 	"github.com/celer-network/goutils/log"
 )
 
@@ -21,7 +20,7 @@ type Processor struct {
 	profile    *common.CProfile
 	nodeConfig common.GlobalNodeConfig
 	dal        *storage.DAL
-	transactor *transactor.Transactor
+	transactor *eth.Transactor
 	disputer   *dispute.Processor
 }
 
@@ -42,7 +41,7 @@ func (p *Processor) Setup(db, ospkey, disputer bool) {
 		var err error
 		keyStore, passPhrase := toolsetup.ParseKeyStoreFile(*ksfile, *nopassword)
 		if ospkey { // enforce using osp keystore
-			myAddr, _, err2 := utils.GetAddrAndPrivKey(keyStore, passPhrase)
+			myAddr, _, err2 := eth.GetAddrPrivKeyFromKeystore(keyStore, passPhrase)
 			if err2 != nil {
 				log.Fatal(err2)
 			}
@@ -51,14 +50,14 @@ func (p *Processor) Setup(db, ospkey, disputer bool) {
 			}
 		}
 
-		p.transactor, err = transactor.NewTransactor(keyStore, passPhrase, ethclient)
+		p.transactor, err = eth.NewTransactor(keyStore, passPhrase, ethclient)
 		if err != nil {
 			log.Fatal(err)
 		}
 
 		if disputer {
 			log.Debug("setup disputer...")
-			transactorPool, err := transactor.NewPool([]*transactor.Transactor{p.transactor})
+			transactorPool, err := eth.NewTransactorPool([]*eth.Transactor{p.transactor})
 			if err != nil {
 				log.Fatal(err)
 			}

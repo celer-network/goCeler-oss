@@ -7,14 +7,14 @@ import (
 	"github.com/celer-network/goCeler/common/intfs"
 	"github.com/celer-network/goCeler/route"
 	"github.com/celer-network/goCeler/storage"
-	"github.com/celer-network/goCeler/transactor"
+	"github.com/celer-network/goutils/eth"
 )
 
 // Processor struct implements the actual disputing logic
 type Processor struct {
 	nodeConfig      common.GlobalNodeConfig
-	transactor      *transactor.Transactor
-	transactorPool  *transactor.Pool
+	transactor      *eth.Transactor
+	transactorPool  *eth.TransactorPool
 	routeController *route.Controller
 	monitorService  intfs.MonitorService
 	dal             *storage.DAL
@@ -24,8 +24,8 @@ type Processor struct {
 // NewProcessor creates a new Disputer struct
 func NewProcessor(
 	nodeConfig common.GlobalNodeConfig,
-	transactor *transactor.Transactor,
-	transactorPool *transactor.Pool,
+	transactor *eth.Transactor,
+	transactorPool *eth.TransactorPool,
 	routeController *route.Controller,
 	monitorService intfs.MonitorService,
 	dal *storage.DAL,

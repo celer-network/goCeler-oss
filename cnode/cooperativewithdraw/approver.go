@@ -9,6 +9,7 @@ import (
 	"github.com/celer-network/goCeler/ctype"
 	"github.com/celer-network/goCeler/rpc"
 	"github.com/celer-network/goCeler/utils"
+	"github.com/celer-network/goutils/eth"
 	"github.com/celer-network/goutils/log"
 	"github.com/golang/protobuf/proto"
 )
@@ -35,7 +36,7 @@ func (p *Processor) sendResponse(
 	if err != nil {
 		return err
 	}
-	if !utils.SigIsValid(peer, serializedInfo, request.RequesterSig) {
+	if !eth.SigIsValid(peer, serializedInfo, request.RequesterSig) {
 		return errors.New("Invalid CooperativeWithdrawRequest signature")
 	}
 

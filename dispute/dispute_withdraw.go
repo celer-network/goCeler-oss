@@ -18,7 +18,7 @@ import (
 	"github.com/celer-network/goCeler/metrics"
 	"github.com/celer-network/goCeler/monitor"
 	"github.com/celer-network/goCeler/storage"
-	"github.com/celer-network/goCeler/transactor"
+	"github.com/celer-network/goutils/eth"
 	"github.com/celer-network/goutils/log"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -53,7 +53,7 @@ func (p *Processor) IntendWithdraw(cidFrom ctype.CidType, amount *big.Int, cidTo
 
 	receipt, err := p.transactor.TransactWaitMined(
 		fmt.Sprintf("IntendWithdraw from channel %x", cidFrom),
-		&transactor.TxConfig{},
+		&eth.TxConfig{},
 		func(transactor bind.ContractTransactor, opts *bind.TransactOpts) (*types.Transaction, error) {
 			chanLedger := p.nodeConfig.GetLedgerContractOf(cidFrom)
 			if chanLedger == nil {
@@ -101,7 +101,7 @@ func (p *Processor) ConfirmWithdraw(cid ctype.CidType) error {
 
 	receipt, err := p.transactor.TransactWaitMined(
 		fmt.Sprintf("ConfirmWithdraw from channel %x", cid),
-		&transactor.TxConfig{},
+		&eth.TxConfig{},
 		func(transactor bind.ContractTransactor, opts *bind.TransactOpts) (*types.Transaction, error) {
 			chanLedger := p.nodeConfig.GetLedgerContractOf(cid)
 			if chanLedger == nil {
@@ -133,7 +133,7 @@ func (p *Processor) VetoWithdraw(cid ctype.CidType) error {
 	log.Infoln("Veto withdraw", cid.Hex())
 	receipt, err := p.transactor.TransactWaitMined(
 		fmt.Sprintf("VetoWithdraw from channel %x", cid),
-		&transactor.TxConfig{},
+		&eth.TxConfig{},
 		func(transactor bind.ContractTransactor, opts *bind.TransactOpts) (*types.Transaction, error) {
 			chanLedger := p.nodeConfig.GetLedgerContractOf(cid)
 			if chanLedger == nil {
@@ -157,13 +157,12 @@ func (p *Processor) VetoWithdraw(cid ctype.CidType) error {
 }
 
 func (p *Processor) monitorNoncooperativeWithdrawEvent(ledgerContract chain.Contract) {
-	_, monErr := p.monitorService.Monitor(
-		event.IntendWithdraw,
-		ledgerContract,
-		p.monitorService.GetCurrentBlockNumber(),
-		nil,   /*endBlock*/
-		false, /*quickCatch*/
-		false, /*reset*/
+	monitorCfg := &monitor.Config{
+		EventName:  event.IntendWithdraw,
+		Contract:   ledgerContract,
+		StartBlock: p.monitorService.GetCurrentBlockNumber(),
+	}
+	_, monErr := p.monitorService.Monitor(monitorCfg,
 		func(id monitor.CallbackID, eLog types.Log) {
 			// CAVEAT!!!: suppose we have the same struct of event.
 			// If event struct changes, this monitor does not work.
@@ -195,14 +194,12 @@ func (p *Processor) monitorNoncooperativeWithdrawEvent(ledgerContract chain.Cont
 	if monErr != nil {
 		log.Error(monErr)
 	}
-
-	_, monErr = p.monitorService.Monitor(
-		event.ConfirmWithdraw,
-		ledgerContract,
-		p.monitorService.GetCurrentBlockNumber(),
-		nil,   /*endBlock*/
-		false, /*quickCatch*/
-		false, /*reset*/
+	monitorCfg2 := &monitor.Config{
+		EventName:  event.ConfirmWithdraw,
+		Contract:   ledgerContract,
+		StartBlock: p.monitorService.GetCurrentBlockNumber(),
+	}
+	_, monErr = p.monitorService.Monitor(monitorCfg2,
 		func(id monitor.CallbackID, eLog types.Log) {
 			// CAVEAT!!!: suppose we have the same struct of event.
 			// If event struct changes, this monitor does not work.

@@ -7,7 +7,7 @@ import (
 	"sort"
 
 	"github.com/celer-network/goCeler/ctype"
-	"github.com/celer-network/goCeler/utils"
+	"github.com/celer-network/goutils/eth"
 	"github.com/celer-network/goutils/log"
 	"github.com/golang/protobuf/proto"
 )
@@ -101,7 +101,7 @@ func SortPlayerSigs(state []byte, sigs [][]byte) [][]byte {
 		sigs: sigs,
 	}
 	for _, sig := range sigs {
-		sorted.players = append(sorted.players, utils.RecoverSigner(state, sig).Bytes())
+		sorted.players = append(sorted.players, eth.RecoverSigner(state, sig).Bytes())
 	}
 	sort.Sort(sorted)
 	return sorted.sigs

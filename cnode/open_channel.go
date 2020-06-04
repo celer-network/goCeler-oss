@@ -30,7 +30,7 @@ import (
 	"github.com/celer-network/goCeler/rpc"
 	"github.com/celer-network/goCeler/rtconfig"
 	"github.com/celer-network/goCeler/storage"
-	"github.com/celer-network/goCeler/transactor"
+	"github.com/celer-network/goutils/eth"
 	"github.com/celer-network/goCeler/utils"
 	"github.com/celer-network/goutils/log"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -52,8 +52,8 @@ var zeroAmtBytes = []byte{0}
 
 type openChannelProcessor struct {
 	nodeConfig          common.GlobalNodeConfig
-	signer              common.Signer
-	transactor          *transactor.Transactor
+	signer              eth.Signer
+	transactor          *eth.Transactor
 	dal                 *storage.DAL
 	connectionManager   *rpc.ConnectionManager
 	monitorService      intfs.MonitorService
@@ -72,8 +72,8 @@ type openChannelProcessor struct {
 
 func startOpenChannelProcessor(
 	nodeConfig common.GlobalNodeConfig,
-	signer common.Signer,
-	transactor *transactor.Transactor,
+	signer eth.Signer,
+	transactor *eth.Transactor,
 	dal *storage.DAL,
 	connectionManager *rpc.ConnectionManager,
 	monitorService intfs.MonitorService,
@@ -389,7 +389,7 @@ func (p *openChannelProcessor) approveErc20Allowance(ledgerAddr ctype.Addr, amtS
 	if allowance.Cmp(amtSelf) < 0 {
 		receipt, approveErr := p.transactor.TransactWaitMined(
 			"Approve",
-			&transactor.TxConfig{},
+			&eth.TxConfig{},
 			func(
 				transactor bind.ContractTransactor,
 				opts *bind.TransactOpts) (*types.Transaction, error) {
@@ -442,7 +442,7 @@ func (p *openChannelProcessor) sendOpenChannelTransaction(
 	log.Infoln("Sending OpenChannel:", utils.PrintChannelInitializer(initializer))
 	cid := ctype.Bytes2Cid(peerResponse.GetPaymentChannelId())
 	_, err = p.transactor.Transact(
-		&transactor.TransactionStateHandler{
+		&eth.TransactionStateHandler{
 			OnMined: func(receipt *types.Receipt) {
 				txHash := receipt.TxHash
 				tokenAddr := utils.GetTokenAddr(initializer.GetInitDistribution().GetToken())
@@ -466,7 +466,7 @@ func (p *openChannelProcessor) sendOpenChannelTransaction(
 				}
 			},
 		},
-		&transactor.TxConfig{EthValue: txValue},
+		&eth.TxConfig{EthValue: txValue},
 		func(transactor bind.ContractTransactor, opts *bind.TransactOpts) (*types.Transaction, error) {
 			contract, err2 := ledger.NewCelerLedgerTransactor(ledgerAddr, transactor)
 			if err2 != nil {
@@ -968,13 +968,12 @@ func (p *openChannelProcessor) monitorOnAllLedgers() {
 }
 
 func (p *openChannelProcessor) monitorEvent(ledgerContract chain.Contract) {
-	_, err := p.monitorService.Monitor(
-		event.OpenChannel,
-		ledgerContract,
-		p.monitorService.GetCurrentBlockNumber(),
-		nil,
-		false, /* quickCatch */
-		false,
+	monitorCfg := &monitor.Config{
+		EventName:  event.OpenChannel,
+		Contract:   ledgerContract,
+		StartBlock: p.monitorService.GetCurrentBlockNumber(),
+	}
+	_, err := p.monitorService.Monitor(monitorCfg,
 		func(id monitor.CallbackID, eLog types.Log) {
 			ocem := pem.NewOcem(p.nodeConfig.GetRPCAddr())
 			ocem.Type = pem.OpenChannelEventType_CHANNEL_MINED
@@ -1008,16 +1007,15 @@ func (p *openChannelProcessor) monitorEvent(ledgerContract chain.Contract) {
 
 func (p *openChannelProcessor) monitorSingleEvent(ledgerContract chain.Contract, reset bool) {
 	startBlock := p.monitorService.GetCurrentBlockNumber()
-	duration := new(big.Int)
-	duration.SetUint64(config.OpenChannelTimeout)
-	endBlock := new(big.Int).Add(startBlock, duration)
-	_, err := p.monitorService.Monitor(
-		event.OpenChannel,
-		ledgerContract,
-		startBlock,
-		endBlock,
-		false, /* quickCatch */
-		reset,
+	endBlock := new(big.Int).Add(startBlock, big.NewInt(int64(config.OpenChannelTimeout)))
+	monitorCfg := &monitor.Config{
+		EventName:  event.OpenChannel,
+		Contract:   ledgerContract,
+		StartBlock: startBlock,
+		EndBlock:   endBlock,
+		Reset:      reset,
+	}
+	_, err := p.monitorService.Monitor(monitorCfg,
 		func(id monitor.CallbackID, eLog types.Log) {
 			ocem := pem.NewOcem(p.nodeConfig.GetRPCAddr())
 			ocem.Type = pem.OpenChannelEventType_CHANNEL_MINED

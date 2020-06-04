@@ -19,6 +19,7 @@ import (
 	"github.com/celer-network/goCeler/route"
 	"github.com/celer-network/goCeler/rpc"
 	"github.com/celer-network/goCeler/storage"
+	"github.com/celer-network/goutils/eth"
 	"github.com/celer-network/goutils/log"
 	"github.com/golang/protobuf/proto"
 )
@@ -46,7 +47,7 @@ const (
 type CelerMsgHandler struct {
 	nodeConfig          common.GlobalNodeConfig
 	streamWriter        common.StreamWriter
-	signer              common.Signer
+	signer              eth.Signer
 	monitorService      intfs.MonitorService
 	serverForwarder     handlers.ForwardToServerCallback
 	onReceivingToken    event.OnReceivingTokenCallback
@@ -65,7 +66,7 @@ type CelerMsgHandler struct {
 func NewCelerMsgHandler(
 	nodeConfig common.GlobalNodeConfig,
 	streamWriter common.StreamWriter,
-	signer common.Signer,
+	signer eth.Signer,
 	monitorService intfs.MonitorService,
 	serverForwarder handlers.ForwardToServerCallback,
 	onReceivingToken event.OnReceivingTokenCallback,

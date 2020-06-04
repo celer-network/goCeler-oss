@@ -16,6 +16,7 @@ import (
 
 	"github.com/celer-network/goCeler/ctype"
 	"github.com/celer-network/goCeler/utils"
+	"github.com/celer-network/goutils/eth"
 	"github.com/celer-network/goutils/log"
 )
 
@@ -26,21 +27,18 @@ var (
 )
 
 const (
-	defaultStreamSendTimeoutS            = uint64(1)
-	defaultOspDepositMultiplier          = int64(10)
-	defaultMaxDisputeTimeout             = uint64(20000)
-	defaultMinDisputeTimeout             = uint64(8000)
-	defaultColdBootstrapDeposit          = uint64(1e18)
-	defaultMaxPaymentTimeout             = uint64(10000)
-	defaultMaxNumPendingPays             = uint64(200)
-	defaultRefillMaxWait                 = uint64(180)
-	defaultRefillPoolLowRatio            = float64(0.2)
-	defaultDepositPollingInterval        = uint64(10)
-	defaultDepositMinBatchSize           = uint64(10)
-	defaultDepositMaxBatchSize           = uint64(30)    // upper bound is around 60 limited by gas
-	defaultWaitMinedTxTimeout            = uint64(21600) // 6 hours
-	defaultWaitMinedTxQueryTimeout       = uint64(120)   // 2 minutes
-	defaultWaitMinedTxQueryRetryInterval = uint64(10)    // 10 seconds
+	defaultStreamSendTimeoutS     = uint64(1)
+	defaultOspDepositMultiplier   = int64(10)
+	defaultMaxDisputeTimeout      = uint64(20000)
+	defaultMinDisputeTimeout      = uint64(8000)
+	defaultColdBootstrapDeposit   = uint64(1e18)
+	defaultMaxPaymentTimeout      = uint64(10000)
+	defaultMaxNumPendingPays      = uint64(200)
+	defaultRefillMaxWait          = uint64(180)
+	defaultRefillPoolLowRatio     = float64(0.2)
+	defaultDepositPollingInterval = uint64(10)
+	defaultDepositMinBatchSize    = uint64(10)
+	defaultDepositMaxBatchSize    = uint64(30) // upper bound is around 60 limited by gas
 )
 
 // Init parse the json config file at path and start a goroutine to reload upon syscall.SIGHUP
@@ -85,7 +83,7 @@ func updateConfigFromFile(path string) error {
 	lock.Lock()
 	rtc = newCfg
 	lock.Unlock()
-	log.SetLevelByName(rtc.LogLevel)
+	setConfig()
 	jsonstr, err := utils.PbToJSONString(newCfg)
 	if err == nil { // jsonstr is good
 		log.Info("New runtime config:", jsonstr)
@@ -93,6 +91,18 @@ func updateConfigFromFile(path string) error {
 		log.Warnf("New runtime config applied %+v but json marshal err:%v", newCfg, err)
 	}
 	return nil
+}
+
+func setConfig() {
+	lock.RLock()
+	defer lock.RUnlock()
+	log.SetLevelByName(rtc.LogLevel)
+	// TODO: wait for goutils/eth support to enable local config
+	eth.SetGasLimit(rtc.MinGasGwei, rtc.MaxGasGwei)
+	eth.SetWaitMinedConfig(
+		rtc.GetWaitMinedConfig().GetTxTimeoutS(),
+		rtc.GetWaitMinedConfig().GetTxQueryTimeoutS(),
+		rtc.GetWaitMinedConfig().GetTxQueryRetryIntervalS())
 }
 
 // GetOpenChanWaitSecond returns open_chan_wait_s
@@ -312,31 +322,4 @@ func GetDepositMaxBatchSize() uint64 {
 		return defaultDepositMaxBatchSize
 	}
 	return rtc.GetDepositConfig().GetMaxBatchSize()
-}
-
-func GetWaitMinedTxTimeout() uint64 {
-	lock.RLock()
-	defer lock.RUnlock()
-	if rtc.GetWaitMinedConfig().GetTxTimeoutS() == 0 {
-		return defaultWaitMinedTxTimeout
-	}
-	return rtc.GetWaitMinedConfig().GetTxTimeoutS()
-}
-
-func GetWaitMinedTxQueryTimeout() uint64 {
-	lock.RLock()
-	defer lock.RUnlock()
-	if rtc.GetWaitMinedConfig().GetTxQueryTimeoutS() == 0 {
-		return defaultWaitMinedTxQueryTimeout
-	}
-	return rtc.GetWaitMinedConfig().GetTxQueryTimeoutS()
-}
-
-func GetWaitMinedTxQueryRetryInterval() uint64 {
-	lock.RLock()
-	defer lock.RUnlock()
-	if rtc.GetWaitMinedConfig().GetTxQueryRetryIntervalS() == 0 {
-		return defaultWaitMinedTxQueryRetryInterval
-	}
-	return rtc.GetWaitMinedConfig().GetTxQueryRetryIntervalS()
 }

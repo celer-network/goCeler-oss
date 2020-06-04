@@ -15,13 +15,14 @@ import (
 	"github.com/celer-network/goCeler/rpc"
 	"github.com/celer-network/goCeler/storage"
 	"github.com/celer-network/goCeler/utils"
+	"github.com/celer-network/goutils/eth"
 	"github.com/celer-network/goutils/log"
 )
 
 // Messager sends hop and flow messages
 type Messager struct {
 	nodeConfig       common.GlobalNodeConfig
-	signer           common.Signer
+	signer           eth.Signer
 	streamWriter     common.StreamWriter
 	routeForwarder   *route.Forwarder
 	monitorService   intfs.MonitorService
@@ -34,7 +35,7 @@ type Messager struct {
 
 func NewMessager(
 	nodeConfig common.GlobalNodeConfig,
-	signer common.Signer,
+	signer eth.Signer,
 	streamWriter common.StreamWriter,
 	routeForwarder *route.Forwarder,
 	monitorService intfs.MonitorService,

@@ -20,8 +20,8 @@ import (
 	"github.com/celer-network/goCeler/rpc"
 	"github.com/celer-network/goCeler/rtconfig"
 	"github.com/celer-network/goCeler/storage"
-	"github.com/celer-network/goCeler/transactor"
 	"github.com/celer-network/goCeler/utils"
+	"github.com/celer-network/goutils/eth"
 	"github.com/celer-network/goutils/log"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -33,10 +33,10 @@ type BcastSendCallback func(info *rpc.RoutingRequest, ospAddrs []string)
 // Controller configs to handle onchain router-related event
 type Controller struct {
 	nodeConfig        common.GlobalNodeConfig
-	transactor        *transactor.Transactor
+	transactor        *eth.Transactor
 	monitorService    intfs.MonitorService
 	dal               *storage.DAL
-	signer            common.Signer
+	signer            eth.Signer
 	bcastSendCallback BcastSendCallback
 	rtBuilder         *routingTableBuilder
 	explorerReport    *ospreport.OspInfo
@@ -67,10 +67,10 @@ const refreshThreshold = uint64(10000)    // check if Osp needs to refresh when 
 // NewController creates a new process for router controller
 func NewController(
 	nodeConfig common.GlobalNodeConfig,
-	transactor *transactor.Transactor,
+	transactor *eth.Transactor,
 	monitorService intfs.MonitorService,
 	dal *storage.DAL,
-	signer common.Signer,
+	signer eth.Signer,
 	bcastSendCallback BcastSendCallback,
 	routingData []byte,
 	rpcHost string,
@@ -124,14 +124,13 @@ func (c *Controller) Start() {
 // monitors the RouterUpdated event onchain
 // backtrack from one interval before the current block
 func (c *Controller) monitorRouterUpdatedEvent() {
-	startBlk := c.calculateStartBlockNumber()
-	_, err := c.monitorService.Monitor(
-		event.RouterUpdated,
-		c.nodeConfig.GetRouterRegistryContract(),
-		startBlk,
-		nil,   // endBlock
-		false, // quickCatch
-		true,  // reset
+	monitorCfg := &monitor.Config{
+		EventName:  event.RouterUpdated,
+		Contract:   c.nodeConfig.GetRouterRegistryContract(),
+		StartBlock: c.calculateStartBlockNumber(),
+		Reset:      true,
+	}
+	_, err := c.monitorService.Monitor(monitorCfg,
 		func(id monitor.CallbackID, eLog types.Log) {
 			e := &rt.RouterRegistryRouterUpdated{} // event RouterUpdated
 			if err := c.nodeConfig.GetRouterRegistryContract().ParseEvent(event.RouterUpdated, eLog, e); err != nil {
@@ -219,7 +218,7 @@ func (c *Controller) refreshRouterRegistry() {
 	log.Infoln("sending RefreshRouter tx")
 	routerRegistryAddr := c.nodeConfig.GetRouterRegistryContract().GetAddr()
 	_, err := c.transactor.Transact(
-		&transactor.TransactionStateHandler{
+		&eth.TransactionStateHandler{
 			OnMined: func(receipt *types.Receipt) {
 				if receipt.Status == types.ReceiptStatusSuccessful {
 					log.Infof("RefreshRouter transaction %x succeeded", receipt.TxHash)
@@ -228,7 +227,7 @@ func (c *Controller) refreshRouterRegistry() {
 				}
 			},
 		},
-		&transactor.TxConfig{},
+		&eth.TxConfig{},
 		func(transactor bind.ContractTransactor, opts *bind.TransactOpts) (*types.Transaction, error) {
 			contract, err2 := rt.NewRouterRegistryTransactor(routerRegistryAddr, transactor)
 			if err2 != nil {
@@ -427,7 +426,7 @@ func (c *Controller) RecvBcastRoutingInfo(info *rpc.RoutingRequest) error {
 	if err != nil {
 		return fmt.Errorf("unmarshal signed update err: %w", err)
 	}
-	if !utils.SigIsValid(ctype.Hex2Addr(update.GetOrigin()), signedUpdate.GetUpdate(), signedUpdate.GetSig()) {
+	if !eth.SigIsValid(ctype.Hex2Addr(update.GetOrigin()), signedUpdate.GetUpdate(), signedUpdate.GetSig()) {
 		return fmt.Errorf("route update invalid sig for origin %s", update.GetOrigin())
 	}
 

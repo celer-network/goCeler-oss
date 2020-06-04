@@ -18,8 +18,8 @@ import (
 	"github.com/celer-network/goCeler/entity"
 	"github.com/celer-network/goCeler/monitor"
 	"github.com/celer-network/goCeler/storage"
-	"github.com/celer-network/goCeler/transactor"
 	"github.com/celer-network/goCeler/utils"
+	"github.com/celer-network/goutils/eth"
 	"github.com/celer-network/goutils/log"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -45,22 +45,22 @@ type AppChannel struct {
 
 type AppClient struct {
 	nodeConfig     common.GlobalNodeConfig
-	transactor     *transactor.Transactor
-	transactorPool *transactor.Pool
+	transactor     *eth.Transactor
+	transactorPool *eth.TransactorPool
 	monitorService intfs.MonitorService
 	dal            *storage.DAL
-	signer         common.Signer
+	signer         eth.Signer
 	appChannels    map[string]*AppChannel
 	cLock          sync.RWMutex
 }
 
 func NewAppClient(
 	nodeConfig common.GlobalNodeConfig,
-	transactor *transactor.Transactor,
-	transactorPool *transactor.Pool,
+	transactor *eth.Transactor,
+	transactorPool *eth.TransactorPool,
 	monitorService intfs.MonitorService,
 	dal *storage.DAL,
-	signer common.Signer,
+	signer eth.Signer,
 ) *AppClient {
 	p := &AppClient{
 		nodeConfig:     nodeConfig,
@@ -168,14 +168,13 @@ func (c *AppClient) NewAppChannelOnVirtualContract(
 		cid:            cid,
 	}
 	c.PutAppChannel(cid, appChannel)
-
-	_, err := c.monitorService.Monitor(
-		event.Deploy,
-		c.nodeConfig.GetVirtResolverContract(),
-		c.monitorService.GetCurrentBlockNumber(),
-		nil,
-		true, /* quickCatch */
-		false,
+	monitorCfg := &monitor.Config{
+		EventName:  event.Deploy,
+		Contract:   c.nodeConfig.GetVirtResolverContract(),
+		StartBlock: c.monitorService.GetCurrentBlockNumber(),
+		QuickCatch: true,
+	}
+	_, err := c.monitorService.Monitor(monitorCfg,
 		func(id monitor.CallbackID, eLog types.Log) {
 			hit, _ := appChannel.onVirtualContractDeploy(&eLog)
 			if hit {
@@ -220,13 +219,13 @@ func (c *AppClient) NewAppChannelOnDeployedContract(
 		log.Error(err)
 		return cid, err
 	}
-	callbackID, err := c.monitorService.Monitor(
-		event.IntendSettle,
-		contract,
-		c.monitorService.GetCurrentBlockNumber(),
-		nil,
-		true, /* quickCatch */
-		false,
+	monitorCfg := &monitor.Config{
+		EventName:  event.IntendSettle,
+		Contract:   contract,
+		StartBlock: c.monitorService.GetCurrentBlockNumber(),
+		QuickCatch: true,
+	}
+	callbackID, err := c.monitorService.Monitor(monitorCfg,
 		func(id monitor.CallbackID, eLog types.Log) {
 			hit, _ := appChannel.onDeployedContractSettle(&eLog)
 			if hit {
@@ -329,7 +328,7 @@ func (c *AppClient) ApplyAction(cid string, action []byte) error {
 
 	receipt, err := c.transactor.TransactWaitMined(
 		"ApplyAction",
-		&transactor.TxConfig{QuickCatch: true},
+		&eth.TxConfig{QuickCatch: true},
 		func(transactor bind.ContractTransactor, opts *bind.TransactOpts) (*types.Transaction, error) {
 			addr := appChannel.getDeployedAddr()
 			if addr == (ctype.ZeroAddr) {
@@ -369,7 +368,7 @@ func (c *AppClient) FinalizeAppChannelOnActionTimeout(cid string) error {
 
 	receipt, err := c.transactor.TransactWaitMined(
 		"FinalizeOnActionTimeout",
-		&transactor.TxConfig{QuickCatch: true},
+		&eth.TxConfig{QuickCatch: true},
 		func(transactor bind.ContractTransactor, opts *bind.TransactOpts) (*types.Transaction, error) {
 			addr := appChannel.getDeployedAddr()
 			if addr == (ctype.ZeroAddr) {
@@ -593,7 +592,7 @@ func (c *AppClient) SettleBySigTimeout(gcid string, oracleProof []byte) error {
 
 	receipt, err := c.transactor.TransactWaitMined(
 		"SettleBySigTimeout",
-		&transactor.TxConfig{QuickCatch: true},
+		&eth.TxConfig{QuickCatch: true},
 		func(transactor bind.ContractTransactor, opts *bind.TransactOpts) (*types.Transaction, error) {
 			addr := appChannel.getDeployedAddr()
 			if addr == (ctype.ZeroAddr) {
@@ -634,7 +633,7 @@ func (c *AppClient) SettleByMoveTimeout(gcid string, oracleProof []byte) error {
 
 	receipt, err := c.transactor.TransactWaitMined(
 		"SettleByMoveTimeout",
-		&transactor.TxConfig{QuickCatch: true},
+		&eth.TxConfig{QuickCatch: true},
 		func(transactor bind.ContractTransactor, opts *bind.TransactOpts) (*types.Transaction, error) {
 			addr := appChannel.getDeployedAddr()
 			if addr == (ctype.ZeroAddr) {
@@ -674,7 +673,7 @@ func (c *AppClient) SettleByInvalidTurn(gcid string, oracleProof []byte, cosigne
 
 	receipt, err := c.transactor.TransactWaitMined(
 		"SettleByInvalidTurn",
-		&transactor.TxConfig{QuickCatch: true},
+		&eth.TxConfig{QuickCatch: true},
 		func(transactor bind.ContractTransactor, opts *bind.TransactOpts) (*types.Transaction, error) {
 			addr := appChannel.getDeployedAddr()
 			if addr == (ctype.ZeroAddr) {
@@ -714,7 +713,7 @@ func (c *AppClient) SettleByInvalidState(gcid string, oracleProof []byte, cosign
 
 	receipt, err := c.transactor.TransactWaitMined(
 		"SettleByInvalidState",
-		&transactor.TxConfig{QuickCatch: true},
+		&eth.TxConfig{QuickCatch: true},
 		func(transactor bind.ContractTransactor, opts *bind.TransactOpts) (*types.Transaction, error) {
 			addr := appChannel.getDeployedAddr()
 			if addr == (ctype.ZeroAddr) {
@@ -778,7 +777,7 @@ func (c *AppClient) deployVirtualContract(
 
 	receipt, err := c.transactorPool.SubmitWaitMined(
 		"deploy virtual contract",
-		&transactor.TxConfig{QuickCatch: true, GasLimit: 4000000},
+		&eth.TxConfig{QuickCatch: true, GasLimit: 4000000},
 		func(transactor bind.ContractTransactor, opts *bind.TransactOpts) (*types.Transaction, error) {
 			contract, err2 :=
 				virtresolver.NewVirtContractResolverTransactor(virtResolverContract.GetAddr(), transactor)
@@ -829,7 +828,7 @@ func (c *AppClient) intendSettle(appChannel *AppChannel, stateproof []byte) erro
 	}
 	_, err = c.transactorPool.SubmitWaitMined(
 		"intend settle app channel",
-		&transactor.TxConfig{QuickCatch: true},
+		&eth.TxConfig{QuickCatch: true},
 		func(transactor bind.ContractTransactor, opts *bind.TransactOpts) (*types.Transaction, error) {
 			addr := appChannel.getDeployedAddr()
 			// intendSettle API for SingleSession and MultiSession contracts are same

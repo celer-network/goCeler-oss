@@ -37,8 +37,8 @@ import (
 	"github.com/celer-network/goCeler/route"
 	"github.com/celer-network/goCeler/rpc"
 	"github.com/celer-network/goCeler/rtconfig"
-	"github.com/celer-network/goCeler/transactor"
 	"github.com/celer-network/goCeler/utils"
+	"github.com/celer-network/goutils/eth"
 	"github.com/celer-network/goutils/log"
 	"github.com/ethereum/go-ethereum/accounts/keystore"
 	"github.com/go-redis/redis"
@@ -185,7 +185,7 @@ func (s *server) RequestDelegation(ctx context.Context, in *rpc.DelegationReques
 	dal := s.cNode.GetDAL()
 	proof := in.GetProof()
 	delegationDesc := &rpc.DelegationDescription{}
-	signer := utils.RecoverSigner(proof.GetDelegationDescriptionBytes(), proof.GetSignature())
+	signer := eth.RecoverSigner(proof.GetDelegationDescriptionBytes(), proof.GetSignature())
 	err := proto.Unmarshal(proof.GetDelegationDescriptionBytes(), delegationDesc)
 	if err != nil {
 		return nil, err
@@ -278,7 +278,7 @@ func (s *server) GetPayHistory(ctx context.Context, in *rpc.GetPayHistoryRequest
 	tsSig := in.GetTsSig()
 	tsFromPeer := in.GetTs()
 	tsFromServer := uint64(time.Now().Unix())
-	if utils.RecoverSigner(utils.Uint64ToBytes(tsFromPeer), tsSig) != peer {
+	if eth.RecoverSigner(utils.Uint64ToBytes(tsFromPeer), tsSig) != peer {
 		// sig is invalid
 		return nil, errors.New("Invalid Signature")
 	}
@@ -812,8 +812,8 @@ func (s *server) HandleNewCelerStream(addr ctype.Addr) {
 }
 
 func (s *server) Initialize(
-	masterTxConfig, depositTxConfig *transactor.TransactorConfig,
-	transactorConfigs []*transactor.TransactorConfig, routingBytes []byte) {
+	masterTxConfig, depositTxConfig *eth.TransactorConfig,
+	transactorConfigs []*eth.TransactorConfig, routingBytes []byte) {
 	s.config = common.ParseProfile(*pjson)
 	overrideConfig(s.config)
 	var err error
@@ -1076,10 +1076,10 @@ func main() {
 	if *dbg {
 		reflection.Register(s)
 	}
-	var tConfigs []*transactor.TransactorConfig
+	var tConfigs []*eth.TransactorConfig
 	tksPaths := *transactorks
 	if tksPaths != "" {
-		tConfigs = []*transactor.TransactorConfig{}
+		tConfigs = []*eth.TransactorConfig{}
 		tksArr := strings.Split(tksPaths, ",")
 		for _, tks := range tksArr {
 			tksBytes, err := ioutil.ReadFile(tks)
@@ -1089,7 +1089,7 @@ func main() {
 			tConfigs =
 				append(
 					tConfigs,
-					transactor.NewTransactorConfig(string(tksBytes), readPassword(tksBytes)))
+					eth.NewTransactorConfig(string(tksBytes), readPassword(tksBytes)))
 		}
 	}
 	var rpcServer server
@@ -1097,9 +1097,9 @@ func main() {
 	if *redisAddr != "" {
 		rpcServer.redisClient = redis.NewClient(&redis.Options{Addr: *redisAddr})
 	}
-	masterTxConfig := transactor.NewTransactorConfig(ksStr, readPassword(ksBytes))
+	masterTxConfig := eth.NewTransactorConfig(ksStr, readPassword(ksBytes))
 	if dksStr != "" {
-		depositTxConfig := transactor.NewTransactorConfig(dksStr, readPassword(dksBytes))
+		depositTxConfig := eth.NewTransactorConfig(dksStr, readPassword(dksBytes))
 		rpcServer.Initialize(masterTxConfig, depositTxConfig, tConfigs, routingBytes)
 	} else {
 		rpcServer.Initialize(masterTxConfig, nil, tConfigs, routingBytes)

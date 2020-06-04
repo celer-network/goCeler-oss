@@ -12,8 +12,8 @@ import (
 	"github.com/celer-network/goCeler/common"
 	"github.com/celer-network/goCeler/ctype"
 	"github.com/celer-network/goCeler/entity"
-	"github.com/celer-network/goCeler/transactor"
 	"github.com/celer-network/goCeler/utils"
+	"github.com/celer-network/goutils/eth"
 	"github.com/celer-network/goutils/log"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -84,7 +84,7 @@ func (p *Processor) resolvePaymentByConditions(payID ctype.PayIDType) error {
 
 	receipt, err := p.transactorPool.SubmitWaitMined(
 		fmt.Sprintf("resolve payment %x by conditions", payID),
-		&transactor.TxConfig{},
+		&eth.TxConfig{},
 		func(transactor bind.ContractTransactor, opts *bind.TransactOpts) (*types.Transaction, error) {
 			contract, err2 :=
 				payresolver.NewPayResolverTransactor(ctype.Bytes2Addr(pay.GetPayResolver()), transactor)

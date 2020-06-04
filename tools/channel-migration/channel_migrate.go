@@ -36,7 +36,7 @@ import (
 	"github.com/celer-network/goCeler/migrate"
 	"github.com/celer-network/goCeler/storage"
 	"github.com/celer-network/goCeler/tools/toolsetup"
-	"github.com/celer-network/goCeler/transactor"
+	"github.com/celer-network/goutils/eth"
 	"github.com/celer-network/goutils/log"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -193,7 +193,7 @@ func handleSingleOnchainTx(
 	ctx2, cancel := context.WithTimeout(ctx, waitMinedTimeout)
 	defer cancel()
 
-	receipt, err := transactor.WaitMined(ctx2, client, tx, blockDelay, config.BlockIntervalSec)
+	receipt, err := eth.WaitMined(ctx2, client, tx, blockDelay, config.BlockIntervalSec)
 	if err != nil {
 		log.Errorf("channel migration tx failed for channel(%x): %w", cid, err)
 		return txFailed

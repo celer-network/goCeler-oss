@@ -19,6 +19,7 @@ import (
 	"github.com/celer-network/goCeler/rpc"
 	"github.com/celer-network/goCeler/storage"
 	"github.com/celer-network/goCeler/utils"
+	"github.com/celer-network/goutils/eth"
 	"github.com/celer-network/goutils/log"
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/any"
@@ -75,7 +76,7 @@ func (c *CNode) HandleAuthReq(req *rpc.AuthReq) (*rpc.CelerMsg, error) {
 		return nil, fmt.Errorf("invalid timestamp, src addr %s", ctype.Addr2Hex(srcAddr))
 	}
 	tsByte := utils.Uint64ToBytes(req.Timestamp)
-	if !utils.SigIsValid(srcAddr, tsByte, req.GetMySig()) {
+	if !eth.SigIsValid(srcAddr, tsByte, req.GetMySig()) {
 		return nil, fmt.Errorf("invalid signature, src addr %s", ctype.Addr2Hex(srcAddr))
 	}
 	// only update ts after verify sig
@@ -399,8 +400,8 @@ func (c *CNode) checkSignedSimplex(ss *rpc.SignedSimplexState, expCid ctype.CidT
 
 	if ch.SeqNum != 0 {
 		// must be correctly co-signed by both
-		if !utils.SigIsValid(expFrom, ss.GetSimplexState(), ss.GetSigOfPeerFrom()) ||
-			!utils.SigIsValid(expTo, ss.GetSimplexState(), ss.GetSigOfPeerTo()) {
+		if !eth.SigIsValid(expFrom, ss.GetSimplexState(), ss.GetSigOfPeerFrom()) ||
+			!eth.SigIsValid(expTo, ss.GetSimplexState(), ss.GetSigOfPeerTo()) {
 			return common.ErrInvalidSig
 		}
 		return nil

@@ -16,13 +16,11 @@ import (
 
 	"github.com/celer-network/goCeler/celersdk"
 	"github.com/celer-network/goCeler/celersdkintf"
-	"github.com/celer-network/goCeler/common"
-	"github.com/celer-network/goCeler/common/cobj"
 	"github.com/celer-network/goCeler/ctype"
 	"github.com/celer-network/goCeler/entity"
 	msgrpc "github.com/celer-network/goCeler/rpc"
-	"github.com/celer-network/goCeler/utils"
 	"github.com/celer-network/goCeler/webapi/rpc"
+	"github.com/celer-network/goutils/eth"
 	"github.com/celer-network/goutils/log"
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/improbable-eng/grpc-web/go/grpcweb"
@@ -44,10 +42,10 @@ type ApiServer struct {
 }
 
 // implement celersdk.ExternalSignerCallback interface
-// also embed common.Signer so celersdk.ExternalSignerManager can tell the difference and
+// also embed eth.Signer so celersdk.ExternalSignerManager can tell the difference and
 // avoid double hash
 type extSigner struct {
-	common.Signer
+	eth.Signer
 }
 
 func (es *extSigner) OnSignMessage(reqid int, msg []byte) {
@@ -85,8 +83,8 @@ func NewApiServer(
 			dataPath,
 			callbackImpl)
 	} else { // exercise external signer code path
-		addr, priv, _ := utils.GetAddrAndPrivKey(keystore, password)
-		signer, _ := cobj.NewCelerSigner(priv)
+		addr, priv, _ := eth.GetAddrPrivKeyFromKeystore(keystore, password)
+		signer, _ := eth.NewSigner(priv)
 		go celersdk.InitClientWithSigner(ctype.Addr2Hex(addr), config, dataPath, callbackImpl, &extSigner{signer})
 	}
 

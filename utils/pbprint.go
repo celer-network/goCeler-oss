@@ -10,6 +10,7 @@ import (
 	"github.com/celer-network/goCeler/ctype"
 	"github.com/celer-network/goCeler/entity"
 	"github.com/celer-network/goCeler/rpc"
+	"github.com/celer-network/goutils/eth"
 	"github.com/golang/protobuf/proto"
 )
 
@@ -154,7 +155,7 @@ func PrintPayPath(payPath *rpc.PayPath, payID ctype.PayIDType) string {
 		path = fmt.Sprintf("%d reported hops | ", nhop)
 	}
 	for i, signedHop := range payPath.GetHops() {
-		signer := RecoverSigner(signedHop.GetPayHopBytes(), signedHop.GetSig())
+		signer := eth.RecoverSigner(signedHop.GetPayHopBytes(), signedHop.GetSig())
 		var payHop rpc.PayHop
 		err := proto.Unmarshal(signedHop.GetPayHopBytes(), &payHop)
 		if err != nil {

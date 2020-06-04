@@ -19,7 +19,7 @@ import (
 	"github.com/celer-network/goCeler/monitor"
 	"github.com/celer-network/goCeler/rpc"
 	"github.com/celer-network/goCeler/storage"
-	"github.com/celer-network/goCeler/utils"
+	"github.com/celer-network/goutils/eth"
 	"github.com/celer-network/goutils/log"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/golang/protobuf/proto"
@@ -37,7 +37,7 @@ const (
 // MigrateChannelProcessor defines the structure of channel's CelerLedger migration processor
 type MigrateChannelProcessor struct {
 	nodeConfig     common.GlobalNodeConfig
-	signer         common.Signer
+	signer         eth.Signer
 	dal            *storage.DAL
 	connectionMgr  *rpc.ConnectionManager
 	monitorService intfs.MonitorService
@@ -47,7 +47,7 @@ type MigrateChannelProcessor struct {
 // NewMigrateChannelProcessor returns a migrate-ledger processor
 func NewMigrateChannelProcessor(
 	nodeConfig common.GlobalNodeConfig,
-	signer common.Signer,
+	signer eth.Signer,
 	dal *storage.DAL,
 	connectionMgr *rpc.ConnectionManager,
 	monitorService intfs.MonitorService,
@@ -156,7 +156,7 @@ func (p *MigrateChannelProcessor) checkChannelMigration(peer ctype.Addr, cid cty
 	}
 
 	// check sig from peer
-	if !utils.SigIsValid(peer, migrationInfoBytes, resp.GetApproverSig()) {
+	if !eth.SigIsValid(peer, migrationInfoBytes, resp.GetApproverSig()) {
 		return fmt.Errorf("Signature is invalid: peer: %x", peer)
 	}
 
@@ -231,7 +231,7 @@ func (p *MigrateChannelProcessor) ProcessMigrateChannelRequest(req *rpc.MigrateC
 		return nil, common.ErrChannelNotFound
 	}
 
-	if !utils.SigIsValid(peer, migrationInfoBytes, req.GetRequesterSig()) {
+	if !eth.SigIsValid(peer, migrationInfoBytes, req.GetRequesterSig()) {
 		log.Errorln("Invalid requester signature of peer:", peer.Hex())
 		return nil, common.ErrInvalidSig
 	}
@@ -308,13 +308,12 @@ func (p *MigrateChannelProcessor) monitorOnDeprecatedLedgers() {
 
 // monitorMigrateChannelEvent monitors onchain event emitted from CelerLedger
 func (p *MigrateChannelProcessor) monitorMigrateChannelEvent(contract chain.Contract) {
-	_, err := p.monitorService.Monitor(
-		event.MigrateChannelTo,
-		contract,
-		p.monitorService.GetCurrentBlockNumber(),
-		nil,   // endBlock
-		false, // quickCatch
-		false, // reset
+	monitorCfg := &monitor.Config{
+		EventName:  event.MigrateChannelTo,
+		Contract:   contract,
+		StartBlock: p.monitorService.GetCurrentBlockNumber(),
+	}
+	_, err := p.monitorService.Monitor(monitorCfg,
 		func(id monitor.CallbackID, eLog types.Log) {
 			// CAVEAT!!!: suppose we have the same struct for all migration event.
 			// If migration event struct changes, this monitor does not work.

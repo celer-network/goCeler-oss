@@ -9,8 +9,8 @@ import (
 	"github.com/celer-network/goCeler/chain/channel-eth-go/ethpool"
 	"github.com/celer-network/goCeler/ctype"
 	"github.com/celer-network/goCeler/route/routerregistry"
-	"github.com/celer-network/goCeler/transactor"
 	"github.com/celer-network/goCeler/utils"
+	"github.com/celer-network/goutils/eth"
 	"github.com/celer-network/goutils/log"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -76,7 +76,7 @@ func (p *Processor) depositEthPool() error {
 
 	receipt, err := p.transactor.TransactWaitMined(
 		"ethpool deposit",
-		&transactor.TxConfig{EthValue: amtWei},
+		&eth.TxConfig{EthValue: amtWei},
 		func(transactor bind.ContractTransactor, opts *bind.TransactOpts) (*types.Transaction, error) {
 			contract, err2 := ethpool.NewEthPoolTransactor(ethPoolAddr, transactor)
 			if err2 != nil {
@@ -105,7 +105,7 @@ func (p *Processor) approveEthPoolToLedger() error {
 
 	receipt, err := p.transactor.TransactWaitMined(
 		"ethpool approve",
-		&transactor.TxConfig{},
+		&eth.TxConfig{},
 		func(transactor bind.ContractTransactor, opts *bind.TransactOpts) (*types.Transaction, error) {
 			contract, err2 := ethpool.NewEthPoolTransactor(ethPoolAddr, transactor)
 			if err2 != nil {
@@ -163,7 +163,7 @@ func (p *Processor) withdrawEthPool() error {
 
 	receipt, err := p.transactor.TransactWaitMined(
 		"ethpool withdraw",
-		&transactor.TxConfig{},
+		&eth.TxConfig{},
 		func(transactor bind.ContractTransactor, opts *bind.TransactOpts) (*types.Transaction, error) {
 			contract, err2 := ethpool.NewEthPoolTransactor(ethPoolAddr, transactor)
 			if err2 != nil {
@@ -206,7 +206,7 @@ func (p *Processor) registerRouter() error {
 
 	receipt, err := p.transactor.TransactWaitMined(
 		"register router",
-		&transactor.TxConfig{},
+		&eth.TxConfig{},
 		func(transactor bind.ContractTransactor, opts *bind.TransactOpts) (*types.Transaction, error) {
 			contract, err2 := routerregistry.NewRouterRegistryTransactor(routerRegistryAddr, transactor)
 			if err2 != nil {
@@ -230,7 +230,7 @@ func (p *Processor) deregisterRouter() error {
 
 	receipt, err := p.transactor.TransactWaitMined(
 		"deregister router",
-		&transactor.TxConfig{},
+		&eth.TxConfig{},
 		func(transactor bind.ContractTransactor, opts *bind.TransactOpts) (*types.Transaction, error) {
 			contract, err2 := routerregistry.NewRouterRegistryTransactor(routerRegistryAddr, transactor)
 			if err2 != nil {

@@ -15,6 +15,7 @@ import (
 	"github.com/celer-network/goCeler/rpc"
 	"github.com/celer-network/goCeler/storage"
 	"github.com/celer-network/goCeler/utils"
+	"github.com/celer-network/goutils/eth"
 	"github.com/celer-network/goutils/log"
 	"github.com/golang/protobuf/proto"
 )
@@ -45,7 +46,7 @@ func (h *CelerMsgHandler) HandleHopAckState(frame *common.MsgFrame) error {
 	log.Debugln("Receive hop ack simplex:", utils.PrintSimplexChannel(&ackSimplex))
 
 	// Verify signature
-	sigValid := utils.SigIsValid(frame.PeerAddr, ackState.GetSimplexState(), ackState.GetSigOfPeerTo())
+	sigValid := eth.SigIsValid(frame.PeerAddr, ackState.GetSimplexState(), ackState.GetSigOfPeerTo())
 	if !sigValid {
 		log.Errorln(common.ErrInvalidSig, ctype.Addr2Hex(frame.PeerAddr), utils.PrintSimplexChannel(&ackSimplex))
 		return common.ErrInvalidSig
@@ -54,7 +55,7 @@ func (h *CelerMsgHandler) HandleHopAckState(frame *common.MsgFrame) error {
 	ackSeqNum := ackSimplex.GetSeqNum()
 	logEntry.SeqNums.Ack = ackSeqNum
 	if ackSeqNum > 0 {
-		sigValid = utils.SigIsValid(h.nodeConfig.GetOnChainAddr(), ackState.GetSimplexState(), ackState.GetSigOfPeerFrom())
+		sigValid = eth.SigIsValid(h.nodeConfig.GetOnChainAddr(), ackState.GetSimplexState(), ackState.GetSigOfPeerFrom())
 		if !sigValid {
 			log.Errorln(common.ErrInvalidSig, ctype.Addr2Hex(frame.PeerAddr), utils.PrintSimplexChannel(&ackSimplex))
 			return common.ErrInvalidSig

@@ -18,8 +18,8 @@ import (
 	"github.com/celer-network/goCeler/monitor"
 	"github.com/celer-network/goCeler/rpc"
 	"github.com/celer-network/goCeler/storage"
-	"github.com/celer-network/goCeler/transactor"
 	"github.com/celer-network/goCeler/utils"
+	"github.com/celer-network/goutils/eth"
 	"github.com/celer-network/goutils/log"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -190,7 +190,7 @@ func (p *Processor) sendCooperativeWithdrawTx(
 	if !found {
 		return common.ErrChannelNotFound
 	}
-	if !utils.SigIsValid(peer, serializedInfo, response.ApproverSig) {
+	if !eth.SigIsValid(peer, serializedInfo, response.ApproverSig) {
 		return fmt.Errorf("Invalid CooperativeWithdrawResponse signature")
 	}
 	var sigs [][]byte
@@ -220,7 +220,7 @@ func (p *Processor) sendCooperativeWithdrawTx(
 
 	tx, err := p.transactorPool.Submit(
 		nil,
-		&transactor.TxConfig{},
+		&eth.TxConfig{},
 		func(
 			transactor bind.ContractTransactor,
 			opts *bind.TransactOpts) (*types.Transaction, error) {

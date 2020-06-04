@@ -10,8 +10,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/celer-network/goCeler/common"
 	"github.com/celer-network/goCeler/ctype"
+	"github.com/celer-network/goutils/eth"
 	"github.com/celer-network/goutils/log"
 	ec "github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -71,7 +71,7 @@ func PublishSignedResult(reqid int, result []byte) error {
 	return esm.SendSignResult(reqid, result)
 }
 
-// extSignerManager implements common.Signer interface and triggers external callback
+// extSignerManager implements eth.Signer interface and triggers external callback
 type extSignerManager struct {
 	seq int                    // mono-increase per sign, correlate extCb and result api
 	m   map[int](chan []byte)  // key is seq(reqid), value is chan of signed result
@@ -114,7 +114,7 @@ func (es *extSignerManager) putSig(key ctype.Hash, value []byte) {
 	es.sigmap[key] = ctype.Bytes2Sig(value)
 }
 
-// common.Signer, blocking till mobile calls result api with matched reqid
+// eth.Signer, blocking till mobile calls result api with matched reqid
 func (es *extSignerManager) SignEthMessage(msg []byte) ([]byte, error) {
 	if es.cb == nil {
 		return nil, ErrNilExtSigner
@@ -128,8 +128,8 @@ func (es *extSignerManager) SignEthMessage(msg []byte) ([]byte, error) {
 	}
 	id, c := es.newSeqChan()
 	log.Debugf("sign eth message %d %x", id, msg)
-	if _, ok := es.cb.(common.Signer); ok {
-		// cb also implements common.Signer, this is for our e2e test case
+	if _, ok := es.cb.(eth.Signer); ok {
+		// cb also implements eth.Signer, this is for our e2e test case
 		// extSigner in api_server.go embed a cobj.CelerSigner which does hash internally so we don't double hash
 		go es.cb.OnSignMessage(id, msg) // trigger cb
 	} else {
@@ -155,7 +155,7 @@ func (es *extSignerManager) SignEthMessage(msg []byte) ([]byte, error) {
 	}
 }
 
-// common.Signer, blocking till mobile calls result api with matched reqid
+// eth.Signer, blocking till mobile calls result api with matched reqid
 func (es *extSignerManager) SignEthTransaction(rawtx []byte) ([]byte, error) {
 	if es.cb == nil {
 		return nil, ErrNilExtSigner

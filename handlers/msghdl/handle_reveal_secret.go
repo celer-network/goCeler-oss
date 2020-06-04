@@ -15,7 +15,7 @@ import (
 	"github.com/celer-network/goCeler/fsm"
 	"github.com/celer-network/goCeler/rpc"
 	"github.com/celer-network/goCeler/storage"
-	"github.com/celer-network/goCeler/utils"
+	"github.com/celer-network/goutils/eth"
 	"github.com/celer-network/goutils/log"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/golang/protobuf/ptypes/any"
@@ -218,7 +218,7 @@ func (h *CelerMsgHandler) recvSecretAckTx(tx *storage.DALTx, args ...interface{}
 	if found && delegator != ctype.ZeroAddr {
 		expectedSigner = delegator
 	}
-	if !utils.SigIsValid(expectedSigner, ctype.Hex2Bytes(secret), ack.GetPayDestSecretSig()) {
+	if !eth.SigIsValid(expectedSigner, ctype.Hex2Bytes(secret), ack.GetPayDestSecretSig()) {
 		return common.ErrInvalidSig
 	}
 

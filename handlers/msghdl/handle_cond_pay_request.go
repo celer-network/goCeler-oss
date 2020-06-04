@@ -20,6 +20,7 @@ import (
 	"github.com/celer-network/goCeler/storage"
 	"github.com/celer-network/goCeler/utils"
 	"github.com/celer-network/goCeler/utils/hashlist"
+	"github.com/celer-network/goutils/eth"
 	"github.com/celer-network/goutils/log"
 	"github.com/golang/protobuf/proto"
 )
@@ -152,7 +153,7 @@ func (h *CelerMsgHandler) processCondPayRequest(
 
 	// verify signature
 	sig := recvdState.SigOfPeerFrom
-	if !utils.SigIsValid(peerFrom, recvdState.SimplexState, sig) {
+	if !eth.SigIsValid(peerFrom, recvdState.SimplexState, sig) {
 		return common.ErrInvalidSig // corrupted peer
 	}
 

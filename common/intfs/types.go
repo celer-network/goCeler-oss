@@ -8,7 +8,6 @@ package intfs
 import (
 	"math/big"
 
-	"github.com/celer-network/goCeler/chain"
 	"github.com/celer-network/goCeler/monitor"
 	"github.com/ethereum/go-ethereum/core/types"
 )
@@ -16,15 +15,7 @@ import (
 type MonitorService interface {
 	GetCurrentBlockNumber() *big.Int
 	RegisterDeadline(deadline monitor.Deadline) monitor.CallbackID
-	Monitor(
-		eventName string,
-		contract chain.Contract,
-		startBlock *big.Int,
-		endBlock *big.Int,
-		quickCatch bool,
-		reset bool,
-		callback func(monitor.CallbackID, types.Log)) (monitor.CallbackID, error)
-	MonitorEvent(monitor.Event, bool) (monitor.CallbackID, error)
+	Monitor(cfg *monitor.Config, callback func(monitor.CallbackID, types.Log)) (monitor.CallbackID, error)
 	RemoveDeadline(id monitor.CallbackID)
 	RemoveEvent(id monitor.CallbackID)
 	Close()

@@ -19,7 +19,7 @@ import (
 	"github.com/celer-network/goCeler/metrics"
 	"github.com/celer-network/goCeler/monitor"
 	"github.com/celer-network/goCeler/storage"
-	"github.com/celer-network/goCeler/transactor"
+	"github.com/celer-network/goutils/eth"
 	"github.com/celer-network/goutils/log"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -87,7 +87,7 @@ func (p *Processor) IntendSettlePaymentChannel(cid ctype.CidType, waitMined bool
 func (p *Processor) intendSettleAndWaitMined(cid ctype.CidType, stateArrayBytes []byte) error {
 	receipt, err := p.transactorPool.SubmitWaitMined(
 		fmt.Sprintf("intend settle payment channel %x", cid),
-		&transactor.TxConfig{},
+		&eth.TxConfig{},
 		p.intendSettleTxMethod(cid, stateArrayBytes))
 	if err != nil {
 		log.Errorf("intend settle payment channel error %s, cid %x", err, cid)
@@ -102,7 +102,7 @@ func (p *Processor) intendSettleAndWaitMined(cid ctype.CidType, stateArrayBytes 
 func (p *Processor) intendSettle(cid ctype.CidType, stateArrayBytes []byte) error {
 	tx, err := p.transactorPool.Submit(
 		newGenericTransactionHandler("intend settle", cid),
-		&transactor.TxConfig{},
+		&eth.TxConfig{},
 		p.intendSettleTxMethod(cid, stateArrayBytes))
 	if err != nil {
 		log.Errorf("intend settle payment channel error %s, cid %x", err, cid)
@@ -141,7 +141,7 @@ func (p *Processor) ConfirmSettlePaymentChannel(cid ctype.CidType, waitMined boo
 func (p *Processor) confirmSettleAndWaitMined(cid ctype.CidType) error {
 	receipt, err := p.transactorPool.SubmitWaitMined(
 		fmt.Sprintf("confirm settle payment channel %x", cid),
-		&transactor.TxConfig{},
+		&eth.TxConfig{},
 		p.confirmSettleTxMethod(cid))
 	if err != nil {
 		log.Errorf("confirm settle payment channel error %s, cid %x", err, cid)
@@ -161,7 +161,7 @@ func (p *Processor) confirmSettleAndWaitMined(cid ctype.CidType) error {
 func (p *Processor) confirmSettle(cid ctype.CidType) error {
 	tx, err := p.transactorPool.Submit(
 		newGenericTransactionHandler("confirm settle", cid),
-		&transactor.TxConfig{},
+		&eth.TxConfig{},
 		p.confirmSettleTxMethod(cid))
 	if err != nil {
 		log.Errorf("confirm settle payment channel error %s, cid %x", err, cid)
@@ -171,8 +171,8 @@ func (p *Processor) confirmSettle(cid ctype.CidType) error {
 	return nil
 }
 
-func newGenericTransactionHandler(description string, cid ctype.CidType) *transactor.TransactionStateHandler {
-	return &transactor.TransactionStateHandler{
+func newGenericTransactionHandler(description string, cid ctype.CidType) *eth.TransactionStateHandler {
+	return &eth.TransactionStateHandler{
 		OnMined: func(receipt *types.Receipt) {
 			if receipt.Status == types.ReceiptStatusSuccessful {
 				log.Infof("%s transaction %x succeeded, cid %x", description, receipt.TxHash, cid)
@@ -183,7 +183,7 @@ func newGenericTransactionHandler(description string, cid ctype.CidType) *transa
 	}
 }
 
-func (p *Processor) intendSettleTxMethod(cid ctype.CidType, stateArrayBytes []byte) transactor.TxMethod {
+func (p *Processor) intendSettleTxMethod(cid ctype.CidType, stateArrayBytes []byte) eth.TxMethod {
 	return func(transactor bind.ContractTransactor, opts *bind.TransactOpts) (*types.Transaction, error) {
 		chanLedger := p.nodeConfig.GetLedgerContractOf(cid)
 		if chanLedger == nil {
@@ -197,7 +197,7 @@ func (p *Processor) intendSettleTxMethod(cid ctype.CidType, stateArrayBytes []by
 	}
 }
 
-func (p *Processor) confirmSettleTxMethod(cid ctype.CidType) transactor.TxMethod {
+func (p *Processor) confirmSettleTxMethod(cid ctype.CidType) eth.TxMethod {
 	return func(transactor bind.ContractTransactor, opts *bind.TransactOpts) (*types.Transaction, error) {
 		chanLedger := p.nodeConfig.GetLedgerContractOf(cid)
 		if chanLedger == nil {
@@ -299,13 +299,12 @@ func (p *Processor) handleIntendSettleEventTx(tx *storage.DALTx, args ...interfa
 }
 
 func (p *Processor) monitorPaymentChannelSettleEvent(ledgerContract chain.Contract) {
-	_, monErr := p.monitorService.Monitor(
-		event.IntendSettle,
-		ledgerContract,
-		p.monitorService.GetCurrentBlockNumber(),
-		nil,   /*endBlock*/
-		false, /*quickCatch*/
-		false, /*reset*/
+	monitorCfg := &monitor.Config{
+		EventName:  event.IntendSettle,
+		Contract:   ledgerContract,
+		StartBlock: p.monitorService.GetCurrentBlockNumber(),
+	}
+	_, monErr := p.monitorService.Monitor(monitorCfg,
 		func(id monitor.CallbackID, eLog types.Log) {
 			// CAVEAT!!!: suppose we have the same struct of event.
 			// If event struct changes, this monitor does not work.
@@ -336,14 +335,12 @@ func (p *Processor) monitorPaymentChannelSettleEvent(ledgerContract chain.Contra
 	if monErr != nil {
 		log.Error(monErr)
 	}
-
-	_, monErr = p.monitorService.Monitor(
-		event.ConfirmSettle,
-		ledgerContract,
-		p.monitorService.GetCurrentBlockNumber(),
-		nil,   /*endBlock*/
-		false, /*quickCatch*/
-		false, /*reset*/
+	monitorCfg2 := &monitor.Config{
+		EventName:  event.ConfirmSettle,
+		Contract:   ledgerContract,
+		StartBlock: p.monitorService.GetCurrentBlockNumber(),
+	}
+	_, monErr = p.monitorService.Monitor(monitorCfg2,
 		func(id monitor.CallbackID, eLog types.Log) {
 			// CAVEAT!!!: suppose we have the same struct of event.
 			// If event struct changes, this monitor does not work.

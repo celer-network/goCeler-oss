@@ -40,9 +40,9 @@ import (
 	"github.com/celer-network/goCeler/route"
 	"github.com/celer-network/goCeler/rpc"
 	"github.com/celer-network/goCeler/storage"
-	"github.com/celer-network/goCeler/transactor"
 	"github.com/celer-network/goCeler/utils"
 	"github.com/celer-network/goCeler/watcher"
+	"github.com/celer-network/goutils/eth"
 	"github.com/celer-network/goutils/log"
 	"github.com/ethereum/go-ethereum/ethclient"
 	ethrpc "github.com/ethereum/go-ethereum/rpc"
@@ -56,7 +56,7 @@ const mutexLocked = 1 << iota
 var dropMsg = flag.Bool("dropmsg", false, "add grpc interceptor to test drop msg, only use for tests.")
 
 type CNode struct {
-	transactorPool     *transactor.Pool
+	transactorPool     *eth.TransactorPool
 	nodeConfig         common.GlobalNodeConfig
 	streamWriter       common.StreamWriter
 	celerMsgDispatcher *dispatchers.CelerMsgDispatcher
@@ -64,10 +64,10 @@ type CNode struct {
 	messager           *messager.Messager
 
 	EthAddress        ctype.Addr // ETH address of the node
-	signer            common.Signer
+	signer            eth.Signer
 	externalSigner    bool // if the signer is external
-	masterTransactor  *transactor.Transactor
-	depositTransactor *transactor.Transactor
+	masterTransactor  *eth.Transactor
+	depositTransactor *eth.Transactor
 
 	connManager *rpc.ConnectionManager
 
@@ -273,9 +273,9 @@ func (c *CNode) GetSettleFinalizedTime(cid ctype.CidType) (*big.Int, error) {
 }
 
 func NewCNode(
-	masterTxConfig *transactor.TransactorConfig,
-	depositTxConfig *transactor.TransactorConfig,
-	transactorConfigs []*transactor.TransactorConfig,
+	masterTxConfig *eth.TransactorConfig,
+	depositTxConfig *eth.TransactorConfig,
+	transactorConfigs []*eth.TransactorConfig,
 	profile common.CProfile,
 	routingPolicy route.RoutingPolicy,
 	routingData []byte) (*CNode, error) {
@@ -287,17 +287,17 @@ func NewCNode(
 // NewCNodeWithExternalSigner is only used by client
 func NewCNodeWithExternalSigner(
 	address ctype.Addr,
-	signer common.Signer,
+	signer eth.Signer,
 	profile common.CProfile) (*CNode, error) {
 	return newCNode(nil, nil, nil, address, signer, true, profile, route.GateWayPolicy, nil)
 }
 
 func newCNode(
-	masterTxConfig *transactor.TransactorConfig,
-	depositTxConfig *transactor.TransactorConfig,
-	transactorConfigs []*transactor.TransactorConfig,
+	masterTxConfig *eth.TransactorConfig,
+	depositTxConfig *eth.TransactorConfig,
+	transactorConfigs []*eth.TransactorConfig,
 	address ctype.Addr,
-	signer common.Signer,
+	signer eth.Signer,
 	externalSigner bool,
 	profile common.CProfile,
 	routingPolicy route.RoutingPolicy,
@@ -381,21 +381,21 @@ func (c *CNode) setupEthClient(profile *common.CProfile) error {
 }
 
 func (c *CNode) setupTransactor(
-	masterTxConfig *transactor.TransactorConfig,
-	depositTxConfig *transactor.TransactorConfig,
-	transactorConfigs []*transactor.TransactorConfig,
+	masterTxConfig *eth.TransactorConfig,
+	depositTxConfig *eth.TransactorConfig,
+	transactorConfigs []*eth.TransactorConfig,
 	profile *common.CProfile) error {
 
 	var err error
 	var privKey string
 	// set up node account and signer
 	c.EthAddress, privKey, err =
-		utils.GetAddrAndPrivKey(masterTxConfig.KeyStore, masterTxConfig.PassPhrase)
+		eth.GetAddrPrivKeyFromKeystore(masterTxConfig.Keyjson, masterTxConfig.Passphrase)
 	if err != nil {
 		c.Close()
 		return err
 	}
-	c.signer, err = cobj.NewCelerSigner(privKey)
+	c.signer, err = eth.NewSigner(privKey)
 	if err != nil {
 		c.Close()
 		return err
@@ -404,25 +404,25 @@ func (c *CNode) setupTransactor(
 	// Create transactor pool. If the list of transactor keys isn't specified, use the signing key
 	// as the sole transactor.
 	if len(transactorConfigs) == 0 {
-		transactorConfigs = []*transactor.TransactorConfig{
-			transactor.NewTransactorConfig(masterTxConfig.KeyStore, masterTxConfig.PassPhrase),
+		transactorConfigs = []*eth.TransactorConfig{
+			eth.NewTransactorConfig(masterTxConfig.Keyjson, masterTxConfig.Passphrase),
 		}
 	}
 
-	c.transactorPool, err = transactor.NewPoolFromConfig(c.ethclient, transactorConfigs)
+	c.transactorPool, err = eth.NewTransactorPoolFromConfig(c.ethclient, transactorConfigs)
 	if err != nil {
 		c.Close()
 		return err
 	}
 	c.masterTransactor, err =
-		transactor.NewTransactor(masterTxConfig.KeyStore, masterTxConfig.PassPhrase, c.ethclient)
+		eth.NewTransactor(masterTxConfig.Keyjson, masterTxConfig.Passphrase, c.ethclient)
 	if err != nil {
 		c.Close()
 		return err
 	}
 	if depositTxConfig != nil {
 		c.depositTransactor, err =
-			transactor.NewTransactor(depositTxConfig.KeyStore, depositTxConfig.PassPhrase, c.ethclient)
+			eth.NewTransactor(depositTxConfig.Keyjson, depositTxConfig.Passphrase, c.ethclient)
 		if err != nil {
 			c.Close()
 			return err
@@ -434,13 +434,13 @@ func (c *CNode) setupTransactor(
 	return nil
 }
 
-func (c *CNode) setupExternalTransactor(address ctype.Addr, signer common.Signer) error {
+func (c *CNode) setupExternalTransactor(address ctype.Addr, signer eth.Signer) error {
 	c.EthAddress = address
 	c.signer = signer
-	c.masterTransactor = transactor.NewTransactorByExternalSigner(address, signer, c.ethclient)
+	c.masterTransactor = eth.NewTransactorByExternalSigner(address, signer, c.ethclient)
 	c.depositTransactor = c.masterTransactor
 	var err error
-	c.transactorPool, err = transactor.NewPool([]*transactor.Transactor{c.masterTransactor})
+	c.transactorPool, err = eth.NewTransactorPool([]*eth.Transactor{c.masterTransactor})
 	if err != nil {
 		c.Close()
 		return err

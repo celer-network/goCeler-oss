@@ -24,7 +24,7 @@ import (
 	"github.com/celer-network/goCeler/monitor"
 	"github.com/celer-network/goCeler/rpc"
 	"github.com/celer-network/goCeler/storage"
-	"github.com/celer-network/goCeler/transactor"
+	"github.com/celer-network/goutils/eth"
 	"github.com/celer-network/goutils/log"
 	"github.com/ethereum/go-ethereum/core/types"
 	"golang.org/x/crypto/sha3"
@@ -33,8 +33,8 @@ import (
 type Processor struct {
 	nodeConfig        common.GlobalNodeConfig
 	selfAddress       ctype.Addr
-	signer            common.Signer
-	transactorPool    *transactor.Pool
+	signer            eth.Signer
+	transactorPool    *eth.TransactorPool
 	connectionManager *rpc.ConnectionManager
 	monitorService    intfs.MonitorService
 	dal               *storage.DAL
@@ -50,8 +50,8 @@ type Processor struct {
 func StartProcessor(
 	nodeConfig common.GlobalNodeConfig,
 	selfAddress ctype.Addr,
-	signer common.Signer,
-	transactorPool *transactor.Pool,
+	signer eth.Signer,
+	transactorPool *eth.TransactorPool,
 	connectionManager *rpc.ConnectionManager,
 	monitorService intfs.MonitorService,
 	dal *storage.DAL,
@@ -143,13 +143,12 @@ func (p *Processor) monitorOnAllLedgers() {
 }
 
 func (p *Processor) monitorEvent(ledgerContract chain.Contract) {
-	_, err := p.monitorService.Monitor(
-		event.CooperativeWithdraw,
-		ledgerContract,
-		p.monitorService.GetCurrentBlockNumber(),
-		nil,   /* endBlock */
-		false, /* quickCatch */
-		false, /* reset */
+	monitorCfg := &monitor.Config{
+		EventName:  event.CooperativeWithdraw,
+		Contract:   ledgerContract,
+		StartBlock: p.monitorService.GetCurrentBlockNumber(),
+	}
+	_, err := p.monitorService.Monitor(monitorCfg,
 		func(id monitor.CallbackID, eLog types.Log) {
 			p.maybeHandleEvent(&eLog)
 		})
@@ -160,16 +159,15 @@ func (p *Processor) monitorEvent(ledgerContract chain.Contract) {
 
 func (p *Processor) monitorSingleEvent(ledgerContract chain.Contract, reset bool) {
 	startBlock := p.monitorService.GetCurrentBlockNumber()
-	duration := new(big.Int)
-	duration.SetUint64(config.CooperativeWithdrawTimeout)
-	endBlock := new(big.Int).Add(startBlock, duration)
-	_, err := p.monitorService.Monitor(
-		event.CooperativeWithdraw,
-		ledgerContract,
-		startBlock,
-		endBlock,
-		false, /* quickCatch */
-		reset,
+	endBlock := new(big.Int).Add(startBlock, big.NewInt(int64(config.CooperativeWithdrawTimeout)))
+	monitorCfg := &monitor.Config{
+		EventName:  event.CooperativeWithdraw,
+		Contract:   ledgerContract,
+		StartBlock: startBlock,
+		EndBlock:   endBlock,
+		Reset:      reset,
+	}
+	_, err := p.monitorService.Monitor(monitorCfg,
 		func(id monitor.CallbackID, eLog types.Log) {
 			if p.maybeHandleEvent(&eLog) {
 				p.monitorService.RemoveEvent(id)

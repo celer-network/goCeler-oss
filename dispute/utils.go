@@ -9,7 +9,7 @@ import (
 	"github.com/celer-network/goCeler/ctype"
 	"github.com/celer-network/goCeler/entity"
 	"github.com/celer-network/goCeler/rpc"
-	"github.com/celer-network/goCeler/utils"
+	"github.com/celer-network/goutils/eth"
 	"github.com/celer-network/goutils/log"
 	"github.com/golang/protobuf/proto"
 )
@@ -18,8 +18,8 @@ func SigSortedSimplexState(state *rpc.SignedSimplexState) (*chain.SignedSimplexS
 	var signedState chain.SignedSimplexState
 	signedState.SimplexState = make([]byte, len(state.SimplexState))
 	copy(signedState.SimplexState, state.SimplexState)
-	peerFrom := utils.RecoverSigner(state.SimplexState, state.SigOfPeerFrom).Bytes()
-	peerTo := utils.RecoverSigner(state.SimplexState, state.SigOfPeerTo).Bytes()
+	peerFrom := eth.RecoverSigner(state.SimplexState, state.SigOfPeerFrom).Bytes()
+	peerTo := eth.RecoverSigner(state.SimplexState, state.SigOfPeerTo).Bytes()
 	if bytes.Compare(peerFrom, peerTo) < 0 {
 		signedState.Sigs = append(signedState.Sigs, state.SigOfPeerFrom)
 		signedState.Sigs = append(signedState.Sigs, state.SigOfPeerTo)
@@ -45,7 +45,7 @@ func PrintSignedSimplexState(state *chain.SignedSimplexState) {
 	log.Infoln("---- pending pay IDs", simplex.PendingPayIds)
 	log.Infoln("---- last resolve deadline", simplex.LastPayResolveDeadline)
 	for _, sig := range state.Sigs {
-		signer := ctype.Bytes2Hex(utils.RecoverSigner(state.SimplexState, sig).Bytes())
+		signer := ctype.Bytes2Hex(eth.RecoverSigner(state.SimplexState, sig).Bytes())
 		log.Infoln("---- signer", signer)
 	}
 }

@@ -65,19 +65,6 @@ type StreamWriter interface {
 	WriteCelerMsg(peer ctype.Addr, celerMsg *rpc.CelerMsg) error
 }
 
-type Signer interface {
-	// input data: a byte array of raw message to be signed
-	// return a byte array signature in the R,S,V format
-	// The implementation should hash data w/ keccak256, and add
-	// "\x19Ethereum Signed Message:\n32" prefix (32 is the length of hash result)
-	// for ECDSA sign. If some library handles prefix automatically, pass hash
-	// result is sufficient
-	SignEthMessage(data []byte) ([]byte, error)
-	// input rawTx: a byte array of a RLP-encoded unsigned Ethereum raw transaction
-	// return a byte array signed raw tx in RLP-encoded format
-	SignEthTransaction(rawTx []byte) ([]byte, error)
-}
-
 type StateCallback interface {
 	OnDispute(seqNum int)
 }

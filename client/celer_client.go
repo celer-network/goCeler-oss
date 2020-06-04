@@ -21,7 +21,7 @@ import (
 	"github.com/celer-network/goCeler/route"
 	"github.com/celer-network/goCeler/rpc"
 	"github.com/celer-network/goCeler/storage"
-	"github.com/celer-network/goCeler/transactor"
+	"github.com/celer-network/goutils/eth"
 	"github.com/celer-network/goCeler/utils"
 	"github.com/celer-network/goutils/log"
 	"github.com/golang/protobuf/ptypes"
@@ -151,7 +151,7 @@ func NewCelerClient(
 	keyStore string, passPhrase string, profile common.CProfile, clientCallback clientCallbackAdapter) (*CelerClient, error) {
 	c := &CelerClient{}
 	var err error
-	masterTxConfig := transactor.NewTransactorConfig(keyStore, passPhrase)
+	masterTxConfig := eth.NewTransactorConfig(keyStore, passPhrase)
 	c.cNode, err = cnode.NewCNode(
 		masterTxConfig,
 		nil, /* depositTxConfig */
@@ -168,7 +168,7 @@ func NewCelerClient(
 }
 
 func NewCelerClientWithExternalSigner(
-	address ctype.Addr, signer common.Signer, profile common.CProfile,
+	address ctype.Addr, signer eth.Signer, profile common.CProfile,
 	clientCallback clientCallbackAdapter) (*CelerClient, error) {
 	c := &CelerClient{}
 	var err error

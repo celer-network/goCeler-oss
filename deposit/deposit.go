@@ -7,19 +7,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/celer-network/goCeler/chain"
-	"github.com/celer-network/goCeler/chain/channel-eth-go/ledger"
 	"github.com/celer-network/goCeler/common"
-	"github.com/celer-network/goCeler/common/event"
 	"github.com/celer-network/goCeler/common/intfs"
 	"github.com/celer-network/goCeler/common/structs"
 	"github.com/celer-network/goCeler/ctype"
 	"github.com/celer-network/goCeler/metrics"
-	"github.com/celer-network/goCeler/monitor"
 	"github.com/celer-network/goCeler/storage"
 	"github.com/celer-network/goutils/eth"
-	"github.com/celer-network/goutils/log"
-	"github.com/ethereum/go-ethereum/core/types"
 )
 
 type DepositCallback interface {
@@ -81,7 +75,9 @@ func StartProcessor(
 			return nil, err
 		}
 	}
-	go p.monitorOnAllLedgers()
+	if isOSP {
+		go p.monitorOnAllLedgers()
+	}
 	return p, nil
 }
 
@@ -95,80 +91,6 @@ func (p *Processor) GetDepositState(jobID string) (int, string, error) {
 		return structs.DepositState_NULL, "", common.ErrDepositNotFound
 	}
 	return state, msg, nil
-}
-
-func (p *Processor) monitorOnAllLedgers() {
-	ledgers := p.nodeConfig.GetAllLedgerContracts()
-
-	for _, contract := range ledgers {
-		if contract != nil {
-			p.monitorEvent(contract)
-		}
-	}
-}
-
-// Continuously monitor the on-chain "Deposit" event.
-func (p *Processor) monitorEvent(ledgerContract chain.Contract) {
-	monitorCfg := &monitor.Config{
-		EventName:  event.Deposit,
-		Contract:   ledgerContract,
-		StartBlock: p.monitorService.GetCurrentBlockNumber(),
-	}
-	p.monitorService.Monitor(monitorCfg,
-		func(id monitor.CallbackID, eLog types.Log) {
-			e := &ledger.CelerLedgerDeposit{}
-			err := ledgerContract.ParseEvent(event.Deposit, eLog, e)
-			if err != nil {
-				log.Error(err)
-				return
-			}
-			self := p.nodeConfig.GetOnChainAddr()
-			if e.PeerAddrs[0] != self && e.PeerAddrs[1] != self {
-				return
-			}
-			txHash := eLog.TxHash
-			log.Infoln("Caught new deposit made to channel", ctype.CidType(e.ChannelId).Hex(), "tx", txHash.Hex())
-			p.handleEvent(e, txHash)
-		})
-}
-
-// Update balance and deposit jobs according to an on-chain Deposit event.
-func (p *Processor) handleEvent(event *ledger.CelerLedgerDeposit, txHash ctype.Hash) {
-	metrics.IncDepositEventCnt()
-	cid := ctype.CidType(event.ChannelId)
-	updateOnChainBalanceTx := func(tx *storage.DALTx, args ...interface{}) error {
-		balance, found, err := tx.GetOnChainBalance(cid)
-		if err != nil {
-			return err
-		}
-		if !found {
-			return common.ErrChannelNotFound
-		}
-		if event.PeerAddrs[0] == p.nodeConfig.GetOnChainAddr() {
-			balance.MyDeposit = event.Deposits[0]
-			balance.PeerDeposit = event.Deposits[1]
-		} else if event.PeerAddrs[1] == p.nodeConfig.GetOnChainAddr() {
-			balance.MyDeposit = event.Deposits[1]
-			balance.PeerDeposit = event.Deposits[0]
-		} else {
-			return common.ErrInvalidAccountAddress
-		}
-		err = tx.UpdateOnChainBalance(cid, balance)
-		if err != nil {
-			return err
-		}
-		return tx.UpdateDepositStatesByTxHashAndCid(txHash.Hex(), cid, structs.DepositState_SUCCEEDED)
-	}
-	if err := p.dal.Transactional(updateOnChainBalanceTx); err != nil {
-		log.Error(err)
-		metrics.IncDepositErrCnt()
-		return
-	}
-	if p.isOSP {
-		p.handleBatchJobEvent(txHash)
-	} else {
-		p.handleSingleJobEvent(txHash.Hex())
-	}
 }
 
 func PrintDepositJob(d *structs.DepositJob) string {

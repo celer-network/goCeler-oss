@@ -629,7 +629,8 @@ func (c *CNode) initialize(
 		c.Disputer,
 		c.routeForwarder,
 		c.routeController,
-		c.messager)
+		c.messager,
+		c.isOSP)
 
 	c.migrateChannelProcessor = migrate.NewMigrateChannelProcessor(
 		c.nodeConfig,
@@ -637,8 +638,7 @@ func (c *CNode) initialize(
 		c.dal,
 		c.connManager,
 		c.monitorService,
-		c.isOSP,
-	)
+		c.isOSP)
 
 	if c.isOSP {
 		go c.runOspRoutineJob()

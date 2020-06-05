@@ -10,6 +10,7 @@ import (
 
 	"github.com/celer-network/goCeler/common"
 	"github.com/celer-network/goCeler/common/structs"
+	"github.com/celer-network/goCeler/config"
 	"github.com/celer-network/goCeler/ctype"
 	"github.com/celer-network/goCeler/entity"
 	"github.com/celer-network/goCeler/fsm"
@@ -24,6 +25,8 @@ import (
 	"github.com/celer-network/goutils/log"
 	"github.com/golang/protobuf/proto"
 )
+
+const onchainCheckInterval = 5
 
 func (h *CelerMsgHandler) HandleCondPayRequest(frame *common.MsgFrame) error {
 	if frame.Message.GetCondPayRequest() == nil {
@@ -235,7 +238,7 @@ func (h *CelerMsgHandler) processCondPayRequestTx(tx *storage.DALTx, args ...int
 
 	// common pay verifications
 	err = h.verifyCommonPayRequest(
-		request, cid, peer, pay, selfSimplex, storedSimplex, recvdSimplex, onChainBalance, baseSeq, lastAckedSeq)
+		tx, request, cid, peer, pay, selfSimplex, storedSimplex, recvdSimplex, onChainBalance, baseSeq, lastAckedSeq)
 	if err != nil {
 		return err
 	}
@@ -365,6 +368,7 @@ func (h *CelerMsgHandler) verifyDirectPayRequest(
 }
 
 func (h *CelerMsgHandler) verifyCommonPayRequest(
+	tx *storage.DALTx,
 	request *rpc.CondPayRequest,
 	cid ctype.CidType,
 	peer ctype.Addr,
@@ -398,6 +402,30 @@ func (h *CelerMsgHandler) verifyCommonPayRequest(
 		selfSimplex, storedSimplex, onChainBalance, h.nodeConfig.GetOnChainAddr(), peer, blkNum)
 	recvdAmt := new(big.Int).SetBytes(pay.GetTransferFunc().GetMaxTransfer().GetReceiver().GetAmt())
 	if recvdAmt.Cmp(balance.PeerFree) == 1 {
+		if !h.isOSP {
+			lastSyncBlk, _ := tx.GetQueryTime(config.QueryName_OnChainBalance)
+			if blkNum-lastSyncBlk > onchainCheckInterval {
+				log.Warnf("channel %x balance not enough, try sync with onchain balance once", cid)
+				var err error
+				onChainBalance, err = ledgerview.SyncOnChainBalanceTx(tx, cid, h.nodeConfig)
+				if err != nil {
+					log.Error(err)
+				} else {
+					err = tx.PutQueryTime(config.QueryName_OnChainBalance, blkNum)
+					if err != nil {
+						log.Error(err)
+					}
+					balance = ledgerview.ComputeBalance(
+						selfSimplex, storedSimplex, onChainBalance, h.nodeConfig.GetOnChainAddr(), peer, blkNum)
+					if recvdAmt.Cmp(balance.PeerFree) != 1 {
+						return nil
+					}
+				}
+			} else {
+				log.Warnf("channel %x balance not enough, last sycned onchain balance at blk %d", cid, lastSyncBlk)
+			}
+
+		}
 		// Peer does not have enough free balance
 		return fmt.Errorf("%w, need %s free %s", common.ErrNoEnoughBalance, recvdAmt, balance.PeerFree) // corrupted peer
 	}

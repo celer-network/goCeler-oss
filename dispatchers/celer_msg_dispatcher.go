@@ -45,6 +45,7 @@ type CelerMsgDispatcher struct {
 	routeForwarder      *route.Forwarder
 	routeController     *route.Controller
 	messager            *messager.Messager
+	isOSP               bool
 }
 
 func NewCelerMsgDispatcher(
@@ -59,6 +60,7 @@ func NewCelerMsgDispatcher(
 	routeForwarder *route.Forwarder,
 	routeController *route.Controller,
 	messager *messager.Messager,
+	isOSP bool,
 ) *CelerMsgDispatcher {
 	d := &CelerMsgDispatcher{
 		nodeConfig:          nodeConfig,
@@ -75,6 +77,7 @@ func NewCelerMsgDispatcher(
 		routeForwarder:      routeForwarder,
 		routeController:     routeController,
 		messager:            messager,
+		isOSP:               isOSP,
 	}
 	return d
 }
@@ -154,5 +157,6 @@ func (d *CelerMsgDispatcher) NewMsgHandler() *msghdl.CelerMsgHandler {
 		d.routeController,
 		d.messager,
 		d.dal,
+		d.isOSP,
 	)
 }

@@ -11,6 +11,7 @@ import (
 	"github.com/celer-network/goCeler/common"
 	"github.com/celer-network/goCeler/common/structs"
 	"github.com/celer-network/goCeler/ctype"
+	"github.com/celer-network/goCeler/ledgerview"
 	"github.com/celer-network/goCeler/utils"
 	"github.com/celer-network/goutils/eth"
 	"github.com/celer-network/goutils/log"
@@ -225,16 +226,18 @@ func (p *Processor) sendDepositTx(
 // the "DepositState_TX_SUBMITTED" state and re-dispatch it.
 func (p *Processor) waitApproveAndSendDepositTx(job *structs.DepositJob) {
 	approveTxHash := job.TxHash
+	log.Infof("waiting for deposit job %s erc20 approve tx %s to be mined", job.UUID, approveTxHash)
 	receipt, err := p.transactor.WaitMined(approveTxHash)
 	if err != nil {
 		p.abortJob(job, err)
 		return
 	}
-	log.Debugf(
-		"Approve tx %s mined, status: %d, gas used: %d",
-		approveTxHash,
-		receipt.Status,
-		receipt.GasUsed)
+	if receipt.Status == types.ReceiptStatusSuccessful {
+		log.Infof("deposit job %s erc20 approve tx %s succeeded", job.UUID, approveTxHash)
+	} else {
+		p.abortJob(job, fmt.Errorf("erc20 approve tx %s failed", approveTxHash))
+		return
+	}
 	depositTxHash, err := p.sendDepositTx(job.Cid, big.NewInt(0), job.Amount)
 	if err != nil {
 		p.abortJob(job, err)
@@ -253,33 +256,28 @@ func (p *Processor) waitApproveAndSendDepositTx(job *structs.DepositJob) {
 // Wait for the deposit() tx.
 func (p *Processor) waitDeposit(job *structs.DepositJob) {
 	depositTxHash := job.TxHash
+	log.Infof("waiting for deposit job %s tx %s to be mined", job.UUID, depositTxHash)
 	receipt, err := p.transactor.WaitMined(depositTxHash)
 	if err != nil {
 		p.abortJob(job, err)
 		return
 	}
-	log.Debugf(
-		"Deposit tx %s mined, status: %d, gas used: %d",
-		depositTxHash,
-		receipt.Status,
-		receipt.GasUsed)
 	if receipt.Status == types.ReceiptStatusSuccessful {
-		log.Debugf("Deposit tx %s succeeded", depositTxHash)
+		log.Infof("deposit job %s tx %s succeeded", job.UUID, depositTxHash)
+		err = p.dal.UpdateDepositStatesByTxHashAndCid(depositTxHash, job.Cid, structs.DepositState_SUCCEEDED)
+		if err != nil {
+			log.Error(err)
+			return
+		}
+		err = ledgerview.SyncOnChainBalance(p.dal, job.Cid, p.nodeConfig)
+		if err != nil {
+			log.Error(err)
+		}
+		job.State = structs.DepositState_SUCCEEDED
+		p.dispatchJob(job)
 	} else {
-		p.abortJob(job, fmt.Errorf("Deposit tx %s failed", depositTxHash))
+		p.abortJob(job, fmt.Errorf("deposit tx %s failed", depositTxHash))
 	}
-}
-
-func (p *Processor) handleSingleJobEvent(txHash string) {
-	job, found, err := p.dal.GetDepositJobByTxHash(txHash)
-	if err != nil {
-		log.Errorln(err, txHash)
-		return
-	}
-	if !found {
-		return
-	}
-	p.dispatchJob(job)
 }
 
 func (p *Processor) resumeClientJobs() error {
@@ -304,7 +302,7 @@ func (p *Processor) resumeJob(jobID string) {
 
 // Mark a job as "Failed" and try to call the error callback.
 func (p *Processor) abortJob(job *structs.DepositJob, err error) {
-	log.Error(fmt.Errorf("Deposit job %s failed: %w", job.UUID, err))
+	log.Errorf("Deposit job %s failed: %s", job.UUID, err)
 	job.State = structs.DepositState_FAILED
 	job.ErrMsg = err.Error()
 	putErr := p.dal.UpdateDepositErrMsg(job.UUID, job.ErrMsg)

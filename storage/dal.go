@@ -27,6 +27,8 @@ const (
 	openChannelTs = "oct" // peer@token -> OpenChannelTs
 	// OSP only, track path of failed payments
 	payPathTable = "ppt" // payID -> rpc.PayPath
+	// client only
+	queryTimeTable = "qtt" // query -> last time (unit defined by query, either unix sec or block number)
 
 	transactionalMaxRetry   = 10
 	transactionalRetryDelay = 10 * time.Millisecond
@@ -915,6 +917,10 @@ func (d *DAL) UpdateDepositErrMsgByTxHash(txhash, errmsg string) error {
 	return updateDepositErrMsgByTxHash(d.st, txhash, errmsg)
 }
 
+func (d *DAL) UpdateDepositStatesByTxHashAndCid(txhash string, cid ctype.CidType, state int) error {
+	return updateDepositStatesByTxHashAndCid(d.st, txhash, cid, state)
+}
+
 func (d *DAL) HasDepositTxHash(txhash string) (bool, error) {
 	return hasDepositTxHash(d.st, txhash)
 }
@@ -1022,6 +1028,37 @@ func (d *DAL) GetPayPath(payID ctype.PayIDType) (*rpc.PayPath, error) {
 }
 func (d *DAL) DeletePayPath(payID ctype.PayIDType) error {
 	return deletePayPath(d.st, payID)
+}
+
+// queryTimeTable
+func putQueryTime(st Storage, query string, ts uint64) error {
+	return st.Put(payPathTable, query, ts)
+}
+func getQueryTime(st Storage, query string) (uint64, error) {
+	var ts uint64
+	err := st.Get(payPathTable, query, &ts)
+	return ts, err
+}
+func deleteQueryTime(st Storage, query string) error {
+	return st.Delete(payPathTable, query)
+}
+func (d *DAL) PutQueryTime(query string, ts uint64) error {
+	return putQueryTime(d.st, query, ts)
+}
+func (d *DAL) GetQueryTime(query string) (uint64, error) {
+	return getQueryTime(d.st, query)
+}
+func (d *DAL) DeleteQueryTime(query string) error {
+	return deleteQueryTime(d.st, query)
+}
+func (dtx *DALTx) PutQueryTime(query string, ts uint64) error {
+	return putQueryTime(dtx.stx, query, ts)
+}
+func (dtx *DALTx) GetQueryTime(query string) (uint64, error) {
+	return getQueryTime(dtx.stx, query)
+}
+func (dtx *DALTx) DeleteQueryTime(query string) error {
+	return deleteQueryTime(dtx.stx, query)
 }
 
 // DAL for on chain balances

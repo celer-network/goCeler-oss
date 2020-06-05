@@ -60,6 +60,7 @@ type CelerMsgHandler struct {
 	routeController     *route.Controller
 	messager            *messager.Messager
 	dal                 *storage.DAL
+	isOSP               bool
 	msgName             string
 }
 
@@ -79,6 +80,7 @@ func NewCelerMsgHandler(
 	routeController *route.Controller,
 	messager *messager.Messager,
 	dal *storage.DAL,
+	isOSP bool,
 ) *CelerMsgHandler {
 	h := &CelerMsgHandler{
 		nodeConfig:          nodeConfig,
@@ -96,6 +98,7 @@ func NewCelerMsgHandler(
 		routeController:     routeController,
 		messager:            messager,
 		dal:                 dal,
+		isOSP:               isOSP,
 	}
 	return h
 }

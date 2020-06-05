@@ -48,6 +48,10 @@ const (
 	EventListenerLeaseName          = "eventlistener"
 	EventListenerLeaseRenewInterval = 60 * time.Second
 	EventListenerLeaseTimeout       = 90 * time.Second
+
+	// used by clients to control onchain query frequency
+	QueryName_OnChainBalance      = "onchainBalance"
+	QueryName_OnChainResolvedPays = "onchainResolvedPays"
 )
 
 // KeepAliveClientParams is grpc client side keeyalive parameters

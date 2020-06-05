@@ -116,7 +116,7 @@ func GetOnChainDisputeTimeout(cid ctype.CidType, nodeConfig common.GlobalNodeCon
 
 // SyncOnChainBalance updates local on-chain balances for the given channel
 func SyncOnChainBalance(dal *storage.DAL, cid ctype.CidType, nodeConfig common.GlobalNodeConfig) error {
-	log.Debugln("sync onchain balance", cid.Hex())
+	log.Debugf("sync onchain balance %x", cid)
 	ledgerAddr, found, err := dal.GetChanLedger(cid)
 	if err != nil {
 		return err
@@ -140,6 +140,30 @@ func SyncOnChainBalance(dal *storage.DAL, cid ctype.CidType, nodeConfig common.G
 		return tx.UpdateOnChainBalance(cid, onChainBalance)
 	}
 	return dal.Transactional(updateBalanceTx)
+}
+
+func SyncOnChainBalanceTx(tx *storage.DALTx, cid ctype.CidType, nodeConfig common.GlobalNodeConfig) (*structs.OnChainBalance, error) {
+	log.Debugf("sync onchain balance %x", cid)
+	ledgerAddr, found, err := tx.GetChanLedger(cid)
+	if err != nil {
+		return nil, err
+	}
+	if !found {
+		return nil, fmt.Errorf("Can't find cid %x", cid)
+	}
+	onChainBalance, err := GetOnChainChannelBalance(cid, ledgerAddr, nodeConfig)
+	if err != nil {
+		return nil, err
+	}
+	balance, found, err3 := tx.GetOnChainBalance(cid)
+	if err3 != nil {
+		return nil, fmt.Errorf("GetOnChainBalance err %w", err3)
+	}
+	if !found {
+		return nil, common.ErrChannelNotFound
+	}
+	onChainBalance.PendingWithdrawal = balance.PendingWithdrawal
+	return onChainBalance, tx.UpdateOnChainBalance(cid, onChainBalance)
 }
 
 // GetOnChainChannelBalance queries the ledger contract for channel balance

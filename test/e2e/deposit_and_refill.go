@@ -212,6 +212,16 @@ func ospDepositAndRefill(t *testing.T) {
 	}
 
 	sleep(5)
+	err = syncOnChainStates(c1)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	err = syncOnChainStates(c2)
+	if err != nil {
+		t.Error(err)
+		return
+	}
 
 	err = c1.AssertBalance(
 		tokenAddrEth,
@@ -285,6 +295,7 @@ func ospDepositAndRefill(t *testing.T) {
 	}
 
 	sleep(5)
+
 	err = c1.AssertBalance(
 		tokenAddrEth,
 		tf.AddAmtStr(ethInitBalance, "11"),
@@ -306,6 +317,12 @@ func ospDepositAndRefill(t *testing.T) {
 	}
 
 	sleep(4)
+	err = syncOnChainStates(c1)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+
 	err = c1.AssertBalance(
 		tokenAddrEth,
 		tf.AddAmtStr(ethInitBalance, "11"),
@@ -325,6 +342,44 @@ func ospDepositAndRefill(t *testing.T) {
 		t.Error(err)
 		return
 	}
+
+	log.Info("--------------- deposit eth to channel with c1 ---------------")
+	ospFreeEth := tf.AddAmtStr(ethInitBalance, "-8", ethRefillAmount.String())
+	_, err = requestSvrDeposit(c1EthAddr, tokenAddrEth, "10", false, 0)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	sleep(5)
+
+	log.Info("--------------- send large amount of eth to c1, trigger c1 sync onchain ---------------")
+	_, err = requestSvrSendToken(c1EthAddr, tf.AddAmtStr(ospFreeEth, "5"), tokenAddrEth)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	sleep(3)
+	err = c1.AssertBalance(
+		tokenAddrEth,
+		tf.AddAmtStr(ethInitBalance, "11", ospFreeEth, "5"),
+		"0",
+		"5")
+	if err != nil {
+		t.Error(err)
+		return
+	}
+}
+
+func syncOnChainStates(c *tf.ClientController) error {
+	err := c.SyncOnChainChannelStates(entity.TokenType_ETH, tokenAddrEth)
+	if err != nil {
+		return err
+	}
+	err = c.SyncOnChainChannelStates(entity.TokenType_ERC20, tokenAddrErc20)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func requestSvrDeposit(peerAddr, tokenAddr, amt string, toPeer bool, maxWait uint64) (string, error) {

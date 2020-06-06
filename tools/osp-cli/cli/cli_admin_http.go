@@ -3,6 +3,9 @@
 package cli
 
 import (
+	"bufio"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/celer-network/goCeler/ctype"
@@ -12,12 +15,37 @@ import (
 )
 
 func RegisterStream() {
-	err := utils.RequestRegisterStream(*adminhostport, ctype.Hex2Addr(*peeraddr), *peerhostport)
+	if *batchfile != "" {
+		file, err := os.Open(*batchfile)
+		if err != nil {
+			log.Error(err)
+			return
+		}
+		defer file.Close()
+		scanner := bufio.NewScanner(file)
+		for scanner.Scan() {
+			line := scanner.Text()
+			fields := strings.Fields(line)
+			if len(fields) != 2 {
+				log.Errorln("invalid file input:", line)
+				return
+			}
+			peerAddr := fields[0]
+			peerHostPort := fields[1]
+			registerStream(peerAddr, peerHostPort)
+		}
+	} else {
+		registerStream(*peeraddr, *peerhostport)
+	}
+}
+
+func registerStream(peerAddr, peerHostPort string) {
+	err := utils.RequestRegisterStream(*adminhostport, ctype.Hex2Addr(peerAddr), peerHostPort)
 	if err != nil {
-		log.Error(err)
+		log.Errorf("err while registering stream to %s, addr %s: %s", peerHostPort, peerAddr, err)
 		return
 	}
-	log.Infof("registered stream to %s, addr %s", *peerhostport, *peeraddr)
+	log.Infof("registered stream to %s, addr %s", peerHostPort, peerAddr)
 }
 
 func OpenChannel() {

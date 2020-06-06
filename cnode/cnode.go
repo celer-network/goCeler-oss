@@ -133,6 +133,9 @@ func (c *CNode) dialOpts(drop bool) []grpc.DialOption {
 
 // WARNING: msg drop interceptor only supports single stream, and should only be used in testing
 func (c *CNode) RegisterStream(peerAddr ctype.Addr, peerHTTPTarget string) error {
+	if peerAddr == c.EthAddress {
+		return fmt.Errorf("cannot register stream to self")
+	}
 	if s := c.connManager.GetCelerStream(peerAddr); s != nil {
 		return common.ErrStreamAleadyExists
 	}

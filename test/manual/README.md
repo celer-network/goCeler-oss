@@ -27,11 +27,11 @@ Then do the same for OSP2, run **`./osp-cli -profile /tmp/celer_manual_test/prof
 
 ## 4. Run two OSPs
 
-### Option 1: run OSPs using SQLite as storage backend
+### Option 1: use SQLite as storage backend (easier setup)
 
 Run **`./run_osp.sh 1`** and **`./run_osp.sh 2`** in two new terminals respectively to start OSP1 and OSP2. OSP data store is created at `/tmp/celer_manual_test/store/[ospAddr]`
 
-### Option 2: run OSPs using CockroachDB as storage backend
+### Option 2: use CockroachDB as storage backend (higher performance)
 
 First, run **`./cockroachdb.sh start`** to start the CockroachDB, then run **`./cockroachdb.sh 1`** and **`./cockroachdb.sh 2`** to create databases and tables for the two OSPs. Remember to run  **`./cockroachdb.sh stop`** after finishing the manual tests.
 
@@ -40,6 +40,14 @@ Then run **`./run_osp.sh 1_crdb`** and **`./run_osp.sh 2_crdb`** in two new term
 ## 5. Connect two OSPs through grpc stream
 
 Run **`./osp-cli -adminhostport localhost:8190 -registerstream -peer 00290a43e5b2b151d530845b2d5a818240bc7c70 -peerhostport localhost:10002`** to let OSP1 connect with OSP2 through grpc stream. You can see that OSP1 has new log `Admin: register stream ...`, and OSP2 has new log `Recv AuthReq: ...`
+
+If you want to quickly connect to multiple peer OSPs (e.g., reconnect to peers after restart), you can use the `-file` option. For example, create a `peerservers` file for OSP1 with the following lines to let it connect to OSP2-4:
+```
+00290a43e5b2b151d530845b2d5a818240bc7c70 localhost:10002
+003ea363bccfd7d14285a34a6b1deb862df0bc84 localhost:10003
+00495b55a68b5d5d1b0860b2c9eeb839e7d3a362 localhost:10004
+```
+Then run **`./osp-cli -adminhostport localhost:8190 -registerstream -file peerservers`**.
 
 ## 6. Open CelerPay channel between two OSPs
 

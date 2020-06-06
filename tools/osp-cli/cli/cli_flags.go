@@ -40,7 +40,7 @@ var (
 	txhash       = flag.String("txhash", "", "on-chain transaction hash")
 	inactiveday  = flag.Int("inactiveday", 0, "days of being inactive")
 	inactivesec  = flag.Int("inactivesec", 0, "seconds of being inactive")
-	batchfile    = flag.String("batchfile", "", "file path for batch operation")
+	batchfile    = flag.String("file", "", "file path for batch operation")
 	withdrawto   = flag.String("withdrawto", "", "channel ID if withdraw fund to another channel")
 	appaddr      = flag.String("appaddr", "", "app onchain address")
 	argfinalize  = flag.String("finalize", "", "arg for query finalized")

@@ -44,7 +44,7 @@ export PATH=$PATH:$PWD/goceler
 6. Start OSP: **`server -profile $GOCELER/deploy/mainnet/profile.json -ks ospks.json -svrname s0 -storesql postgresql://celer@localhost:26257/celer?sslmode=disable -rtc $GOCELER/deploy/mainnet/rt_config.json -routedata $GOCELER/deploy/mainnet/channels_2020_05_08.json`**. Be aware of the **notes 1-3** above.
 
 ### Open channel with peer OSP
-7. Connect with another OSP through grpc stream: **`osp-cli -adminhostport localhost:8090 -registerstream -peer [peerOspAddr] -peerhostport [peerOspHostPort]`**
+7. Connect with another OSP through grpc stream: **`osp-cli -adminhostport localhost:8090 -registerstream -peer [peerOspAddr] -peerhostport [peerOspHostPort]`**. If you want to quickly connect to multiple peer OSPs (e.g., reconnect to peers after restart), you can use the `-file` option, see [local manual tests](./test/manual/README.md) for example.
 8. Open channel with another OSP: **`osp-cli -adminhostport localhost:8090 -openchannel -peer [peerOspAddr] -selfdeposit 0.1 -peerdeposit 0.1`**
 9. Query channel from database: **`osp-cli -profile $GOCELER/deploy/mainnet/profile.json -storedir ${HOME}/celerdb/[ospAddr] -dbview channel -peer [peerOspAddr]`**. If using CockroachDB, replace the `-storedir` arg with `-storesql postgresql://celer@localhost:26257/celer?sslmode=disable`.
 10. Query channel from blockchain: **`osp-cli -profile $GOCELER/deploy/mainnet/profile.json -onchainview channel -cid [channel ID]`**. You can see the channel ID from the output of step 9 above.

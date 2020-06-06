@@ -10,6 +10,7 @@
 `osp-cli -adminhostport [host:port of admin http endpoint]` followed by:
 
 * `-registerstream -peer [peer addr] -peerhostport [peer grpc host:port]`: register stream with a peer OSP
+* `-registerstream -file [file with a list of peer addr and host:port]`: register stream with peer OSPs
 * `-openchannel -peer [peer addr] -token [token addr] -selfdeposit [amount] -peerdeposit [amount]`: open a state channel with a peer OSP
 * `-sendtoken -receiver [receiver addr] -token [token addr] -amount [amount]`: make an off-chain payment
 * `-deposit -peer [peer addr] -token [token addr] -amount [amount]`: make an on-chain deposit
@@ -53,8 +54,8 @@ Note: `chanstate` is enum integer, valid states for commands above include 3 for
 
 * `-intendsettle -cid [channel ID]`: intend unilaterally settle a channel
 * `-confirmsettle -cid [channel ID]`: confirm unilaterally settle a channel
-* `-intendsettle -batchfile [file with a list of channel IDs]`: intend unilaterally settle a list of channels
-* `-confirmsettle -batchfile [file with a list of channel IDs]`: confirm unilaterally settle a list of channels
+* `-intendsettle -file [file with a list of channel IDs]`: intend unilaterally settle a list of channels
+* `-confirmsettle -file [file with a list of channel IDs]`: confirm unilaterally settle a list of channels
 * `-intendwithdraw -cid [channel ID] -amount [amount]`: intend unilaterally withdraw from a channel
 * `-confirmwithdraw -cid [channel ID]`: confirm unilaterally withdraw from a channel
 

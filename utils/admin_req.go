@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"math/big"
@@ -15,8 +16,11 @@ import (
 	"github.com/celer-network/goCeler/rpc"
 	"github.com/celer-network/goutils/log"
 	"github.com/golang/protobuf/jsonpb"
+	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/any"
 )
+
+var ErrHttpReponse = errors.New("http response error")
 
 func RequestSendToken(adminHostPort string, receiver, tokenAddr ctype.Addr, amount *big.Int) (ctype.PayIDType, error) {
 	return RequestSendTokenWithNote(adminHostPort, receiver, tokenAddr, amount, "", nil)
@@ -42,6 +46,9 @@ func RequestSendTokenWithNote(
 	url := fmt.Sprintf("http://%s/admin/sendtoken", adminHostPort)
 	resBody, err := HttpPost(url, request)
 	if err != nil {
+		if errors.Is(err, ErrHttpReponse) {
+			err = fmt.Errorf("%w, err msg: %s", err, getGrpcHttpErrMsg(resBody))
+		}
 		return ctype.ZeroPayID, err
 	}
 
@@ -62,7 +69,10 @@ func RequestRegisterStream(adminHostPort string, peerAddr ctype.Addr, peerHostPo
 		PeerEthAddress: peerAddr.Bytes(),
 	}
 	url := fmt.Sprintf("http://%s/admin/peer/registerstream", adminHostPort)
-	_, err := HttpPost(url, request)
+	resBody, err := HttpPost(url, request)
+	if errors.Is(err, ErrHttpReponse) {
+		return fmt.Errorf("%w, err msg: %s", err, getGrpcHttpErrMsg(resBody))
+	}
 	return err
 }
 
@@ -79,7 +89,10 @@ func RequestOpenChannel(adminHostPort string, peerAddr, tokenAddr ctype.Addr, pe
 		SelfDepositAmtWei: selfDeposit.String(),
 	}
 	url := fmt.Sprintf("http://%s/admin/peer/openchannel", adminHostPort)
-	_, err := HttpPost(url, request)
+	resBody, err := HttpPost(url, request)
+	if errors.Is(err, ErrHttpReponse) {
+		return fmt.Errorf("%w, err msg: %s", err, getGrpcHttpErrMsg(resBody))
+	}
 	return err
 }
 
@@ -94,7 +107,12 @@ func RequestDeposit(
 	}
 	url := fmt.Sprintf("http://%s/admin/deposit", adminHostPort)
 	resBody, err := HttpPost(url, request)
-
+	if err != nil {
+		if errors.Is(err, ErrHttpReponse) {
+			err = fmt.Errorf("%w, err msg: %s", err, getGrpcHttpErrMsg(resBody))
+		}
+		return "", err
+	}
 	res := &rpc.DepositResponse{}
 	err = jsonpb.Unmarshal(bytes.NewReader(resBody), res)
 	if err != nil {
@@ -110,9 +128,15 @@ func QueryDeposit(adminHostPort string, depositID string) (*rpc.QueryDepositResp
 	request := &rpc.QueryDepositRequest{DepositId: depositID}
 	url := fmt.Sprintf("http://%s/admin/query_deposit", adminHostPort)
 	resBody, err := HttpPost(url, request)
+	if err != nil {
+		return nil, err
+	}
 	res := &rpc.QueryDepositResponse{}
 	err = jsonpb.Unmarshal(bytes.NewReader(resBody), res)
 	if err != nil {
+		if errors.Is(err, ErrHttpReponse) {
+			err = fmt.Errorf("%w, err msg: %s", err, getGrpcHttpErrMsg(resBody))
+		}
 		return nil, err
 	}
 	return res, nil
@@ -127,6 +151,9 @@ func QueryPeerOsps(adminHostPort string) (*rpc.PeerOspsResponse, error) {
 	res := &rpc.PeerOspsResponse{}
 	err = jsonpb.Unmarshal(bytes.NewReader(resBody), res)
 	if err != nil {
+		if errors.Is(err, ErrHttpReponse) {
+			err = fmt.Errorf("%w, err msg: %s", err, getGrpcHttpErrMsg(resBody))
+		}
 		return nil, err
 	}
 	return res, nil
@@ -167,13 +194,35 @@ func HttpPost(url string, input interface{}) ([]byte, error) {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("status is %s", resp.Status)
-	}
-
 	buf, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("ReadAll(resp.Body) err: %w", err)
+		return nil, fmt.Errorf("ReadAll(resp.Body) err: %w, status is %s", err, resp.Status)
 	}
+
+	if resp.StatusCode != http.StatusOK {
+		return buf, fmt.Errorf("%w: %s", ErrHttpReponse, resp.Status)
+	}
+
 	return buf, nil
 }
+
+func getGrpcHttpErrMsg(resBody []byte) string {
+	res := &errorBody{}
+	jsonpb.Unmarshal(bytes.NewReader(resBody), res)
+	return res.Message
+}
+
+type errorBody struct {
+	Error string `protobuf:"bytes,100,name=error" json:"error"`
+	// This is to make the error more compatible with users that expect errors to be Status objects:
+	// https://github.com/grpc/grpc/blob/master/src/proto/grpc/status/status.proto
+	// It should be the exact same message as the Error field.
+	Code    int32      `protobuf:"varint,1,name=code" json:"code"`
+	Message string     `protobuf:"bytes,2,name=message" json:"message"`
+	Details []*any.Any `protobuf:"bytes,3,rep,name=details" json:"details,omitempty"`
+}
+
+// Make this also conform to proto.Message for builtin JSONPb Marshaler
+func (e *errorBody) Reset()         { *e = errorBody{} }
+func (e *errorBody) String() string { return proto.CompactTextString(e) }
+func (*errorBody) ProtoMessage()    {}

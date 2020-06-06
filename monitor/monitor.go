@@ -236,6 +236,8 @@ func (s *Service) Monitor(cfg *Config, callback func(CallbackID, ethtypes.Log)) 
 	if eventToListen.CheckInterval == 0 {
 		eventToListen.CheckInterval = defaultCheckInterval
 	}
+	log.Infof("Starting watch: %s. startBlk: %s, endBlk: %s, blkDelay: %d, checkInterval: %d, reset: %t", watchName,
+		cfg.StartBlock, cfg.EndBlock, eventToListen.BlockDelay, eventToListen.CheckInterval, cfg.Reset)
 	id, err := s.MonitorEvent(*eventToListen, cfg.Reset)
 	if err != nil {
 		log.Errorf("Cannot register event %s: %s", watchName, err)

@@ -57,6 +57,7 @@ type fakeClient struct {
 	quit     chan bool
 	blkChan  chan int64
 	blkNum   int64
+	noLog    bool // won't return any fakeLog
 }
 
 // NewFakeClient creates a fake watch client that return increasing
@@ -147,12 +148,13 @@ func (fc *fakeClient) FilterLogs(ctx context.Context, q ethereum.FilterQuery) ([
 		return nil, fmt.Errorf("FromBlock %d > ToBlock %d", from, to)
 	}
 
-	start := int(from) * perBlock
-	end := int(to+1) * perBlock
-	for i := start; i < end; i++ {
-		logs = append(logs, fakeLog(i))
+	if !fc.noLog {
+		start := int(from) * perBlock
+		end := int(to+1) * perBlock
+		for i := start; i < end; i++ {
+			logs = append(logs, fakeLog(i))
+		}
 	}
-
 	return logs, nil
 }
 
@@ -225,6 +227,17 @@ func TestWatcher(t *testing.T) {
 	// before exiting the test to increase code coverage of the
 	// watcher shutdown code (goroutines exiting).
 	w.Close()
+	// test noLog case
+	client.noLog = true
+	w2, err := ws.NewWatch("foo", query, 2, 1, true) // reset fromBlock to 0
+	if w2.fromBlock != 0 {
+		t.Error("fromBlock isn't 0")
+	}
+	time.Sleep(2 * blkSleep) // so fetchLogEvents has run
+	if w2.fromBlock == 0 {
+		t.Error("fromBlock is still 0")
+	}
+	w2.Close()
 	time.Sleep(100 * time.Millisecond)
 }
 

@@ -25,6 +25,11 @@ type ProfileEthereum struct {
 	Gateway                                                  string
 	ChainId, BlockIntervalSec, BlockDelayNum, DisputeTimeout uint64
 	Contracts                                                ProfileContracts
+	// CheckInterval is map of eventname to its check interval for monitor service
+	// if not set (ie. 0) will check every blockIntervalSec (ie. same as check new block head)
+	// if specify, key must be one of event.go const string values
+	// monitor will check every checkInterval * blockIntervalSec
+	CheckInterval map[string]uint64
 }
 
 type ProfileContracts struct {
@@ -54,6 +59,7 @@ func (pj *ProfileJSON) ToCProfile() *CProfile {
 		SvrETHAddr:         pj.Osp.Address,
 		SvrRPC:             pj.Osp.Host,
 		ExplorerUrl:        pj.Osp.ExplorerUrl,
+		CheckInterval:      pj.Ethereum.CheckInterval, // json.Unmarshal guarantee non-nil map (could be empty)
 	}
 	return cp
 }

@@ -23,6 +23,7 @@ func TestProfileJSON(t *testing.T) {
 	chkEq(pj.Ethereum.ChainId, uint64(3), t)
 	chkEq(pj.Ethereum.Contracts.Ledger, "abcdef..", t)
 	chkEq(pj.Osp.Address, "c5b5..", t)
+	chkEq(pj.Ethereum.CheckInterval["IntendWithdraw"], uint64(5), t)
 
 	cp := pj.ToCProfile()
 	chkEq(cp.ChainId, int64(3), t)

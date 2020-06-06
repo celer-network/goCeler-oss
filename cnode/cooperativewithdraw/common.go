@@ -144,9 +144,10 @@ func (p *Processor) monitorOnAllLedgers() {
 
 func (p *Processor) monitorEvent(ledgerContract chain.Contract) {
 	monitorCfg := &monitor.Config{
-		EventName:  event.CooperativeWithdraw,
-		Contract:   ledgerContract,
-		StartBlock: p.monitorService.GetCurrentBlockNumber(),
+		EventName:     event.CooperativeWithdraw,
+		Contract:      ledgerContract,
+		StartBlock:    p.monitorService.GetCurrentBlockNumber(),
+		CheckInterval: p.nodeConfig.GetCheckInterval(event.CooperativeWithdraw),
 	}
 	_, err := p.monitorService.Monitor(monitorCfg,
 		func(id monitor.CallbackID, eLog types.Log) {
@@ -161,11 +162,12 @@ func (p *Processor) monitorSingleEvent(ledgerContract chain.Contract, reset bool
 	startBlock := p.monitorService.GetCurrentBlockNumber()
 	endBlock := new(big.Int).Add(startBlock, big.NewInt(int64(config.CooperativeWithdrawTimeout)))
 	monitorCfg := &monitor.Config{
-		EventName:  event.CooperativeWithdraw,
-		Contract:   ledgerContract,
-		StartBlock: startBlock,
-		EndBlock:   endBlock,
-		Reset:      reset,
+		EventName:     event.CooperativeWithdraw,
+		Contract:      ledgerContract,
+		StartBlock:    startBlock,
+		EndBlock:      endBlock,
+		Reset:         reset,
+		CheckInterval: p.nodeConfig.GetCheckInterval(event.CooperativeWithdraw),
 	}
 	_, err := p.monitorService.Monitor(monitorCfg,
 		func(id monitor.CallbackID, eLog types.Log) {

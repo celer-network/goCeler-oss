@@ -13,6 +13,17 @@
       "payRegistry": "a12063ab2136abbab09e036a260694fbd5e57982",
       "payResolver": "605703f2c26aa67c4e63a27e5ace6ad2862bb53a",
       "routerRegistry": "ee56cb265b17969aa7aba5db77a0982473b5fd29"
+    },
+    "checkInterval": {
+      "OpenChannel": 3,
+      "Deposit": 3,
+      "CooperativeWithdraw": 3,
+      "RouterUpdated": 3,
+      "IntendSettle": 500,
+      "ConfirmSettle": 500,
+      "IntendWithdraw": 500,
+      "ConfirmWithdraw": 500,
+      "MigrateChannelTo": 500
     }
   },
   "osp": {

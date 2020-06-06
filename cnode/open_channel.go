@@ -30,8 +30,8 @@ import (
 	"github.com/celer-network/goCeler/rpc"
 	"github.com/celer-network/goCeler/rtconfig"
 	"github.com/celer-network/goCeler/storage"
-	"github.com/celer-network/goutils/eth"
 	"github.com/celer-network/goCeler/utils"
+	"github.com/celer-network/goutils/eth"
 	"github.com/celer-network/goutils/log"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	ethcommon "github.com/ethereum/go-ethereum/common"
@@ -969,9 +969,10 @@ func (p *openChannelProcessor) monitorOnAllLedgers() {
 
 func (p *openChannelProcessor) monitorEvent(ledgerContract chain.Contract) {
 	monitorCfg := &monitor.Config{
-		EventName:  event.OpenChannel,
-		Contract:   ledgerContract,
-		StartBlock: p.monitorService.GetCurrentBlockNumber(),
+		EventName:     event.OpenChannel,
+		Contract:      ledgerContract,
+		StartBlock:    p.monitorService.GetCurrentBlockNumber(),
+		CheckInterval: p.nodeConfig.GetCheckInterval(event.OpenChannel),
 	}
 	_, err := p.monitorService.Monitor(monitorCfg,
 		func(id monitor.CallbackID, eLog types.Log) {
@@ -1009,11 +1010,12 @@ func (p *openChannelProcessor) monitorSingleEvent(ledgerContract chain.Contract,
 	startBlock := p.monitorService.GetCurrentBlockNumber()
 	endBlock := new(big.Int).Add(startBlock, big.NewInt(int64(config.OpenChannelTimeout)))
 	monitorCfg := &monitor.Config{
-		EventName:  event.OpenChannel,
-		Contract:   ledgerContract,
-		StartBlock: startBlock,
-		EndBlock:   endBlock,
-		Reset:      reset,
+		EventName:     event.OpenChannel,
+		Contract:      ledgerContract,
+		StartBlock:    startBlock,
+		EndBlock:      endBlock,
+		Reset:         reset,
+		CheckInterval: p.nodeConfig.GetCheckInterval(event.OpenChannel),
 	}
 	_, err := p.monitorService.Monitor(monitorCfg,
 		func(id monitor.CallbackID, eLog types.Log) {

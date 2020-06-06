@@ -158,9 +158,10 @@ func (p *Processor) VetoWithdraw(cid ctype.CidType) error {
 
 func (p *Processor) monitorNoncooperativeWithdrawEvent(ledgerContract chain.Contract) {
 	monitorCfg := &monitor.Config{
-		EventName:  event.IntendWithdraw,
-		Contract:   ledgerContract,
-		StartBlock: p.monitorService.GetCurrentBlockNumber(),
+		EventName:     event.IntendWithdraw,
+		Contract:      ledgerContract,
+		StartBlock:    p.monitorService.GetCurrentBlockNumber(),
+		CheckInterval: p.nodeConfig.GetCheckInterval(event.IntendWithdraw),
 	}
 	_, monErr := p.monitorService.Monitor(monitorCfg,
 		func(id monitor.CallbackID, eLog types.Log) {
@@ -195,9 +196,10 @@ func (p *Processor) monitorNoncooperativeWithdrawEvent(ledgerContract chain.Cont
 		log.Error(monErr)
 	}
 	monitorCfg2 := &monitor.Config{
-		EventName:  event.ConfirmWithdraw,
-		Contract:   ledgerContract,
-		StartBlock: p.monitorService.GetCurrentBlockNumber(),
+		EventName:     event.ConfirmWithdraw,
+		Contract:      ledgerContract,
+		StartBlock:    p.monitorService.GetCurrentBlockNumber(),
+		CheckInterval: p.nodeConfig.GetCheckInterval(event.ConfirmWithdraw),
 	}
 	_, monErr = p.monitorService.Monitor(monitorCfg2,
 		func(id monitor.CallbackID, eLog types.Log) {

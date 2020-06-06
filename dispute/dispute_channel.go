@@ -300,9 +300,10 @@ func (p *Processor) handleIntendSettleEventTx(tx *storage.DALTx, args ...interfa
 
 func (p *Processor) monitorPaymentChannelSettleEvent(ledgerContract chain.Contract) {
 	monitorCfg := &monitor.Config{
-		EventName:  event.IntendSettle,
-		Contract:   ledgerContract,
-		StartBlock: p.monitorService.GetCurrentBlockNumber(),
+		EventName:     event.IntendSettle,
+		Contract:      ledgerContract,
+		StartBlock:    p.monitorService.GetCurrentBlockNumber(),
+		CheckInterval: p.nodeConfig.GetCheckInterval(event.IntendSettle),
 	}
 	_, monErr := p.monitorService.Monitor(monitorCfg,
 		func(id monitor.CallbackID, eLog types.Log) {
@@ -336,9 +337,10 @@ func (p *Processor) monitorPaymentChannelSettleEvent(ledgerContract chain.Contra
 		log.Error(monErr)
 	}
 	monitorCfg2 := &monitor.Config{
-		EventName:  event.ConfirmSettle,
-		Contract:   ledgerContract,
-		StartBlock: p.monitorService.GetCurrentBlockNumber(),
+		EventName:     event.ConfirmSettle,
+		Contract:      ledgerContract,
+		StartBlock:    p.monitorService.GetCurrentBlockNumber(),
+		CheckInterval: p.nodeConfig.GetCheckInterval(event.ConfirmSettle),
 	}
 	_, monErr = p.monitorService.Monitor(monitorCfg2,
 		func(id monitor.CallbackID, eLog types.Log) {

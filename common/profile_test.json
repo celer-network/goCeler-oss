@@ -10,6 +10,9 @@
       "resolver": "123456..",
       "ethPool": "11111..",
       "payRegistry": "fedcba.."
+    },
+    "checkInterval": {
+      "IntendWithdraw": 5
     }
   },
   "osp": {

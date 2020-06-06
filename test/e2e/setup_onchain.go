@@ -184,6 +184,18 @@ func SetupOnChain(appMap map[string]ctype.Addr, autofund bool) (*common.ProfileJ
 		BlockDelayNum:    0,
 		DisputeTimeout:   10,
 		Contracts:        profileContracts,
+		CheckInterval: map[string]uint64{
+			"CooperativeWithdraw": 2,
+			"Deploy":              2,
+			"Deposit":             2,
+			"IntendSettle":        2,
+			"OpenChannel":         2,
+			"ConfirmSettle":       2,
+			"IntendWithdraw":      2,
+			"ConfirmWithdraw":     2,
+			"RouterUpdated":       2,
+			"MigrateChannelTo":    2,
+		},
 	}
 
 	profileOsp := common.ProfileOsp{

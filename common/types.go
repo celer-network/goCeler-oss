@@ -37,6 +37,7 @@ type CProfile struct {
 	DisputeTimeout     uint64            `json:"disputeTimeout"`
 	Ledgers            map[string]string `json:"ledgers"`
 	ExplorerUrl        string            `json:"explorerUrl,omitempty"`
+	CheckInterval      map[string]uint64 `json:"checkInterval,omitempty"`
 }
 
 type GlobalNodeConfig interface {
@@ -59,6 +60,7 @@ type GlobalNodeConfig interface {
 	GetPayResolverContract() chain.Contract
 	GetPayRegistryContract() chain.Contract
 	GetRouterRegistryContract() chain.Contract
+	GetCheckInterval(string) uint64
 }
 
 type StreamWriter interface {

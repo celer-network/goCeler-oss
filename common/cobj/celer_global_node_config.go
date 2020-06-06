@@ -28,6 +28,7 @@ type CelerGlobalNodeConfig struct {
 	routerRegistryContract chain.Contract
 	ledgers                map[ctype.Addr]chain.Contract
 	chanDAL                chanLedgerDAL
+	checkInterval          map[string]uint64 // copy from CProfile
 }
 
 func NewCelerGlobalNodeConfig(
@@ -77,6 +78,7 @@ func NewCelerGlobalNodeConfig(
 		routerRegistryContract: routerRegistryContract,
 		ledgers:                ledgers,
 		chanDAL:                chanDAL,
+		checkInterval:          profile.CheckInterval,
 	}
 	return gnc
 }
@@ -143,4 +145,10 @@ func (config *CelerGlobalNodeConfig) GetLedgerContractOf(cid ctype.CidType) chai
 		return nil
 	}
 	return config.ledgers[ledgerAddr]
+}
+
+// GetCheckInterval returns interval if set in profile or 0
+// monitor will treat 0 as check log every blockIntervalSec
+func (cfg *CelerGlobalNodeConfig) GetCheckInterval(eventName string) uint64 {
+	return cfg.checkInterval[eventName]
 }

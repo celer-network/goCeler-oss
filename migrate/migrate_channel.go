@@ -309,9 +309,10 @@ func (p *MigrateChannelProcessor) monitorOnDeprecatedLedgers() {
 // monitorMigrateChannelEvent monitors onchain event emitted from CelerLedger
 func (p *MigrateChannelProcessor) monitorMigrateChannelEvent(contract chain.Contract) {
 	monitorCfg := &monitor.Config{
-		EventName:  event.MigrateChannelTo,
-		Contract:   contract,
-		StartBlock: p.monitorService.GetCurrentBlockNumber(),
+		EventName:     event.MigrateChannelTo,
+		Contract:      contract,
+		StartBlock:    p.monitorService.GetCurrentBlockNumber(),
+		CheckInterval: p.nodeConfig.GetCheckInterval(event.MigrateChannelTo),
 	}
 	_, err := p.monitorService.Monitor(monitorCfg,
 		func(id monitor.CallbackID, eLog types.Log) {

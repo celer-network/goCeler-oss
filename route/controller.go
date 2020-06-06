@@ -125,10 +125,11 @@ func (c *Controller) Start() {
 // backtrack from one interval before the current block
 func (c *Controller) monitorRouterUpdatedEvent() {
 	monitorCfg := &monitor.Config{
-		EventName:  event.RouterUpdated,
-		Contract:   c.nodeConfig.GetRouterRegistryContract(),
-		StartBlock: c.calculateStartBlockNumber(),
-		Reset:      true,
+		EventName:     event.RouterUpdated,
+		Contract:      c.nodeConfig.GetRouterRegistryContract(),
+		StartBlock:    c.calculateStartBlockNumber(),
+		Reset:         true,
+		CheckInterval: c.nodeConfig.GetCheckInterval(event.RouterUpdated),
 	}
 	_, err := c.monitorService.Monitor(monitorCfg,
 		func(id monitor.CallbackID, eLog types.Log) {

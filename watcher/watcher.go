@@ -366,7 +366,7 @@ func (w *Watch) fetchLogEvents() {
 	// Fetch server-side filtered log events in the target range of
 	// block numbers.  The block delay limit is used to avoid fetching
 	// recently mined blocks that may still be undone by a chain reorg.
-	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second) // https://infura.io/docs/ethereum/json-rpc/eth-getLogs up to 10s
 	defer cancel()
 
 	toBlock := blkNum - w.blkDelay
@@ -377,7 +377,7 @@ func (w *Watch) fetchLogEvents() {
 
 	logs, err := w.service.client.FilterLogs(ctx, w.query)
 	if err != nil {
-		log.Tracef("cannot fetch logs: %s: [%d-%d]: %s", w.name, w.fromBlock, toBlock, err)
+		log.Warnf("cannot fetch logs: %s: [%d-%d]: %s", w.name, w.fromBlock, toBlock, err)
 		return
 	}
 
@@ -409,9 +409,13 @@ func (w *Watch) fetchLogEvents() {
 	// Update the next block number to start fetching.
 	if maxBlock >= w.fromBlock {
 		w.fromBlock = maxBlock + 1
+		log.Tracef("added %d logs to queue: %s: next from %d", count, w.name, w.fromBlock)
+	} else {
+		// we didn't find any event between fromBlock and toBlock, so we can fast forward
+		// maybe we should also do this above instead of maxBlock + 1?
+		w.fromBlock = toBlock
+		log.Tracef("fast forward %s fromBlock to %d", w.name, w.fromBlock)
 	}
-
-	log.Tracef("added %d logs to queue: %s: next from %d", count, w.name, w.fromBlock)
 }
 
 // Return true if the log event ID is strictly greater than the last ID.

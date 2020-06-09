@@ -364,7 +364,7 @@ func (b *routingTableBuilder) buildTable(tokenAddr ctype.Addr) (map[ctype.Addr]c
 	if !b.needCompute(tokenAddr) {
 		return nil, nil
 	}
-	log.Infoln("building routing table for token", utils.PrintTokenAddr(tokenAddr))
+	log.Debugln("building routing table for token", utils.PrintTokenAddr(tokenAddr))
 	// compute routes
 	accessOsps, nextHopCids, nextHopAddrs := b.computeRoutes(tokenAddr)
 	// update routes in database

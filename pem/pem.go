@@ -28,6 +28,8 @@ func CommitPem(pem *PayEventMessage) {
 		log.Errorln("LOGPEM:", pem)
 	} else if pem.Nack != nil {
 		log.Warnln("LOGPEM:", pem)
+	} else if pem.Type == PayMessageType_ROUTING_REQUEST {
+		log.Debugln("LOGPEM:", pem)
 	} else {
 		log.Infoln("LOGPEM:", pem)
 	}

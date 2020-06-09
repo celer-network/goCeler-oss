@@ -431,7 +431,7 @@ func (c *Controller) RecvBcastRoutingInfo(info *rpc.RoutingRequest) error {
 		return fmt.Errorf("route update invalid sig for origin %s", update.GetOrigin())
 	}
 
-	log.Infoln("receive router update:", &update)
+	log.Debugln("receive router update:", &update)
 	c.rtBuilder.keepNeighborAlive(ctype.Hex2Addr(info.GetSender()))
 	if c.enqueueRouterInfo(&update, signedUpdate.GetTtl()) {
 		info.Updates[0].Ttl--

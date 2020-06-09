@@ -18,12 +18,12 @@ import (
 	"github.com/celer-network/goCeler/ctype"
 	"github.com/celer-network/goCeler/ledgerview"
 	"github.com/celer-network/goCeler/metrics"
-	"github.com/celer-network/goCeler/monitor"
 	"github.com/celer-network/goCeler/rtconfig"
 	"github.com/celer-network/goCeler/storage"
 	"github.com/celer-network/goCeler/utils"
 	"github.com/celer-network/goCeler/utils/lease"
 	"github.com/celer-network/goutils/eth"
+	"github.com/celer-network/goutils/eth/monitor"
 	"github.com/celer-network/goutils/log"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -455,9 +455,10 @@ func (p *Processor) monitorOnAllLedgers() {
 // Continuously monitor the on-chain "Deposit" event.
 func (p *Processor) monitorEvent(ledgerContract chain.Contract) {
 	monitorCfg := &monitor.Config{
-		EventName:  event.Deposit,
-		Contract:   ledgerContract,
-		StartBlock: p.monitorService.GetCurrentBlockNumber(),
+		EventName:     event.Deposit,
+		Contract:      ledgerContract,
+		StartBlock:    p.monitorService.GetCurrentBlockNumber(),
+		CheckInterval: p.nodeConfig.GetCheckInterval(event.Deposit),
 	}
 	p.monitorService.Monitor(monitorCfg,
 		func(id monitor.CallbackID, eLog types.Log) {

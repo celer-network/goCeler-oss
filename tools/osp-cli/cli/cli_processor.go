@@ -7,11 +7,11 @@ import (
 	"github.com/celer-network/goCeler/config"
 	"github.com/celer-network/goCeler/ctype"
 	"github.com/celer-network/goCeler/dispute"
-	"github.com/celer-network/goCeler/monitor"
 	"github.com/celer-network/goCeler/storage"
 	"github.com/celer-network/goCeler/tools/toolsetup"
-	"github.com/celer-network/goCeler/watcher"
 	"github.com/celer-network/goutils/eth"
+	"github.com/celer-network/goutils/eth/monitor"
+	"github.com/celer-network/goutils/eth/watcher"
 	"github.com/celer-network/goutils/log"
 )
 
@@ -62,8 +62,7 @@ func (p *Processor) Setup(db, ospkey, disputer bool) {
 				log.Fatal(err)
 			}
 			watch := watcher.NewWatchService(ethclient, p.dal, config.BlockIntervalSec)
-			monitorService := monitor.NewService(
-				watch, p.profile.BlockDelayNum, false, p.nodeConfig.GetRPCAddr())
+			monitorService := monitor.NewService(watch, p.profile.BlockDelayNum, false)
 			p.disputer = dispute.NewProcessor(
 				p.nodeConfig, p.transactor, transactorPool, nil, monitorService, p.dal, false)
 		}

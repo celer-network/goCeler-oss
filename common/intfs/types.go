@@ -8,7 +8,7 @@ package intfs
 import (
 	"math/big"
 
-	"github.com/celer-network/goCeler/monitor"
+	"github.com/celer-network/goutils/eth/monitor"
 	"github.com/ethereum/go-ethereum/core/types"
 )
 

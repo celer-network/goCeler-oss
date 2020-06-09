@@ -36,13 +36,13 @@ import (
 	"github.com/celer-network/goCeler/lrucache"
 	"github.com/celer-network/goCeler/messager"
 	"github.com/celer-network/goCeler/migrate"
-	"github.com/celer-network/goCeler/monitor"
 	"github.com/celer-network/goCeler/route"
 	"github.com/celer-network/goCeler/rpc"
 	"github.com/celer-network/goCeler/storage"
 	"github.com/celer-network/goCeler/utils"
-	"github.com/celer-network/goCeler/watcher"
 	"github.com/celer-network/goutils/eth"
+	"github.com/celer-network/goutils/eth/monitor"
+	"github.com/celer-network/goutils/eth/watcher"
 	"github.com/celer-network/goutils/log"
 	"github.com/ethereum/go-ethereum/ethclient"
 	ethrpc "github.com/ethereum/go-ethereum/rpc"
@@ -516,7 +516,7 @@ func (c *CNode) initialize(
 	}
 
 	// Init monitor service
-	monitorService := monitor.NewService(c.watch, config.BlockDelay, !c.isOSP || c.listenOnChain, c.GetRPCAddr())
+	monitorService := monitor.NewService(c.watch, config.BlockDelay, !c.isOSP || c.listenOnChain)
 	monitorService.Init()
 	c.monitorService = monitorService
 	c.streamWriter = cobj.NewCelerStreamWriter(c.connManager)

@@ -56,13 +56,17 @@ const (
 )
 
 const (
-	refreshRouterInterval = 5 * 24 * time.Hour
-	scanRouterInterval    = 1 * time.Hour
-	routeTTL              = 15
-)
+	// A router OSP checks the router registry at startup and then every checkRegistryInterval to see
+	// whether its registry time is more than refreshIntervalBlock before or not, and refresh itself
+	// onchain if so. It also scans the local rtBuilder.getAllOsps() for every checkRegistryInterval
+	// (first scan time is startupTime + checkRegistryInterval), and removes expired OSPs if they
+	// have not been refreshed for expireTimeoutBlock.
+	checkRegistryInterval = 6 * time.Hour // time interval to check for self-refresh and OSP timeouts
+	refreshIntervalBlock  = uint64(36000) // block interval for OSP to refresh registry
+	expireTimeoutBlock    = uint64(50000) // remove OSP as router if not refreshed within timeout blocks
 
-const expireIntervalBlock = uint64(46500) // estimation of block numbers during one week, fluctuation tolerant
-const refreshThreshold = uint64(10000)    // check if Osp needs to refresh when starting
+	routeTTL = 15
+)
 
 // NewController creates a new process for router controller
 func NewController(
@@ -109,7 +113,7 @@ func (c *Controller) Start() {
 		log.Infoln("router registered / refreshed at block", blknum)
 		// check if OSP needs to send refresh transaction
 		currentBlk := c.monitorService.GetCurrentBlockNumber().Uint64()
-		if currentBlk-blknum > refreshThreshold {
+		if currentBlk-blknum > refreshIntervalBlock {
 			c.refreshRouterRegistry()
 		}
 		// start onchain events monitor
@@ -191,11 +195,11 @@ func (c *Controller) refreshRouter(routerAddr ctype.Addr, blkNum uint64) {
 // Interval is the same as the expire interval in rtconfig
 func (c *Controller) calculateStartBlockNumber() *big.Int {
 	currentBlk := c.monitorService.GetCurrentBlockNumber()
-	interval := big.NewInt(0).SetUint64(expireIntervalBlock)
-	if interval.Cmp(currentBlk) == 1 {
+	timeout := big.NewInt(0).SetUint64(expireTimeoutBlock)
+	if timeout.Cmp(currentBlk) == 1 {
 		return big.NewInt(0)
 	}
-	return currentBlk.Sub(currentBlk, interval) // start block number for onchain monitor service
+	return currentBlk.Sub(currentBlk, timeout) // start block number for onchain monitor service
 }
 
 // call routerInfo in router registry contract to check if Osp has been registered.
@@ -211,6 +215,18 @@ func (c *Controller) queryRouterRegistry() (uint64, error) {
 		return 0, err
 	}
 	return blknum.Uint64(), nil
+}
+
+func (c *Controller) checkAndRefreshIfNeeded() {
+	blknum, err := c.queryRouterRegistry()
+	if err != nil {
+		log.Errorf("query router registry failed: %s", err)
+		return
+	}
+	currentBlk := c.monitorService.GetCurrentBlockNumber().Uint64()
+	if currentBlk-blknum > refreshIntervalBlock {
+		c.refreshRouterRegistry()
+	}
 }
 
 // send on-chain transaction to refresh the block number of Osp address.
@@ -245,14 +261,12 @@ func (c *Controller) refreshRouterRegistry() {
 // starts some routine jobs
 // CAUTION: This should be run in goroutine
 func (c *Controller) runRoutersRoutineJob() {
-	scanTicker := time.NewTicker(scanRouterInterval)
-	refreshTicker := time.NewTicker(refreshRouterInterval)
+	checkTicker := time.NewTicker(checkRegistryInterval)
 	bcastTicker := time.NewTicker(config.RouterBcastInterval)
 	buildTicker := time.NewTicker(config.RouterBuildInterval)
 	reportTicker := time.NewTicker(config.OspReportInverval)
 	defer func() {
-		scanTicker.Stop()
-		refreshTicker.Stop()
+		checkTicker.Stop()
 		bcastTicker.Stop()
 		buildTicker.Stop()
 		reportTicker.Stop()
@@ -260,10 +274,9 @@ func (c *Controller) runRoutersRoutineJob() {
 
 	for {
 		select {
-		case <-scanTicker.C:
+		case <-checkTicker.C:
+			c.checkAndRefreshIfNeeded()
 			c.removeExpiredRouters()
-		case <-refreshTicker.C:
-			c.refreshRouterRegistry()
 		case <-bcastTicker.C:
 			c.bcastRouterInfo()
 		case <-buildTicker.C:
@@ -288,7 +301,7 @@ func (c *Controller) removeExpiredRouters() {
 }
 
 func isRouterExpired(routerBlk, currentBlk uint64) bool {
-	return routerBlk+expireIntervalBlock < currentBlk
+	return routerBlk+expireTimeoutBlock < currentBlk
 }
 
 // Get my dynamic routing information and broadcast it to peer OSPs.

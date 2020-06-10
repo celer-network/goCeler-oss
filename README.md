@@ -5,11 +5,11 @@ Celer state channel network is a generic framework of state channels with deeply
 
 ## Run Local Manual Tests
 
-One who plans to run a full Off-chain Service Provider (OSP) node can start by following the [instructions on local manual tests](./test/manual/README.md) to play with the code and essential tools.
+One who plans to run a full Off-chain Service Provider (OSP) node should start by following the [instructions on local manual tests](./test/manual/README.md) to play with the code and essential tools, and to get familiar with the operaton process.
 
 ## Run OSP on Ethereum Mainnet
 
-Make sure you have walked through the [local manual tests](./test/manual/README.md) before moving forward to Mainnet deployment. Steps to run from source code on Mainnet are very similar to local manual tests.
+Make sure you have walked through the [local manual tests](./test/manual/README.md) before moving forward to Mainnet deployment. Steps to operate OSPs on Mainnet are very similar to local manual tests. Current running OSPs can be found at https://explorer.celer.network.
 
 ### Requirements
 - There are two storage options: SQLite3 and CockroachDB. Install CockroachDB if you plan to use it.
@@ -29,7 +29,8 @@ export PATH=$PATH:$PWD/goceler
 3. Update [deploy/mainnet/profile.json](./deploy/mainnet/profile.json) `gateway` field to your Mainnet RPC (eg. https://mainnet.infura.io/v3/xxxxx), `host` filed to the OSP public RPC hostname:port (default rpc port is 10000), `address` field to the OSP ETH address.
 4. Setup OSP: Run **`osp-cli -profile $GOCELER/deploy/mainnet/profile.json -ks ospks.json -ethpooldeposit -amount [ETH amount] -register -blkdelay 2`** to deposit OSP's ETH into the EthPool contract, and register the OSP as a state channel network router.
    - **note 1**: EthPool balance is used by OSP to make channel deposits and accept open channel request from peers.
-   - **note 2**: `-blkdelay` specifies how many blocks to wait to confirm the on-chain transactions.
+   - **note 2**: as noted in the [CLI Command Reference](./tools/osp-cli/README.md), `amount` is float assuming 18 token decimals.
+   - **note 3**: `-blkdelay` specifies how many blocks to wait to confirm the on-chain transactions.
 
 ### Run OSP server
 #### Option 1: run OSP using SQLite as storage backend (easier setup)
@@ -38,13 +39,14 @@ export PATH=$PATH:$PWD/goceler
 - **note 1**: use `-routedata` only when starting OSP from scracth for the first time.
 - **note 2**: the default rpc port is `10000`, default admin http endpoint is `localhost:8090`, use `-port` and `-adminweb` to change those values ([example](./test/manual/run_osp.sh)).
 - **note 3**: use [log args](https://github.com/celer-network/goutils/blob/v0.1.2/log/log.go) if needed, e.g., `-logdir ${HOME}/logs -logrotate`
+- **note 4**: your OSP should be shown on the [Explorer](https://explorer.celer.network) about 15 minutes after the server started.
 
 #### Option 2: run OSP using CockroachDB as storage backend (higher performance)
 5. First install CockroachDB. Then checkout [tools/scripts/cockroachdb.sh](./tools/scripts/cockroachdb.sh), update `STOREPATH` to your preferred storage location, and run **`./cockroachdb.sh start`** to start the cockroachDB process and create database tables.
-6. Start OSP: **`server -profile $GOCELER/deploy/mainnet/profile.json -ks ospks.json -svrname s0 -storesql postgresql://celer@localhost:26257/celer?sslmode=disable -rtc $GOCELER/deploy/mainnet/rt_config.json -routedata $GOCELER/deploy/mainnet/channels_2020_05_08.json`**. Be aware of the **notes 1-3** above.
+6. Start OSP: **`server -profile $GOCELER/deploy/mainnet/profile.json -ks ospks.json -svrname s0 -storesql postgresql://celer@localhost:26257/celer?sslmode=disable -rtc $GOCELER/deploy/mainnet/rt_config.json -routedata $GOCELER/deploy/mainnet/channels_2020_05_08.json`**. Be aware of the above **notes** under option 1.
 
 ### Open channel with peer OSP
-7. Connect with another OSP through grpc stream: **`osp-cli -adminhostport localhost:8090 -registerstream -peer [peerOspAddr] -peerhostport [peerOspHostPort]`**. If you want to quickly connect to multiple peer OSPs (e.g., reconnect to peers after restart), you can use the `-file` option, see [local manual tests](./test/manual/README.md) for example.
+7. Connect with another OSP through grpc stream: **`osp-cli -adminhostport localhost:8090 -registerstream -peer [peerOspAddr] -peerhostport [peerOspHostPort]`**. If you want to quickly connect to multiple peer OSPs (e.g., reconnect to peers after restart), you can use the `-file` option, see [local manual tests](./test/manual/README.md#5-connect-two-osps-through-grpc-stream) for example.
 8. Open channel with another OSP: **`osp-cli -adminhostport localhost:8090 -openchannel -peer [peerOspAddr] -selfdeposit 0.1 -peerdeposit 0.1`**
 9. Query channel from database: **`osp-cli -profile $GOCELER/deploy/mainnet/profile.json -storedir ${HOME}/celerdb/[ospAddr] -dbview channel -peer [peerOspAddr]`**. If using CockroachDB, replace the `-storedir` arg with `-storesql postgresql://celer@localhost:26257/celer?sslmode=disable`.
 10. Query channel from blockchain: **`osp-cli -profile $GOCELER/deploy/mainnet/profile.json -onchainview channel -cid [channel ID]`**. You can see the channel ID from the output of step 9 above.

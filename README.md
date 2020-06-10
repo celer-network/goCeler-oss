@@ -19,7 +19,7 @@ Make sure you have walked through the [local manual tests](./test/manual/README.
 Download prebuit binaries from https://github.com/celer-network/goCeler-oss/releases
 Then run
 ```bash
-tar xzf goceler-v0.16.13-linux-amd64.tar.gz
+tar xzf goceler-v0.16.14-linux-amd64.tar.gz
 export PATH=$PATH:$PWD/goceler
 ```
 

@@ -916,6 +916,10 @@ func (c *CNode) ProcessMigrateChannelRequest(in *rpc.MigrateChannelRequest) (*rp
 }
 
 func (c *CNode) runOspRoutineJob() {
+	if c.routeController == nil && config.EventListenerHttp == "" {
+		log.Info("both routeController and EventListenerHttp are empty, no routine for ClearPaymentsWithPeerOsps")
+		return
+	}
 	clearPayTicker := time.NewTicker(config.OspClearPaysInterval)
 	defer func() {
 		clearPayTicker.Stop()

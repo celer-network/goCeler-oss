@@ -15,7 +15,7 @@ func (h *CelerMsgHandler) HandleRoutingRequest(frame *common.MsgFrame) error {
 	var err error
 	if h.routeController == nil {
 		if config.EventListenerHttp == "" {
-			return fmt.Errorf("both router and EventListenerHttp are empty")
+			return fmt.Errorf("both routeController and EventListenerHttp are empty")
 		}
 		err = utils.RecvRoutingInfo(config.EventListenerHttp, msg)
 	} else {

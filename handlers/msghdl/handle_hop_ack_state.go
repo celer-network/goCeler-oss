@@ -46,7 +46,7 @@ func (h *CelerMsgHandler) HandleHopAckState(frame *common.MsgFrame) error {
 	log.Debugln("Receive hop ack simplex:", utils.PrintSimplexChannel(&ackSimplex))
 
 	// Verify signature
-	sigValid := eth.SigIsValid(frame.PeerAddr, ackState.GetSimplexState(), ackState.GetSigOfPeerTo())
+	sigValid := eth.IsSignatureValid(frame.PeerAddr, ackState.GetSimplexState(), ackState.GetSigOfPeerTo())
 	if !sigValid {
 		log.Errorln(common.ErrInvalidSig, ctype.Addr2Hex(frame.PeerAddr), utils.PrintSimplexChannel(&ackSimplex))
 		return common.ErrInvalidSig
@@ -55,7 +55,7 @@ func (h *CelerMsgHandler) HandleHopAckState(frame *common.MsgFrame) error {
 	ackSeqNum := ackSimplex.GetSeqNum()
 	logEntry.SeqNums.Ack = ackSeqNum
 	if ackSeqNum > 0 {
-		sigValid = eth.SigIsValid(h.nodeConfig.GetOnChainAddr(), ackState.GetSimplexState(), ackState.GetSigOfPeerFrom())
+		sigValid = eth.IsSignatureValid(h.nodeConfig.GetOnChainAddr(), ackState.GetSimplexState(), ackState.GetSigOfPeerFrom())
 		if !sigValid {
 			log.Errorln(common.ErrInvalidSig, ctype.Addr2Hex(frame.PeerAddr), utils.PrintSimplexChannel(&ackSimplex))
 			return common.ErrInvalidSig

@@ -155,9 +155,12 @@ func PrintPayPath(payPath *rpc.PayPath, payID ctype.PayIDType) string {
 		path = fmt.Sprintf("%d reported hops | ", nhop)
 	}
 	for i, signedHop := range payPath.GetHops() {
-		signer := eth.RecoverSigner(signedHop.GetPayHopBytes(), signedHop.GetSig())
+		signer, err := eth.RecoverSigner(signedHop.GetPayHopBytes(), signedHop.GetSig())
+		if err != nil {
+			return fmt.Sprintf("%s RecoverSigner err: %s", path, err)
+		}
 		var payHop rpc.PayHop
-		err := proto.Unmarshal(signedHop.GetPayHopBytes(), &payHop)
+		err = proto.Unmarshal(signedHop.GetPayHopBytes(), &payHop)
 		if err != nil {
 			return fmt.Sprintf("%s proto.Unmarshal err: %s", path, err)
 		}

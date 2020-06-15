@@ -190,7 +190,7 @@ func (p *Processor) sendCooperativeWithdrawTx(
 	if !found {
 		return common.ErrChannelNotFound
 	}
-	if !eth.SigIsValid(peer, serializedInfo, response.ApproverSig) {
+	if !eth.IsSignatureValid(peer, serializedInfo, response.ApproverSig) {
 		return fmt.Errorf("Invalid CooperativeWithdrawResponse signature")
 	}
 	var sigs [][]byte
@@ -220,7 +220,6 @@ func (p *Processor) sendCooperativeWithdrawTx(
 
 	tx, err := p.transactorPool.Submit(
 		nil,
-		&eth.TxConfig{},
 		func(
 			transactor bind.ContractTransactor,
 			opts *bind.TransactOpts) (*types.Transaction, error) {
@@ -234,7 +233,8 @@ func (p *Processor) sendCooperativeWithdrawTx(
 				return nil, contractErr
 			}
 			return contract.CooperativeWithdraw(opts, serializedRequest)
-		})
+		},
+		config.TransactOptions()...)
 	if err != nil {
 		return err
 	}
@@ -250,7 +250,7 @@ func (p *Processor) sendCooperativeWithdrawTx(
 
 func (p *Processor) waitTx(job *structs.CooperativeWithdrawJob) {
 	txHash := job.TxHash
-	receipt, err := p.transactorPool.WaitMined(txHash)
+	receipt, err := p.transactorPool.WaitMined(txHash, config.WaitMinedOptions()...)
 	if err != nil {
 		p.abortJob(job, err)
 		return

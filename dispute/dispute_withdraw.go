@@ -12,12 +12,12 @@ import (
 	"github.com/celer-network/goCeler/common"
 	"github.com/celer-network/goCeler/common/event"
 	"github.com/celer-network/goCeler/common/structs"
+	"github.com/celer-network/goCeler/config"
 	"github.com/celer-network/goCeler/ctype"
 	"github.com/celer-network/goCeler/fsm"
 	"github.com/celer-network/goCeler/ledgerview"
 	"github.com/celer-network/goCeler/metrics"
 	"github.com/celer-network/goCeler/storage"
-	"github.com/celer-network/goutils/eth"
 	"github.com/celer-network/goutils/eth/monitor"
 	"github.com/celer-network/goutils/log"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -53,7 +53,6 @@ func (p *Processor) IntendWithdraw(cidFrom ctype.CidType, amount *big.Int, cidTo
 
 	receipt, err := p.transactor.TransactWaitMined(
 		fmt.Sprintf("IntendWithdraw from channel %x", cidFrom),
-		&eth.TxConfig{},
 		func(transactor bind.ContractTransactor, opts *bind.TransactOpts) (*types.Transaction, error) {
 			chanLedger := p.nodeConfig.GetLedgerContractOf(cidFrom)
 			if chanLedger == nil {
@@ -65,7 +64,8 @@ func (p *Processor) IntendWithdraw(cidFrom ctype.CidType, amount *big.Int, cidTo
 				return nil, err2
 			}
 			return contract.IntendWithdraw(opts, cidFrom, amount, cidTo)
-		})
+		},
+		config.TransactOptions()...)
 	if err != nil {
 		log.Error(err)
 		return err
@@ -101,7 +101,6 @@ func (p *Processor) ConfirmWithdraw(cid ctype.CidType) error {
 
 	receipt, err := p.transactor.TransactWaitMined(
 		fmt.Sprintf("ConfirmWithdraw from channel %x", cid),
-		&eth.TxConfig{},
 		func(transactor bind.ContractTransactor, opts *bind.TransactOpts) (*types.Transaction, error) {
 			chanLedger := p.nodeConfig.GetLedgerContractOf(cid)
 			if chanLedger == nil {
@@ -113,7 +112,8 @@ func (p *Processor) ConfirmWithdraw(cid ctype.CidType) error {
 				return nil, err2
 			}
 			return contract.ConfirmWithdraw(opts, cid)
-		})
+		},
+		config.TransactOptions()...)
 	if err != nil {
 		log.Error(err)
 		return err
@@ -133,7 +133,6 @@ func (p *Processor) VetoWithdraw(cid ctype.CidType) error {
 	log.Infoln("Veto withdraw", cid.Hex())
 	receipt, err := p.transactor.TransactWaitMined(
 		fmt.Sprintf("VetoWithdraw from channel %x", cid),
-		&eth.TxConfig{},
 		func(transactor bind.ContractTransactor, opts *bind.TransactOpts) (*types.Transaction, error) {
 			chanLedger := p.nodeConfig.GetLedgerContractOf(cid)
 			if chanLedger == nil {
@@ -145,7 +144,8 @@ func (p *Processor) VetoWithdraw(cid ctype.CidType) error {
 				return nil, err2
 			}
 			return contract.VetoWithdraw(opts, cid)
-		})
+		},
+		config.TransactOptions()...)
 	if err != nil {
 		log.Error(err)
 		return err

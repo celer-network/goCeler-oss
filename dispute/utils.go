@@ -18,9 +18,15 @@ func SigSortedSimplexState(state *rpc.SignedSimplexState) (*chain.SignedSimplexS
 	var signedState chain.SignedSimplexState
 	signedState.SimplexState = make([]byte, len(state.SimplexState))
 	copy(signedState.SimplexState, state.SimplexState)
-	peerFrom := eth.RecoverSigner(state.SimplexState, state.SigOfPeerFrom).Bytes()
-	peerTo := eth.RecoverSigner(state.SimplexState, state.SigOfPeerTo).Bytes()
-	if bytes.Compare(peerFrom, peerTo) < 0 {
+	peerFrom, err := eth.RecoverSigner(state.SimplexState, state.SigOfPeerFrom)
+	if err != nil {
+		return nil, err
+	}
+	peerTo, err := eth.RecoverSigner(state.SimplexState, state.SigOfPeerTo)
+	if err != nil {
+		return nil, err
+	}
+	if bytes.Compare(peerFrom.Bytes(), peerTo.Bytes()) < 0 {
 		signedState.Sigs = append(signedState.Sigs, state.SigOfPeerFrom)
 		signedState.Sigs = append(signedState.Sigs, state.SigOfPeerTo)
 	} else {
@@ -45,7 +51,11 @@ func PrintSignedSimplexState(state *chain.SignedSimplexState) {
 	log.Infoln("---- pending pay IDs", simplex.PendingPayIds)
 	log.Infoln("---- last resolve deadline", simplex.LastPayResolveDeadline)
 	for _, sig := range state.Sigs {
-		signer := ctype.Bytes2Hex(eth.RecoverSigner(state.SimplexState, sig).Bytes())
-		log.Infoln("---- signer", signer)
+		signer, err := eth.RecoverSigner(state.SimplexState, sig)
+		if err != nil {
+			log.Error(err)
+		} else {
+			log.Infoln("---- signer", ctype.Addr2Hex(signer))
+		}
 	}
 }

@@ -5,7 +5,7 @@ option go_package = "github.com/celer-network/goCeler/rtconfig";
 
 // RuntimeConfig is the data object holding configs reloadable during runtime
 // numeric field name should end with unit, eg. gwei, ms
-// Next tag: 19
+// Next tag: 21
 message RuntimeConfig {
     // wait seconds before accepting next open chan request
     // if 0, means no wait. negative values are treated as 0
@@ -17,6 +17,8 @@ message RuntimeConfig {
     // max gas price in gwei for onchain tx
     // if 0, means no max
     uint64 max_gas_gwei = 3;
+    // add gas price to the suggested price to speed up transaction
+    uint64 add_gas_gwei = 20;
     // wait time (in seconds) of stream send.
     uint64 stream_send_timeout_s = 4;
     // decimal. eth deposit cap for cold bootstrap

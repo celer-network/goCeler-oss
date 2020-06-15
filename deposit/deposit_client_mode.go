@@ -10,6 +10,7 @@ import (
 	"github.com/celer-network/goCeler/chain/channel-eth-go/ledger"
 	"github.com/celer-network/goCeler/common"
 	"github.com/celer-network/goCeler/common/structs"
+	"github.com/celer-network/goCeler/config"
 	"github.com/celer-network/goCeler/ctype"
 	"github.com/celer-network/goCeler/ledgerview"
 	"github.com/celer-network/goCeler/utils"
@@ -178,7 +179,6 @@ func (p *Processor) sendApproveTx(
 	amtInt *big.Int) (string, error) {
 	tx, err := p.transactor.Transact(
 		nil,
-		&eth.TxConfig{},
 		func(
 			transactor bind.ContractTransactor,
 			opts *bind.TransactOpts) (*types.Transaction, error) {
@@ -187,7 +187,8 @@ func (p *Processor) sendApproveTx(
 				return nil, contractErr
 			}
 			return contract.Approve(opts, spender, amtInt)
-		})
+		},
+		config.TransactOptions()...)
 	if err != nil {
 		return "", err
 	}
@@ -198,7 +199,6 @@ func (p *Processor) sendDepositTx(
 	cid ctype.CidType, txValue *big.Int, amt *big.Int) (string, error) {
 	tx, err := p.transactor.Transact(
 		nil,
-		&eth.TxConfig{EthValue: txValue},
 		func(
 			transactor bind.ContractTransactor,
 			opts *bind.TransactOpts) (*types.Transaction, error) {
@@ -215,7 +215,8 @@ func (p *Processor) sendDepositTx(
 				return nil, contractErr
 			}
 			return contract.Deposit(opts, cid, p.transactor.Address(), amt)
-		})
+		},
+		config.TransactOptions(eth.WithEthValue(txValue))...)
 	if err != nil {
 		return "", err
 	}
@@ -227,7 +228,7 @@ func (p *Processor) sendDepositTx(
 func (p *Processor) waitApproveAndSendDepositTx(job *structs.DepositJob) {
 	approveTxHash := job.TxHash
 	log.Infof("waiting for deposit job %s erc20 approve tx %s to be mined", job.UUID, approveTxHash)
-	receipt, err := p.transactor.WaitMined(approveTxHash)
+	receipt, err := p.transactor.WaitMined(approveTxHash, config.WaitMinedOptions()...)
 	if err != nil {
 		p.abortJob(job, err)
 		return
@@ -257,7 +258,7 @@ func (p *Processor) waitApproveAndSendDepositTx(job *structs.DepositJob) {
 func (p *Processor) waitDeposit(job *structs.DepositJob) {
 	depositTxHash := job.TxHash
 	log.Infof("waiting for deposit job %s tx %s to be mined", job.UUID, depositTxHash)
-	receipt, err := p.transactor.WaitMined(depositTxHash)
+	receipt, err := p.transactor.WaitMined(depositTxHash, config.WaitMinedOptions()...)
 	if err != nil {
 		p.abortJob(job, err)
 		return

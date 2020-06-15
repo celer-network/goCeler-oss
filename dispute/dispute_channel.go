@@ -13,6 +13,7 @@ import (
 	"github.com/celer-network/goCeler/common"
 	"github.com/celer-network/goCeler/common/event"
 	enums "github.com/celer-network/goCeler/common/structs"
+	"github.com/celer-network/goCeler/config"
 	"github.com/celer-network/goCeler/ctype"
 	"github.com/celer-network/goCeler/fsm"
 	"github.com/celer-network/goCeler/ledgerview"
@@ -87,8 +88,8 @@ func (p *Processor) IntendSettlePaymentChannel(cid ctype.CidType, waitMined bool
 func (p *Processor) intendSettleAndWaitMined(cid ctype.CidType, stateArrayBytes []byte) error {
 	receipt, err := p.transactorPool.SubmitWaitMined(
 		fmt.Sprintf("intend settle payment channel %x", cid),
-		&eth.TxConfig{},
-		p.intendSettleTxMethod(cid, stateArrayBytes))
+		p.intendSettleTxMethod(cid, stateArrayBytes),
+		config.TransactOptions()...)
 	if err != nil {
 		log.Errorf("intend settle payment channel error %s, cid %x", err, cid)
 		return err
@@ -102,8 +103,8 @@ func (p *Processor) intendSettleAndWaitMined(cid ctype.CidType, stateArrayBytes 
 func (p *Processor) intendSettle(cid ctype.CidType, stateArrayBytes []byte) error {
 	tx, err := p.transactorPool.Submit(
 		newGenericTransactionHandler("intend settle", cid),
-		&eth.TxConfig{},
-		p.intendSettleTxMethod(cid, stateArrayBytes))
+		p.intendSettleTxMethod(cid, stateArrayBytes),
+		config.TransactOptions()...)
 	if err != nil {
 		log.Errorf("intend settle payment channel error %s, cid %x", err, cid)
 		return err
@@ -141,8 +142,8 @@ func (p *Processor) ConfirmSettlePaymentChannel(cid ctype.CidType, waitMined boo
 func (p *Processor) confirmSettleAndWaitMined(cid ctype.CidType) error {
 	receipt, err := p.transactorPool.SubmitWaitMined(
 		fmt.Sprintf("confirm settle payment channel %x", cid),
-		&eth.TxConfig{},
-		p.confirmSettleTxMethod(cid))
+		p.confirmSettleTxMethod(cid),
+		config.TransactOptions()...)
 	if err != nil {
 		log.Errorf("confirm settle payment channel error %s, cid %x", err, cid)
 		return err
@@ -161,8 +162,8 @@ func (p *Processor) confirmSettleAndWaitMined(cid ctype.CidType) error {
 func (p *Processor) confirmSettle(cid ctype.CidType) error {
 	tx, err := p.transactorPool.Submit(
 		newGenericTransactionHandler("confirm settle", cid),
-		&eth.TxConfig{},
-		p.confirmSettleTxMethod(cid))
+		p.confirmSettleTxMethod(cid),
+		config.TransactOptions()...)
 	if err != nil {
 		log.Errorf("confirm settle payment channel error %s, cid %x", err, cid)
 		return err

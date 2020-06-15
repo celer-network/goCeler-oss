@@ -389,7 +389,6 @@ func (p *openChannelProcessor) approveErc20Allowance(ledgerAddr ctype.Addr, amtS
 	if allowance.Cmp(amtSelf) < 0 {
 		receipt, approveErr := p.transactor.TransactWaitMined(
 			"Approve",
-			&eth.TxConfig{},
 			func(
 				transactor bind.ContractTransactor,
 				opts *bind.TransactOpts) (*types.Transaction, error) {
@@ -398,7 +397,8 @@ func (p *openChannelProcessor) approveErc20Allowance(ledgerAddr ctype.Addr, amtS
 					return nil, err
 				}
 				return erc20.Approve(opts, spender, amtSelf)
-			})
+			},
+			config.TransactOptions()...)
 		if approveErr == nil && receipt.Status != types.ReceiptStatusSuccessful {
 			approveErr = fmt.Errorf("Approve transaction %x failed", receipt.TxHash)
 		}
@@ -466,7 +466,6 @@ func (p *openChannelProcessor) sendOpenChannelTransaction(
 				}
 			},
 		},
-		&eth.TxConfig{EthValue: txValue},
 		func(transactor bind.ContractTransactor, opts *bind.TransactOpts) (*types.Transaction, error) {
 			contract, err2 := ledger.NewCelerLedgerTransactor(ledgerAddr, transactor)
 			if err2 != nil {
@@ -474,7 +473,8 @@ func (p *openChannelProcessor) sendOpenChannelTransaction(
 				return nil, err2
 			}
 			return contract.OpenChannel(opts, reqBytes)
-		})
+		},
+		config.TransactOptions(eth.WithEthValue(txValue))...)
 	if err != nil {
 		log.Errorf("%s, Can't open channel for 0x%x", err, requesterAddr)
 		p.processOpenError(openCallback, ledgerAddr, err)

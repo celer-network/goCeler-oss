@@ -101,7 +101,12 @@ func SortPlayerSigs(state []byte, sigs [][]byte) [][]byte {
 		sigs: sigs,
 	}
 	for _, sig := range sigs {
-		sorted.players = append(sorted.players, eth.RecoverSigner(state, sig).Bytes())
+		signer, err := eth.RecoverSigner(state, sig)
+		if err != nil {
+			log.Error(err)
+			continue
+		}
+		sorted.players = append(sorted.players, signer.Bytes())
 	}
 	sort.Sort(sorted)
 	return sorted.sigs

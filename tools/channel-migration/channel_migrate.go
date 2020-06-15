@@ -193,7 +193,8 @@ func handleSingleOnchainTx(
 	ctx2, cancel := context.WithTimeout(ctx, waitMinedTimeout)
 	defer cancel()
 
-	receipt, err := eth.WaitMined(ctx2, client, tx, blockDelay, config.BlockIntervalSec)
+	receipt, err := eth.WaitMined(ctx2, client, tx,
+		eth.WithBlockDelay(blockDelay), eth.WithPollingInterval(time.Duration(config.BlockIntervalSec)*time.Second))
 	if err != nil {
 		log.Errorf("channel migration tx failed for channel(%x): %w", cid, err)
 		return txFailed

@@ -36,7 +36,7 @@ func (p *Processor) sendResponse(
 	if err != nil {
 		return err
 	}
-	if !eth.SigIsValid(peer, serializedInfo, request.RequesterSig) {
+	if !eth.IsSignatureValid(peer, serializedInfo, request.RequesterSig) {
 		return errors.New("Invalid CooperativeWithdrawRequest signature")
 	}
 

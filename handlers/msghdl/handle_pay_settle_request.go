@@ -150,7 +150,7 @@ func (h *CelerMsgHandler) processPaySettleRequest(
 
 	// Verify signature
 	sig := recvdState.SigOfPeerFrom
-	if !eth.SigIsValid(peerFrom, recvdState.SimplexState, sig) {
+	if !eth.IsSignatureValid(peerFrom, recvdState.SimplexState, sig) {
 		return nil, common.ErrInvalidSig // corrupted peer
 	}
 

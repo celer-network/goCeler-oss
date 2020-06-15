@@ -16,7 +16,6 @@ import (
 
 	"github.com/celer-network/goCeler/ctype"
 	"github.com/celer-network/goCeler/utils"
-	"github.com/celer-network/goutils/eth"
 	"github.com/celer-network/goutils/log"
 )
 
@@ -82,8 +81,8 @@ func updateConfigFromFile(path string) error {
 	}
 	lock.Lock()
 	rtc = newCfg
+	log.SetLevelByName(rtc.LogLevel)
 	lock.Unlock()
-	setConfig()
 	jsonstr, err := utils.PbToJSONString(newCfg)
 	if err == nil { // jsonstr is good
 		log.Info("New runtime config:", jsonstr)
@@ -91,18 +90,6 @@ func updateConfigFromFile(path string) error {
 		log.Warnf("New runtime config applied %+v but json marshal err:%v", newCfg, err)
 	}
 	return nil
-}
-
-func setConfig() {
-	lock.RLock()
-	defer lock.RUnlock()
-	log.SetLevelByName(rtc.LogLevel)
-	// TODO: wait for goutils/eth support to enable local config
-	eth.SetGasLimit(rtc.MinGasGwei, rtc.MaxGasGwei)
-	eth.SetWaitMinedConfig(
-		rtc.GetWaitMinedConfig().GetTxTimeoutS(),
-		rtc.GetWaitMinedConfig().GetTxQueryTimeoutS(),
-		rtc.GetWaitMinedConfig().GetTxQueryRetryIntervalS())
 }
 
 // GetOpenChanWaitSecond returns open_chan_wait_s
@@ -125,6 +112,13 @@ func GetMaxGasGwei() uint64 {
 	lock.RLock()
 	defer lock.RUnlock()
 	return rtc.MaxGasGwei
+}
+
+// GeAddGasGwei returns add_gas_gwei
+func GetAddGasGwei() uint64 {
+	lock.RLock()
+	defer lock.RUnlock()
+	return rtc.AddGasGwei
 }
 
 // GetOspDepositMultiplier returns osp_deposit_multiplier
@@ -318,8 +312,23 @@ func GetDepositMinBatchSize() uint64 {
 func GetDepositMaxBatchSize() uint64 {
 	lock.RLock()
 	defer lock.RUnlock()
-	if rtc.GetDepositConfig().GetMaxBatchSize() == 0 {
-		return defaultDepositMaxBatchSize
-	}
 	return rtc.GetDepositConfig().GetMaxBatchSize()
+}
+
+func GetWaitMinedTxTimeout() uint64 {
+	lock.RLock()
+	defer lock.RUnlock()
+	return rtc.GetWaitMinedConfig().GetTxTimeoutS()
+}
+
+func GetWaitMinedTxQueryTimeout() uint64 {
+	lock.RLock()
+	defer lock.RUnlock()
+	return rtc.GetWaitMinedConfig().GetTxQueryTimeoutS()
+}
+
+func GetWaitMinedTxQueryRetryInterval() uint64 {
+	lock.RLock()
+	defer lock.RUnlock()
+	return rtc.GetWaitMinedConfig().GetTxQueryRetryIntervalS()
 }

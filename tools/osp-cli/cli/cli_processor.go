@@ -50,7 +50,7 @@ func (p *Processor) Setup(db, ospkey, disputer bool) {
 			}
 		}
 
-		p.transactor, err = eth.NewTransactor(keyStore, passPhrase, ethclient)
+		p.transactor, err = eth.NewTransactor(keyStore, passPhrase, ethclient, config.ChainId)
 		if err != nil {
 			log.Fatal(err)
 		}

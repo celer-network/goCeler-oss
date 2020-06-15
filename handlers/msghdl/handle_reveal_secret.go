@@ -218,7 +218,7 @@ func (h *CelerMsgHandler) recvSecretAckTx(tx *storage.DALTx, args ...interface{}
 	if found && delegator != ctype.ZeroAddr {
 		expectedSigner = delegator
 	}
-	if !eth.SigIsValid(expectedSigner, ctype.Hex2Bytes(secret), ack.GetPayDestSecretSig()) {
+	if !eth.IsSignatureValid(expectedSigner, ctype.Hex2Bytes(secret), ack.GetPayDestSecretSig()) {
 		return common.ErrInvalidSig
 	}
 

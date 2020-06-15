@@ -185,8 +185,11 @@ func (s *server) RequestDelegation(ctx context.Context, in *rpc.DelegationReques
 	dal := s.cNode.GetDAL()
 	proof := in.GetProof()
 	delegationDesc := &rpc.DelegationDescription{}
-	signer := eth.RecoverSigner(proof.GetDelegationDescriptionBytes(), proof.GetSignature())
-	err := proto.Unmarshal(proof.GetDelegationDescriptionBytes(), delegationDesc)
+	signer, err := eth.RecoverSigner(proof.GetDelegationDescriptionBytes(), proof.GetSignature())
+	if err != nil {
+		return nil, err
+	}
+	err = proto.Unmarshal(proof.GetDelegationDescriptionBytes(), delegationDesc)
 	if err != nil {
 		return nil, err
 	}
@@ -278,7 +281,11 @@ func (s *server) GetPayHistory(ctx context.Context, in *rpc.GetPayHistoryRequest
 	tsSig := in.GetTsSig()
 	tsFromPeer := in.GetTs()
 	tsFromServer := uint64(time.Now().Unix())
-	if eth.RecoverSigner(utils.Uint64ToBytes(tsFromPeer), tsSig) != peer {
+	signer, err := eth.RecoverSigner(utils.Uint64ToBytes(tsFromPeer), tsSig)
+	if err != nil {
+		return nil, err
+	}
+	if signer != peer {
 		// sig is invalid
 		return nil, errors.New("Invalid Signature")
 	}

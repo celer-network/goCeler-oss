@@ -164,7 +164,7 @@ func fundAccount(amount string, recipients []*common.Address) error {
 	}
 	for i, r := range recipients {
 		tx := txs[i]
-		receipt, err := eth.WaitMined(ctx, conn, tx, 0, 1)
+		receipt, err := eth.WaitMined(ctx, conn, tx, eth.WithPollingInterval(time.Second))
 		if err != nil {
 			log.Error(err)
 		}
@@ -277,7 +277,7 @@ func RegisterRouters(ksfiles []string) error {
 	ctx := context.Background()
 	for _, tx := range txs {
 		log.Infof("RegisterRouter tx waiting %x", tx.Hash())
-		_, err = eth.WaitMined(ctx, conn, tx, 0, 1)
+		_, err = eth.WaitMined(ctx, conn, tx, eth.WithPollingInterval(time.Second))
 		if err != nil {
 			log.Errorln(err)
 			return err
@@ -303,7 +303,7 @@ func UnregisterRouter(ksfile string) error {
 		return err
 	}
 	ctx := context.Background()
-	_, err = eth.WaitMined(ctx, conn, tx, 0, 1)
+	_, err = eth.WaitMined(ctx, conn, tx, eth.WithPollingInterval(time.Second))
 	if err != nil {
 		return err
 	}
@@ -331,7 +331,7 @@ func FundAccountsWithErc20(erc20Addr string, addrs []string, amount string) erro
 		if err != nil {
 			return err
 		}
-		eth.WaitMined(ctx, conn, tx, 0, 1)
+		eth.WaitMined(ctx, conn, tx, eth.WithPollingInterval(time.Second))
 	}
 	return nil
 }

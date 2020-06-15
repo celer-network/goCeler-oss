@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/big"
 	"net"
 	"net/http"
 	"strconv"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/celer-network/goCeler/celersdk"
 	"github.com/celer-network/goCeler/celersdkintf"
+	"github.com/celer-network/goCeler/common"
 	"github.com/celer-network/goCeler/ctype"
 	"github.com/celer-network/goCeler/entity"
 	msgrpc "github.com/celer-network/goCeler/rpc"
@@ -83,8 +85,15 @@ func NewApiServer(
 			dataPath,
 			callbackImpl)
 	} else { // exercise external signer code path
-		addr, priv, _ := eth.GetAddrPrivKeyFromKeystore(keystore, password)
-		signer, _ := eth.NewSigner(priv)
+		addr, priv, err := eth.GetAddrPrivKeyFromKeystore(keystore, password)
+		if err != nil {
+			log.Fatal(err)
+		}
+		p := common.Bytes2Profile([]byte(config))
+		signer, err := eth.NewSigner(priv, big.NewInt(p.ChainId))
+		if err != nil {
+			log.Fatal(err)
+		}
 		go celersdk.InitClientWithSigner(ctype.Addr2Hex(addr), config, dataPath, callbackImpl, &extSigner{signer})
 	}
 

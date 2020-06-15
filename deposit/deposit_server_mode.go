@@ -22,7 +22,6 @@ import (
 	"github.com/celer-network/goCeler/storage"
 	"github.com/celer-network/goCeler/utils"
 	"github.com/celer-network/goCeler/utils/lease"
-	"github.com/celer-network/goutils/eth"
 	"github.com/celer-network/goutils/eth/monitor"
 	"github.com/celer-network/goutils/log"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -224,14 +223,14 @@ func (p *Processor) depositInBatch(chanDeposits []*channelDeposit, ledgerAddr ct
 	} else {
 		tx, err = p.transactor.Transact(
 			nil,
-			&eth.TxConfig{},
 			func(transactor bind.ContractTransactor, opts *bind.TransactOpts) (*types.Transaction, error) {
 				contract, contractErr := ledger.NewCelerLedgerTransactor(ledgerAddr, transactor)
 				if contractErr != nil {
 					return nil, contractErr
 				}
 				return contract.DepositInBatch(opts, cids, receivers, amounts)
-			})
+			},
+			config.TransactOptions()...)
 	}
 	if err != nil {
 		return "", err
@@ -240,7 +239,7 @@ func (p *Processor) depositInBatch(chanDeposits []*channelDeposit, ledgerAddr ct
 }
 
 func (p *Processor) waitDepositTxMined(txHash string) {
-	receipt, err := p.transactor.WaitMined(txHash)
+	receipt, err := p.transactor.WaitMined(txHash, config.WaitMinedOptions()...)
 	if err != nil {
 		metrics.IncDepositErrCnt()
 		log.Errorln(err, txHash)

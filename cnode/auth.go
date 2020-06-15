@@ -76,7 +76,7 @@ func (c *CNode) HandleAuthReq(req *rpc.AuthReq) (*rpc.CelerMsg, error) {
 		return nil, fmt.Errorf("invalid timestamp, src addr %s", ctype.Addr2Hex(srcAddr))
 	}
 	tsByte := utils.Uint64ToBytes(req.Timestamp)
-	if !eth.SigIsValid(srcAddr, tsByte, req.GetMySig()) {
+	if !eth.IsSignatureValid(srcAddr, tsByte, req.GetMySig()) {
 		return nil, fmt.Errorf("invalid signature, src addr %s", ctype.Addr2Hex(srcAddr))
 	}
 	// only update ts after verify sig
@@ -400,8 +400,8 @@ func (c *CNode) checkSignedSimplex(ss *rpc.SignedSimplexState, expCid ctype.CidT
 
 	if ch.SeqNum != 0 {
 		// must be correctly co-signed by both
-		if !eth.SigIsValid(expFrom, ss.GetSimplexState(), ss.GetSigOfPeerFrom()) ||
-			!eth.SigIsValid(expTo, ss.GetSimplexState(), ss.GetSigOfPeerTo()) {
+		if !eth.IsSignatureValid(expFrom, ss.GetSimplexState(), ss.GetSigOfPeerFrom()) ||
+			!eth.IsSignatureValid(expTo, ss.GetSimplexState(), ss.GetSigOfPeerTo()) {
 			return common.ErrInvalidSig
 		}
 		return nil

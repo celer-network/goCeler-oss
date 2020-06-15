@@ -398,7 +398,7 @@ func (c *CNode) setupTransactor(
 		c.Close()
 		return err
 	}
-	c.signer, err = eth.NewSigner(privKey)
+	c.signer, err = eth.NewSigner(privKey, config.ChainId)
 	if err != nil {
 		c.Close()
 		return err
@@ -412,20 +412,20 @@ func (c *CNode) setupTransactor(
 		}
 	}
 
-	c.transactorPool, err = eth.NewTransactorPoolFromConfig(c.ethclient, transactorConfigs)
+	c.transactorPool, err = eth.NewTransactorPoolFromConfig(c.ethclient, transactorConfigs, config.ChainId)
 	if err != nil {
 		c.Close()
 		return err
 	}
 	c.masterTransactor, err =
-		eth.NewTransactor(masterTxConfig.Keyjson, masterTxConfig.Passphrase, c.ethclient)
+		eth.NewTransactor(masterTxConfig.Keyjson, masterTxConfig.Passphrase, c.ethclient, config.ChainId)
 	if err != nil {
 		c.Close()
 		return err
 	}
 	if depositTxConfig != nil {
 		c.depositTransactor, err =
-			eth.NewTransactor(depositTxConfig.Keyjson, depositTxConfig.Passphrase, c.ethclient)
+			eth.NewTransactor(depositTxConfig.Keyjson, depositTxConfig.Passphrase, c.ethclient, config.ChainId)
 		if err != nil {
 			c.Close()
 			return err

@@ -4,7 +4,7 @@ go 1.13
 
 require (
 	contrib.go.opencensus.io/exporter/prometheus v0.1.0
-	github.com/celer-network/goutils v0.1.12
+	github.com/celer-network/goutils v0.1.13
 	github.com/ethereum/go-ethereum v1.9.6
 	github.com/go-redis/redis v6.15.6+incompatible
 	github.com/golang/groupcache v0.0.0-20191002201903-404acd9df4cc // indirect

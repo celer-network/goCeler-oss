@@ -156,7 +156,7 @@ func (p *MigrateChannelProcessor) checkChannelMigration(peer ctype.Addr, cid cty
 	}
 
 	// check sig from peer
-	if !eth.SigIsValid(peer, migrationInfoBytes, resp.GetApproverSig()) {
+	if !eth.IsSignatureValid(peer, migrationInfoBytes, resp.GetApproverSig()) {
 		return fmt.Errorf("Signature is invalid: peer: %x", peer)
 	}
 
@@ -231,7 +231,7 @@ func (p *MigrateChannelProcessor) ProcessMigrateChannelRequest(req *rpc.MigrateC
 		return nil, common.ErrChannelNotFound
 	}
 
-	if !eth.SigIsValid(peer, migrationInfoBytes, req.GetRequesterSig()) {
+	if !eth.IsSignatureValid(peer, migrationInfoBytes, req.GetRequesterSig()) {
 		log.Errorln("Invalid requester signature of peer:", peer.Hex())
 		return nil, common.ErrInvalidSig
 	}

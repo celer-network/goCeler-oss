@@ -6,6 +6,7 @@ import (
 	"context"
 	"flag"
 	"math/big"
+	"time"
 
 	"github.com/celer-network/goCeler/chain"
 	"github.com/celer-network/goCeler/chain/channel-eth-go/deploy"
@@ -124,32 +125,32 @@ func SetupOnChain(appMap map[string]ctype.Addr, autofund bool) (*common.ProfileJ
 	}
 
 	// wait mined and check status for tx1, tx2, tx3, tx4, tx5, tx6
-	receipt, err := eth.WaitMined(ctx, conclient, tx1, 0, 1)
+	receipt, err := eth.WaitMined(ctx, conclient, tx1, eth.WithPollingInterval(time.Second))
 	if err != nil {
 		log.Fatal(err)
 	}
 	chkTxStatus(receipt.Status, "Disable balance limit")
-	receipt, err = eth.WaitMined(ctx, conclient, tx2, 0, 1)
+	receipt, err = eth.WaitMined(ctx, conclient, tx2, eth.WithPollingInterval(time.Second))
 	if err != nil {
 		log.Fatal(err)
 	}
 	chkTxStatus(receipt.Status, "Deploy ERC20 "+ctype.Addr2Hex(erc20Addr))
-	receipt, err = eth.WaitMined(ctx, conclient, tx3, 0, 1)
+	receipt, err = eth.WaitMined(ctx, conclient, tx3, eth.WithPollingInterval(time.Second))
 	if err != nil {
 		log.Fatal(err)
 	}
 	chkTxStatus(receipt.Status, "Deploy SimpleMultiSessionApp "+ctype.Addr2Hex(appAddr1))
-	receipt, err = eth.WaitMined(ctx, conclient, tx4, 0, 1)
+	receipt, err = eth.WaitMined(ctx, conclient, tx4, eth.WithPollingInterval(time.Second))
 	if err != nil {
 		log.Fatal(err)
 	}
 	chkTxStatus(receipt.Status, "Deploy SimpleMultiSessionAppWithOracle "+ctype.Addr2Hex(appAddr2))
-	receipt, err = eth.WaitMined(ctx, conclient, tx5, 0, 1)
+	receipt, err = eth.WaitMined(ctx, conclient, tx5, eth.WithPollingInterval(time.Second))
 	if err != nil {
 		log.Fatal(err)
 	}
 	chkTxStatus(receipt.Status, "Deploy MultiGomoku "+ctype.Addr2Hex(appAddr3))
-	receipt, err = eth.WaitMined(ctx, conclient, tx6, 0, 1)
+	receipt, err = eth.WaitMined(ctx, conclient, tx6, eth.WithPollingInterval(time.Second))
 	if err != nil {
 		log.Fatalf("Failed to WaitMined v2 CelerLedger: %w", err)
 	}
@@ -311,13 +312,13 @@ func fundEthAddrStep1Check(addrStr string, tx1, tx2 *ethtypes.Transaction) {
 	ctx := context.Background()
 	// wait mined and check status for tx1 and tx2
 	if autoFund {
-		receipt, err := eth.WaitMined(ctx, conclient, tx1, 0, 1)
+		receipt, err := eth.WaitMined(ctx, conclient, tx1, eth.WithPollingInterval(time.Second))
 		if err != nil {
 			log.Fatalln("wait mined failed", addrStr, err)
 		}
 		chkTxStatus(receipt.Status, "deposit to ethpool for "+addrStr)
 	}
-	receipt, err := eth.WaitMined(ctx, conclient, tx2, 0, 1)
+	receipt, err := eth.WaitMined(ctx, conclient, tx2, eth.WithPollingInterval(time.Second))
 	if err != nil {
 		log.Fatalln("wait mined failed", addrStr, err)
 	}
@@ -327,13 +328,13 @@ func fundEthAddrStep1Check(addrStr string, tx1, tx2 *ethtypes.Transaction) {
 func fundEthAddrStep2Check(addrStr string, tx3, tx4 *ethtypes.Transaction) {
 	ctx := context.Background()
 	// wait mined and check status for tx3 and tx4
-	receipt, err := eth.WaitMined(ctx, conclient, tx3, 0, 1)
+	receipt, err := eth.WaitMined(ctx, conclient, tx3, eth.WithPollingInterval(time.Second))
 	if err != nil {
 		log.Fatalln("wait mined failed", addrStr, err)
 	}
 	chkTxStatus(receipt.Status, addrStr+" approve ethpool to ledger")
 
-	receipt, err = eth.WaitMined(ctx, conclient, tx4, 0, 1)
+	receipt, err = eth.WaitMined(ctx, conclient, tx4, eth.WithPollingInterval(time.Second))
 	if err != nil {
 		log.Fatalln("wait mined failed", addrStr, err)
 	}

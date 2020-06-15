@@ -244,7 +244,6 @@ func (c *Controller) refreshRouterRegistry() {
 				}
 			},
 		},
-		&eth.TxConfig{},
 		func(transactor bind.ContractTransactor, opts *bind.TransactOpts) (*types.Transaction, error) {
 			contract, err2 := rt.NewRouterRegistryTransactor(routerRegistryAddr, transactor)
 			if err2 != nil {
@@ -252,7 +251,8 @@ func (c *Controller) refreshRouterRegistry() {
 				return nil, err2
 			}
 			return contract.RefreshRouter(opts)
-		})
+		},
+		config.TransactOptions()...)
 	if err != nil {
 		log.Errorf("Fail to refresh the router: %s", err)
 	}
@@ -440,7 +440,7 @@ func (c *Controller) RecvBcastRoutingInfo(info *rpc.RoutingRequest) error {
 	if err != nil {
 		return fmt.Errorf("unmarshal signed update err: %w", err)
 	}
-	if !eth.SigIsValid(ctype.Hex2Addr(update.GetOrigin()), signedUpdate.GetUpdate(), signedUpdate.GetSig()) {
+	if !eth.IsSignatureValid(ctype.Hex2Addr(update.GetOrigin()), signedUpdate.GetUpdate(), signedUpdate.GetSig()) {
 		return fmt.Errorf("route update invalid sig for origin %s", update.GetOrigin())
 	}
 

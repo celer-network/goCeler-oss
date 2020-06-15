@@ -71,7 +71,7 @@ func (h *CelerMsgHandler) HandleCondPayReceipt(frame *common.MsgFrame) error {
 		}
 	} else {
 		// Check signature of receipt signed by destination
-		if !eth.SigIsValid(ctype.Bytes2Addr(pay.GetDest()), payBytes, receipt.PayDestSig) {
+		if !eth.IsSignatureValid(ctype.Bytes2Addr(pay.GetDest()), payBytes, receipt.PayDestSig) {
 			return errors.New("RECEIPT_NOT_SIGNED_BY_DEST")
 		}
 	}
@@ -134,7 +134,7 @@ func (h *CelerMsgHandler) verifyDelegationProof(
 	if description.GetExpiresAfterBlock() < h.monitorService.GetCurrentBlockNumber().Int64() {
 		return errors.New("description expired")
 	}
-	if !eth.SigIsValid(ctype.Bytes2Addr(description.GetDelegator()), payBytes, receipt.GetPayDelegatorSig()) {
+	if !eth.IsSignatureValid(ctype.Bytes2Addr(description.GetDelegator()), payBytes, receipt.GetPayDelegatorSig()) {
 		return errors.New("paybytes not signed by delegator")
 	}
 	if len(pay.GetConditions()) != 1 || pay.GetConditions()[0].GetConditionType() != entity.ConditionType_HASH_LOCK {

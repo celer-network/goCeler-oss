@@ -7,6 +7,7 @@ import (
 	"math/big"
 
 	"github.com/celer-network/goCeler/chain/channel-eth-go/ethpool"
+	"github.com/celer-network/goCeler/config"
 	"github.com/celer-network/goCeler/ctype"
 	"github.com/celer-network/goCeler/route/routerregistry"
 	"github.com/celer-network/goCeler/utils"
@@ -76,14 +77,14 @@ func (p *Processor) depositEthPool() error {
 
 	receipt, err := p.transactor.TransactWaitMined(
 		"ethpool deposit",
-		&eth.TxConfig{EthValue: amtWei},
 		func(transactor bind.ContractTransactor, opts *bind.TransactOpts) (*types.Transaction, error) {
 			contract, err2 := ethpool.NewEthPoolTransactor(ethPoolAddr, transactor)
 			if err2 != nil {
 				return nil, err2
 			}
 			return contract.Deposit(opts, p.myAddr)
-		})
+		},
+		config.TransactOptions(eth.WithEthValue(amtWei))...)
 	if err != nil {
 		log.Error(err)
 		return err
@@ -105,14 +106,14 @@ func (p *Processor) approveEthPoolToLedger() error {
 
 	receipt, err := p.transactor.TransactWaitMined(
 		"ethpool approve",
-		&eth.TxConfig{},
 		func(transactor bind.ContractTransactor, opts *bind.TransactOpts) (*types.Transaction, error) {
 			contract, err2 := ethpool.NewEthPoolTransactor(ethPoolAddr, transactor)
 			if err2 != nil {
 				return nil, err2
 			}
 			return contract.Approve(opts, ledgerAddr, balance)
-		})
+		},
+		config.TransactOptions()...)
 	if err != nil {
 		log.Error(err)
 		return err
@@ -163,14 +164,14 @@ func (p *Processor) withdrawEthPool() error {
 
 	receipt, err := p.transactor.TransactWaitMined(
 		"ethpool withdraw",
-		&eth.TxConfig{},
 		func(transactor bind.ContractTransactor, opts *bind.TransactOpts) (*types.Transaction, error) {
 			contract, err2 := ethpool.NewEthPoolTransactor(ethPoolAddr, transactor)
 			if err2 != nil {
 				return nil, err2
 			}
 			return contract.Withdraw(opts, amtWei)
-		})
+		},
+		config.TransactOptions()...)
 	if err != nil {
 		log.Error(err)
 		return err
@@ -206,14 +207,14 @@ func (p *Processor) registerRouter() error {
 
 	receipt, err := p.transactor.TransactWaitMined(
 		"register router",
-		&eth.TxConfig{},
 		func(transactor bind.ContractTransactor, opts *bind.TransactOpts) (*types.Transaction, error) {
 			contract, err2 := routerregistry.NewRouterRegistryTransactor(routerRegistryAddr, transactor)
 			if err2 != nil {
 				return nil, err2
 			}
 			return contract.RegisterRouter(opts)
-		})
+		},
+		config.TransactOptions()...)
 	if err != nil {
 		log.Error(err)
 		return err
@@ -230,14 +231,14 @@ func (p *Processor) deregisterRouter() error {
 
 	receipt, err := p.transactor.TransactWaitMined(
 		"deregister router",
-		&eth.TxConfig{},
 		func(transactor bind.ContractTransactor, opts *bind.TransactOpts) (*types.Transaction, error) {
 			contract, err2 := routerregistry.NewRouterRegistryTransactor(routerRegistryAddr, transactor)
 			if err2 != nil {
 				return nil, err2
 			}
 			return contract.DeregisterRouter(opts)
-		})
+		},
+		config.TransactOptions()...)
 	if err != nil {
 		log.Error(err)
 		return err

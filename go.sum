@@ -30,8 +30,8 @@ github.com/btcsuite/goleveldb v0.0.0-20160330041536-7834afc9e8cd/go.mod h1:F+uVa
 github.com/btcsuite/snappy-go v0.0.0-20151229074030-0bdef8d06723/go.mod h1:8woku9dyThutzjeg+3xrA5iCpBRH8XEEg3lh6TiUghc=
 github.com/btcsuite/websocket v0.0.0-20150119174127-31079b680792/go.mod h1:ghJtEyQwv5/p4Mg4C0fgbePVuGr935/5ddU9Z3TmDRY=
 github.com/btcsuite/winsvc v1.0.0/go.mod h1:jsenWakMcC0zFBFurPLEAyrnc/teJEM1O46fmI40EZs=
-github.com/celer-network/goutils v0.1.12 h1:8PKDukOf62E4t8dmetuW86ISO8uNSzdLAgnnTogFHw8=
-github.com/celer-network/goutils v0.1.12/go.mod h1:iztzn1nDKYnCQIVC6RYGWL9dPdiEiF0af1pLtTpKgtQ=
+github.com/celer-network/goutils v0.1.13 h1:NzraP0TCSpj/KcodIK+HTF9hH+5HhKVTK4jBQVimUbM=
+github.com/celer-network/goutils v0.1.13/go.mod h1:iztzn1nDKYnCQIVC6RYGWL9dPdiEiF0af1pLtTpKgtQ=
 github.com/census-instrumentation/opencensus-proto v0.2.1/go.mod h1:f6KPmirojxKA12rnyqOA5BBL4O983OfeGPqjHWSTneU=
 github.com/cespare/cp v1.1.1 h1:nCb6ZLdB7NRaqsm91JtQTAme2SKJzXVsdPIPkyJr1MU=
 github.com/cespare/cp v1.1.1/go.mod h1:SOGHArjBr4JWaSDEVpWpo/hNg6RoKrls6Oh40hiwW+s=

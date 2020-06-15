@@ -7,12 +7,14 @@ import (
 	"time"
 
 	"github.com/celer-network/goCeler/common"
+	"github.com/celer-network/goCeler/rtconfig"
 	"github.com/celer-network/goutils/eth"
 	"google.golang.org/grpc/keepalive"
 )
 
 // NOTE: not protected by lock, only set once at initialization
 var (
+	ChainId               *big.Int
 	ChannelDisputeTimeout = uint64(10000)
 	BlockDelay            = uint64(5)
 	BlockIntervalSec      = uint64(10)
@@ -76,7 +78,7 @@ var KeepAliveEnforcePolicy = keepalive.EnforcementPolicy{
 }
 
 func SetGlobalConfigFromProfile(profile *common.CProfile) {
-
+	ChainId = big.NewInt(profile.ChainId)
 	BlockDelay = profile.BlockDelayNum
 	if profile.PollingInterval != 0 {
 		BlockIntervalSec = profile.PollingInterval
@@ -84,9 +86,33 @@ func SetGlobalConfigFromProfile(profile *common.CProfile) {
 	if profile.DisputeTimeout != 0 {
 		ChannelDisputeTimeout = profile.DisputeTimeout
 	}
+}
 
-	// TODO: wait for goutils/eth support to enable local config
-	eth.SetChainId(big.NewInt(profile.ChainId))
-	eth.SetBlockDelay(BlockDelay)
-	eth.SetBlockPollingInterval(BlockIntervalSec)
+func WaitMinedOptions() []eth.TxOption {
+	return []eth.TxOption{
+		eth.WithBlockDelay(BlockDelay),
+		eth.WithPollingInterval(time.Duration(BlockIntervalSec) * time.Second),
+		eth.WithTimeout(time.Duration(rtconfig.GetWaitMinedTxTimeout()) * time.Second),
+		eth.WithQueryTimeout(time.Duration(rtconfig.GetWaitMinedTxQueryTimeout()) * time.Second),
+		eth.WithQueryRetryInterval(time.Duration(rtconfig.GetWaitMinedTxQueryRetryInterval()) * time.Second),
+	}
+}
+
+func TransactOptions(opts ...eth.TxOption) []eth.TxOption {
+	options := []eth.TxOption{
+		eth.WithMinGasGwei(rtconfig.GetMinGasGwei()),
+		eth.WithMaxGasGwei(rtconfig.GetMaxGasGwei()),
+		eth.WithAddGasGwei(rtconfig.GetAddGasGwei()),
+	}
+	options = append(options, WaitMinedOptions()...)
+	return append(options, opts...)
+}
+
+func QuickTransactOptions(opts ...eth.TxOption) []eth.TxOption {
+	options := TransactOptions(opts...)
+	if QuickCatchBlockDelay < BlockDelay {
+		// this will overwrite the previous WithBlockDelay option
+		options = append(options, eth.WithBlockDelay(QuickCatchBlockDelay))
+	}
+	return options
 }

@@ -232,7 +232,7 @@ func getOracleProofBytes(stateProofBytes []byte, players []string, updater strin
 	oracleKsBytes, _ := ioutil.ReadFile(oracleKeyStore)
 	key, _ := keystore.DecryptKey(oracleKsBytes, "")
 	privKey := hex.EncodeToString(crypto.FromECDSA(key.PrivateKey))
-	oracle, err := eth.NewSigner(privKey)
+	oracle, err := eth.NewSigner(privKey, nil)
 	if err != nil {
 		return nil, err
 	}

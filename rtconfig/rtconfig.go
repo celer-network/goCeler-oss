@@ -312,6 +312,9 @@ func GetDepositMinBatchSize() uint64 {
 func GetDepositMaxBatchSize() uint64 {
 	lock.RLock()
 	defer lock.RUnlock()
+	if rtc.GetDepositConfig().GetMaxBatchSize() == 0 {
+		return defaultDepositMaxBatchSize
+	}
 	return rtc.GetDepositConfig().GetMaxBatchSize()
 }
 

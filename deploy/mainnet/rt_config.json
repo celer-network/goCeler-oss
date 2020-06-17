@@ -2,7 +2,7 @@
 	"log_level": "info",
 	"open_chan_wait_s": 5,
 	"min_gas_gwei": 2,
-	"max_gas_gwei": 40,
+	"max_gas_gwei": 100,
 	"standard_configs": {
 		"config": {
 			"0000000000000000000000000000000000000000": {

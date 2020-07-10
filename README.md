@@ -17,7 +17,7 @@ Here we only show how to operate ETH channels as examples, while ERC20 channels 
 
 ### Requirements
 - There are two storage options: SQLite3 and CockroachDB. Install CockroachDB if you plan to use it.
-- [Get DNS and TLS certificate ready](#tls-certificate-for-serving-internet-traffic) for serving Internet traffic.
+- [Get TLS certificate ready](#tls-certificate-for-serving-internet-traffic) for serving Internet traffic.
 
 ### Get prebuilt binaries and config files
 Download prebuit binaries from https://github.com/celer-network/goCeler-oss/releases

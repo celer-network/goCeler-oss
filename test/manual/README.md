@@ -41,7 +41,7 @@ Then run **`./run_osp.sh 1_crdb`** and **`./run_osp.sh 2_crdb`** in two new term
 
 Run **`./osp-cli -adminhostport localhost:8190 -registerstream -peer 00290a43e5b2b151d530845b2d5a818240bc7c70 -peerhostport localhost:10002`** to let OSP1 connect with OSP2 through grpc stream. You can see that OSP1 has new log `Admin: register stream ...`, and OSP2 has new log `Recv AuthReq: ...`
 
-If you want to quickly connect to multiple peer OSPs (e.g., reconnect to peers after restart), you can use the `-file` option. For example, create a `peerservers` file for OSP1 with the following lines to let it connect to OSP2-4:
+If you want to quickly connect to multiple peer OSPs (e.g., reconnect after restart), you can use the `-file` option. For example, create a `peerservers` file for OSP1 with the following lines to let it connect to OSP2-4:
 ```
 00290a43e5b2b151d530845b2d5a818240bc7c70 localhost:10002
 003ea363bccfd7d14285a34a6b1deb862df0bc84 localhost:10003

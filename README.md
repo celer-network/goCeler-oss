@@ -34,7 +34,7 @@ Here we only show how to operate ETH channels as examples. ERC20 channels are al
 
 4. Update the [profile.json](./deploy/mainnet/profile.json) `gateway` field to your Mainnet RPC (eg. https://mainnet.infura.io/v3/xxxxx), `host` filed to the OSP public RPC hostname:port (default rpc port is 10000), `address` field to the OSP ETH address.
 
-5. Setup OSP: Run **`osp-cli -profile $HOME/profile.json -ks ks.json -ethpooldeposit -amount [ETH amount] -register -blkdelay 2`** to deposit OSP's ETH into the EthPool contract, and register the OSP as a state channel network router.
+5. Setup OSP: Run **`osp-cli -profile $HOME/profile.json -ks $HOME/ks.json -ethpooldeposit -amount [ETH amount] -register -blkdelay 2`** to deposit OSP's ETH into the EthPool contract, and register the OSP as a state channel network router.
    - EthPool is used by OSP to accept ETH open channel requests from peers. For example, when node `A` initiates an ETH open channel request with node `B`, node `A` will make channel deposit from its account balance, while node `B` will make deposit from its EthPool balance.
    - As noted in the [CLI Command Reference](./tools/osp-cli/README.md), `amount` is float assuming 18 token decimals.
    - `-blkdelay` specifies how many blocks to wait to confirm the on-chain transactions.
@@ -43,12 +43,12 @@ Here we only show how to operate ETH channels as examples. ERC20 channels are al
 #### Option 1: run OSP using SQLite as storage backend (easier setup)
 6. Choose a store path (e.g., `$HOME/celerdb`), your OSP data will be located at `$HOME/celerdb/[ospAddr]`.
 
-7. Start OSP: **`server -profile $HOME/profile.json -ks ks.json -svrname s0 -storedir $HOME/celerdb -rtc $HOME/rt_config.json -routedata $HOME/channels_2020_05_08.json`**.
+7. Start OSP: **`server -profile $HOME/profile.json -ks $HOME/ks.json -svrname s0 -storedir $HOME/celerdb -rtc $HOME/rt_config.json -routedata $HOME/channels_2020_05_08.json`**.
 
 #### Option 2: run OSP using CockroachDB as storage backend (higher performance)
 6. First install CockroachDB. Then checkout [tools/scripts/cockroachdb.sh](./tools/scripts/cockroachdb.sh), update `STOREPATH` to your preferred storage location, and run **`./cockroachdb.sh start`** to start the cockroachDB process and create tables.
 
-7. Start OSP: **`server -profile $HOME/profile.json -ks ks.json -svrname s0 -storesql postgresql://celer@localhost:26257/celer?sslmode=disable -rtc $HOME/rt_config.json -routedata $HOME/channels_2020_05_08.json`**.
+7. Start OSP: **`server -profile $HOME/profile.json -ks $HOME/ks.json -svrname s0 -storesql postgresql://celer@localhost:26257/celer?sslmode=disable -rtc $HOME/rt_config.json -routedata $HOME/channels_2020_05_08.json`**.
 
 **Notes (for both options):**
 - Use `-routedata` only when starting OSP from scracth for the first time.
@@ -98,4 +98,4 @@ If you prefer using IP address directly, please contact cert@celer.network and w
 ## Start Web Proxy for Celer web client
 `go run webproxy/cmd/main.go -server localhost:10000` assume OSP runs on default 10000 port
 
-Then clone https://github.com/celer-network/celer-light-client repo, update demo/mainnet_config.json ospEthAddress to OSP eth address and ospNetworkAddress to http://[webproxy DNS or IP]:29980
+Then clone https://github.com/celer-network/celer-light-client repo, update [demo/mainnet_config.json](https://github.com/celer-network/celer-light-client/blob/master/demo/mainnet_config.json) `ospEthAddress` to your OSP account address and `ospNetworkAddress` to `http://[webproxy DNS or IP]:29980`

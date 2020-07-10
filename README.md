@@ -13,7 +13,7 @@ Please walk through the [local manual tests](./test/manual/README.md) before mov
 
 Current running OSPs can be found at https://explorer.celer.network.
 
-Here we only show how to operate ETH channels as examples, while ERC20 channels are also fully supported by adding `-token` arg in related commands. Instructions below use home folder as the base location. Please replace `$HOME` with your preferred local path if needed.
+Here we only show how to operate ETH channels as examples. ERC20 channels are also fully supported by adding `-token` arg in related [commands](./tools/osp-cli/README.md). 
 
 ### Requirements
 - There are two storage options: SQLite3 and CockroachDB. Install CockroachDB if you plan to use it.
@@ -26,7 +26,8 @@ Then run
 tar xzf goceler-v0.16.14-linux-amd64.tar.gz
 export PATH=$PATH:$PWD/goceler
 ```
-Download the [profile.json](./deploy/mainnet/profile.json), [rt_config.json](./deploy/mainnet/rt_config.json) and [channels_xxx.json](./deploy/mainnet/channels_2020_05_08.json) files from [deploy/mainnet](./deploy/mainnet/) to your home folder.
+Download the [profile.json](./deploy/mainnet/profile.json), [rt_config.json](./deploy/mainnet/rt_config.json) and [channels_xxx.json](./deploy/mainnet/channels_2020_05_08.json) files from [deploy/mainnet](./deploy/mainnet/) to your home folder. Instructions below use home folder as the base location. Replace `$HOME` with your preferred local path if needed.
+
 
 ### Prepare OSP account
 1. Run **`geth account new --keystore . --lightkdf`** to generate a new keystore file, then rename it to `ks.json`
@@ -36,24 +37,26 @@ Download the [profile.json](./deploy/mainnet/profile.json), [rt_config.json](./d
 3. Update the [profile.json](./deploy/mainnet/profile.json) `gateway` field to your Mainnet RPC (eg. https://mainnet.infura.io/v3/xxxxx), `host` filed to the OSP public RPC hostname:port (default rpc port is 10000), `address` field to the OSP ETH address.
 
 4. Setup OSP: Run **`osp-cli -profile $HOME/profile.json -ks ks.json -ethpooldeposit -amount [ETH amount] -register -blkdelay 2`** to deposit OSP's ETH into the EthPool contract, and register the OSP as a state channel network router.
-   - **note 1**: EthPool is used by OSP to accept ETH open channel requests from peers. For example, when node `A` initiates an ETH open channel request with node `B`, `A` will make channel deposit from its account balance, while `B` will make deposit from its EthPool balance.
-   - **note 2**: as noted in the [CLI Command Reference](./tools/osp-cli/README.md), `amount` is float assuming 18 token decimals.
-   - **note 3**: `-blkdelay` specifies how many blocks to wait to confirm the on-chain transactions.
+   - EthPool is used by OSP to accept ETH open channel requests from peers. For example, when node `A` initiates an ETH open channel request with node `B`, node `A` will make channel deposit from its account balance, while node `B` will make deposit from its EthPool balance.
+   - As noted in the [CLI Command Reference](./tools/osp-cli/README.md), `amount` is float assuming 18 token decimals.
+   - `-blkdelay` specifies how many blocks to wait to confirm the on-chain transactions.
 
 ### Run OSP server
 #### Option 1: run OSP using SQLite as storage backend (easier setup)
-5. Choose a store path (e.g., `$HOME/celerdb`), the OSP data will be located at `$HOME/celerdb/[ospAddr]`.
+5. Choose a store path (e.g., `$HOME/celerdb`), your OSP data will be located at `$HOME/celerdb/[ospAddr]`.
 
 6. Start OSP: **`server -profile $HOME/profile.json -ks ks.json -svrname s0 -storedir $HOME/celerdb -rtc $HOME/rt_config.json -routedata $HOME/channels_2020_05_08.json`**.
-   - **note 1**: use `-routedata` only when starting OSP from scracth for the first time.
-   - **note 2**: use [log args](https://github.com/celer-network/goutils/blob/v0.1.13/log/log.go) as needed, e.g., `-logdir $HOME/logs -logrotate`
-   - **note 3**: the default rpc port is `10000`, default admin http endpoint is `localhost:8090`, use `-port` and `-adminweb` to change those values ([example](./test/manual/run_osp.sh)).
-   - **note 4**: your OSP should be shown on the [Explorer](https://explorer.celer.network) within 15 minutes after the server started.
 
 #### Option 2: run OSP using CockroachDB as storage backend (higher performance)
 5. First install CockroachDB. Then checkout [tools/scripts/cockroachdb.sh](./tools/scripts/cockroachdb.sh), update `STOREPATH` to your preferred storage location, and run **`./cockroachdb.sh start`** to start the cockroachDB process and create tables.
 
-6. Start OSP: **`server -profile $HOME/profile.json -ks ks.json -svrname s0 -storesql postgresql://celer@localhost:26257/celer?sslmode=disable -rtc $HOME/rt_config.json -routedata $HOME/channels_2020_05_08.json`**. Be aware of the above **notes** under option 1.
+6. Start OSP: **`server -profile $HOME/profile.json -ks ks.json -svrname s0 -storesql postgresql://celer@localhost:26257/celer?sslmode=disable -rtc $HOME/rt_config.json -routedata $HOME/channels_2020_05_08.json`**.
+
+**Notes (for both options):**
+- Use `-routedata` only when starting OSP from scracth for the first time.
+- Use [log args](https://github.com/celer-network/goutils/blob/v0.1.13/log/log.go) as needed, e.g., `-logdir $HOME/logs -logrotate`.
+- The default rpc port is `10000`, default admin http endpoint is `localhost:8090`, use `-port` and `-adminweb` to change those values ([example](./test/manual/run_osp.sh)) if needed.
+- Your OSP should be shown on the [Explorer](https://explorer.celer.network) within 15 minutes after the server started.
 
 ### Open channel with peer OSP
 7. Connect with another OSP through grpc stream: **`osp-cli -adminhostport localhost:8090 -registerstream -peer [peerOspAddr] -peerhostport [peerOspHostPort]`**.
@@ -76,10 +79,6 @@ Download the [profile.json](./deploy/mainnet/profile.json), [rt_config.json](./d
 
 ### Apply other OSP operations
 11. Use [OSP CLI Commands](./tools/osp-cli/README.md) to operate the OSP. See [local manual tests](./test/manual/README.md) for example.
-
-## Run OSP on Ropsten Testnet
-
-Follow [steps for mainnet](#run-osp-on-ethereum-mainnet) above starting from step 2, replace all keywords `mainnet` with `ropsten`.
 
 ## TLS Certificate for serving Internet traffic
 OSP needs to have a valid TLS certificate for Celer connections over the Internet. If you already have a domain name, you can get one from [Let's Encrypt](https://letsencrypt.org/). Then run OSP with flags `-tlscert mysvr.crt -tlskey mysvr.key`.

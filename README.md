@@ -73,7 +73,7 @@ Here we only show how to operate ETH channels as examples. ERC20 channels are al
 
 10. Query channel from database: **`osp-cli -profile $HOME/profile.json -storedir $HOME/celerdb/[ospAddr] -dbview channel -peer [peerOspAddr]`**. If using CockroachDB, replace `-storedir $HOME/celerdb/[ospAddr]` with `-storesql postgresql://celer@localhost:26257/celer?sslmode=disable`.
 
-11. Query channel from blockchain: **`osp-cli -profile $HOME/profile.json -onchainview channel -cid [channel ID]`**. You can see the channel ID from the output of step 9 above.
+11. Query channel from blockchain: **`osp-cli -profile $HOME/profile.json -onchainview channel -cid [channel ID]`**. You can see the channel ID from the output of step 10 above.
 
 ### Apply other OSP operations
 Use [OSP CLI Commands](./tools/osp-cli/README.md) to operate the OSP. See [local manual tests](./test/manual/README.md) for example.

@@ -67,11 +67,11 @@ Here we only show how to operate ETH channels as examples. ERC20 channels are al
    ```
    Then run **`osp-cli -adminhostport localhost:8090 -registerstream -file peerservers`**.
 
-9. Open channel with another OSP: **`osp-cli -adminhostport localhost:8090 -openchannel -peer [peerOspAddr] -selfdeposit 0.5 -peerdeposit 0.5`**. This would open a channel with each peer making 0.5 ETH deposit. If you get error for any reason (e.g., peer policy violation), wait for 10 minutes beforing trying to open channel with the same peer.
+9. Open channel with another OSP: **`osp-cli -adminhostport localhost:8090 -openchannel -peer [peerOspAddr] -selfdeposit [ETH amount] -peerdeposit [ETH amount]`**.
 
-   **Note:** make sure you have enough balance in your ETH account, and the peer you want to open channel with has enough balance in the [EthPool contract](https://etherscan.io/token/0x44e081cac2406a4efe165178c2a4d77f7a7854d4#balances).
+   Make sure you have enough balance in your ETH account, and the peer you want to open channel with has enough balance in the [EthPool contract](https://etherscan.io/token/0x44e081cac2406a4efe165178c2a4d77f7a7854d4#balances). If you get an error response from the peer for any reason (e.g., due to policy violation), wait for 10 minutes before trying to open channel with the same peer.
 
-10. Query channel from database: **`osp-cli -profile $HOME/profile.json -storedir $HOME/celerdb/[ospAddr] -dbview channel -peer [peerOspAddr]`**. If using CockroachDB, replace the `-storedir` arg with `-storesql postgresql://celer@localhost:26257/celer?sslmode=disable`.
+10. Query channel from database: **`osp-cli -profile $HOME/profile.json -storedir $HOME/celerdb/[ospAddr] -dbview channel -peer [peerOspAddr]`**. If using CockroachDB, replace `-storedir $HOME/celerdb/[ospAddr]` with `-storesql postgresql://celer@localhost:26257/celer?sslmode=disable`.
 
 11. Query channel from blockchain: **`osp-cli -profile $HOME/profile.json -onchainview channel -cid [channel ID]`**. You can see the channel ID from the output of step 9 above.
 

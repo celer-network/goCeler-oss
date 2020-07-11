@@ -83,7 +83,7 @@ You can close a channel and withdraw all tokens to the OSP ETH address through [
    - First, submit `intentSettle` transaction: **`osp-cli -profile $HOME/profile.json -ks $HOME/ks.json -storedir $HOME/celerdb -intendsettle -cid [channel ID]`**
    - Then, submit `confirmSettle` transaction after the channel dispute timeout (10000 blocks by default): **`osp-cli -profile $HOME/profile.json -ks $HOME/ks.json -storedir $HOME/celerdb -confirmsettle -cid [channel ID]`**.
 
-[Cooperative settle](https://www.celer.network/docs/celercore/channel/pay_contracts.html#cooperative-settle) and [cooperative withdrawal](https://www.celer.network/docs/celercore/channel/pay_contracts.html#cooperative-withdraw) are currently supported only for Client-OSP channels. We will release new version to support such operations for OSP-OSP channels soon.
+[Cooperative withdrawal](https://www.celer.network/docs/celercore/channel/pay_contracts.html#cooperative-withdraw) is currently supported only for Client-to-OSP channels. We will release new version to support [cooperative settle](https://www.celer.network/docs/celercore/channel/pay_contracts.html#cooperative-settle) and [cooperative withdrawal](https://www.celer.network/docs/celercore/channel/pay_contracts.html#cooperative-withdraw) for both OSP-to-OSP and Client-to-OSP channels soon.
 
 ## TLS Certificate for serving Internet traffic
 OSP needs to have a valid TLS certificate for Celer connections over the Internet. If you already have a domain name, you can get one from [Let's Encrypt](https://letsencrypt.org/). Then run OSP with flags `-tlscert mysvr.crt -tlskey mysvr.key`.

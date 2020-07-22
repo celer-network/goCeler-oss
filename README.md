@@ -18,7 +18,7 @@ Here we only show how to operate ETH channels as examples. ERC20 channels are al
 ### Requirements
 - [Get TLS certificate ready](#tls-certificate-for-serving-internet-traffic) for serving Internet traffic.
 - There are two storage options: SQLite3 and CockroachDB. Install CockroachDB if you plan to use it.
-- Hardware requirements (CPU, memory, etc.) are minimal, as the full-stack software is running smoothly on many iOS and Android devices every day.
+- Hardware requirements are minimal (e.g., 1 core CPU, <1GB memory), as the full-stack software is running smoothly on many iOS and Android devices every day.
 
 ### Get prebuilt binaries and config files
 1. Download prebuit binaries from https://github.com/celer-network/goCeler-oss/releases. Then run

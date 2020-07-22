@@ -9,7 +9,7 @@ One who plans to run a full Off-chain Service Provider (OSP) node should start b
 
 ## Run OSP on Ethereum Mainnet
 
-Please walk through the [local manual tests](./test/manual/README.md) before moving forward to Mainnet deployment. Steps to operate OSPs on Mainnet are very similar to local manual tests.
+Please walk through the [local manual tests](./test/manual/README.md) before moving forward to Mainnet deployment. Steps to operate OSPs on Mainnet are very similar to local manual tests. Note that running the local manual tests require a bit more steps and system dependencies than directly using the prebuilt binaries to run an OSP on mainnet as instructed below.
 
 Current running OSPs can be found at https://explorer.celer.network.
 
@@ -29,15 +29,15 @@ Here we only show how to operate ETH channels as examples. ERC20 channels are al
 
 2. Download the [profile.json](./deploy/mainnet/profile.json), [rt_config.json](./deploy/mainnet/rt_config.json) and [channels_xxx.json](./deploy/mainnet/channels_2020_05_08.json) files from [deploy/mainnet](./deploy/mainnet/) to your `$HOME` folder, which is the base location for instructions below. Replace `$HOME` with your preferred local path if needed.
 
-
 ### Prepare OSP account
 3. Run **`geth account new --keystore . --lightkdf`** to generate a new keystore file, and move it to your OSP server `$HOME` folder as `ks.json`. Then fund your newly generated OSP account address some mainnet ETH.
 
-4. Update the [profile.json](./deploy/mainnet/profile.json) `gateway` field to your Mainnet RPC (eg. https://mainnet.infura.io/v3/xxxxx), `host` filed to the OSP public RPC hostname:port (default rpc port is 10000), `address` field to the OSP ETH address.
+4. Update the [profile.json](./deploy/mainnet/profile.json) `gateway` field to your Mainnet API gateway URL (eg. https://mainnet.infura.io/v3/xxxxx), `host` filed to the OSP public RPC hostname:port (default rpc port is 10000), `address` field to the OSP ETH address.
 
 5. Setup OSP: Run **`osp-cli -profile $HOME/profile.json -ks $HOME/ks.json -ethpooldeposit -amount [ETH amount] -register -blkdelay 2`** to deposit OSP's ETH into the EthPool contract, and register the OSP as a state channel network router.
    - EthPool is used by OSP to accept ETH open channel requests from peers. For example, when node `A` initiates an ETH open channel request with node `B`, node `A` will make channel deposit from its account balance, while node `B` will make deposit from its EthPool balance.
    - As noted in the [CLI Command Reference](./tools/osp-cli/README.md), `amount` is float assuming 18 token decimals.
+   - Unused ETH in the EthPool can be withdrawn through `osp-cli -profile $HOME/profile.json -ks $HOME/ks.json -ethpoolwithdraw -amount [ETH amount]`.
    - `-blkdelay` specifies how many blocks to wait to confirm the on-chain transactions.
 
 ### Run OSP server

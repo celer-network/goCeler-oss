@@ -4,7 +4,7 @@ Follow instructions below to easily start a local testnet and play with multiple
 
 ## 1. Set up tools and environment
 
-- Make sure Geth is installed
+- Make sure you have [geth](https://geth.ethereum.org/docs/install-and-build/installing-geth) and go (version 1.13+) installed.
 - There are two storage options: SQLite3 and CockroachDB. Install CockroachDB if you plan to use it.
 - Set environment variable `GOCELER` to your local goCeler repo path.
 - Run **`go build $GOCELER/tools/osp-cli`** to build to OSP CLI tool, read the [CLI command reference](../../tools/osp-cli/README.md).

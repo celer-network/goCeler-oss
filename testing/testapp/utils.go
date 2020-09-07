@@ -73,14 +73,14 @@ func GetAppStateWithOracle(turn uint8, winner uint8, nonce uint64) []byte {
 }
 
 func GetGetGomokuBoardState() []byte {
-	var state [227]byte
+	var state [228]byte
 	state[1] = 2 // turn
+	state[2] = 1
 	state[3] = 1
 	return state[:]
 }
 
 func GetGomokuState() []byte {
-
 	appState := &app.AppState{
 		Nonce:   Nonce.Uint64(),
 		SeqNum:  10,

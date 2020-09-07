@@ -20,7 +20,6 @@ var (
 	_ = big.NewInt
 	_ = strings.NewReader
 	_ = ethereum.NotFound
-	_ = abi.U256
 	_ = bind.Bind
 	_ = common.Big1
 	_ = types.BloomLookup
@@ -29,22 +28,6 @@ var (
 
 // INumericOutcomeABI is the input ABI used to generate the binding from.
 const INumericOutcomeABI = "[{\"constant\":true,\"inputs\":[{\"name\":\"_query\",\"type\":\"bytes\"}],\"name\":\"isFinalized\",\"outputs\":[{\"name\":\"\",\"type\":\"bool\"}],\"payable\":false,\"stateMutability\":\"view\",\"type\":\"function\"},{\"constant\":true,\"inputs\":[{\"name\":\"_query\",\"type\":\"bytes\"}],\"name\":\"getOutcome\",\"outputs\":[{\"name\":\"\",\"type\":\"uint256\"}],\"payable\":false,\"stateMutability\":\"view\",\"type\":\"function\"}]"
-
-// INumericOutcomeBin is the compiled bytecode used for deploying new contracts.
-const INumericOutcomeBin = `0x`
-
-// DeployINumericOutcome deploys a new Ethereum contract, binding an instance of INumericOutcome to it.
-func DeployINumericOutcome(auth *bind.TransactOpts, backend bind.ContractBackend) (common.Address, *types.Transaction, *INumericOutcome, error) {
-	parsed, err := abi.JSON(strings.NewReader(INumericOutcomeABI))
-	if err != nil {
-		return common.Address{}, nil, nil, err
-	}
-	address, tx, contract, err := bind.DeployContract(auth, parsed, common.FromHex(INumericOutcomeBin), backend)
-	if err != nil {
-		return common.Address{}, nil, nil, err
-	}
-	return address, tx, &INumericOutcome{INumericOutcomeCaller: INumericOutcomeCaller{contract: contract}, INumericOutcomeTransactor: INumericOutcomeTransactor{contract: contract}, INumericOutcomeFilterer: INumericOutcomeFilterer{contract: contract}}, nil
-}
 
 // INumericOutcome is an auto generated Go binding around an Ethereum contract.
 type INumericOutcome struct {
@@ -190,7 +173,7 @@ func (_INumericOutcome *INumericOutcomeTransactorRaw) Transact(opts *bind.Transa
 
 // GetOutcome is a free data retrieval call binding the contract method 0xea4ba8eb.
 //
-// Solidity: function getOutcome(bytes _query) constant returns(uint256)
+// Solidity: function getOutcome(bytes _query) view returns(uint256)
 func (_INumericOutcome *INumericOutcomeCaller) GetOutcome(opts *bind.CallOpts, _query []byte) (*big.Int, error) {
 	var (
 		ret0 = new(*big.Int)
@@ -202,21 +185,21 @@ func (_INumericOutcome *INumericOutcomeCaller) GetOutcome(opts *bind.CallOpts, _
 
 // GetOutcome is a free data retrieval call binding the contract method 0xea4ba8eb.
 //
-// Solidity: function getOutcome(bytes _query) constant returns(uint256)
+// Solidity: function getOutcome(bytes _query) view returns(uint256)
 func (_INumericOutcome *INumericOutcomeSession) GetOutcome(_query []byte) (*big.Int, error) {
 	return _INumericOutcome.Contract.GetOutcome(&_INumericOutcome.CallOpts, _query)
 }
 
 // GetOutcome is a free data retrieval call binding the contract method 0xea4ba8eb.
 //
-// Solidity: function getOutcome(bytes _query) constant returns(uint256)
+// Solidity: function getOutcome(bytes _query) view returns(uint256)
 func (_INumericOutcome *INumericOutcomeCallerSession) GetOutcome(_query []byte) (*big.Int, error) {
 	return _INumericOutcome.Contract.GetOutcome(&_INumericOutcome.CallOpts, _query)
 }
 
 // IsFinalized is a free data retrieval call binding the contract method 0xbcdbda94.
 //
-// Solidity: function isFinalized(bytes _query) constant returns(bool)
+// Solidity: function isFinalized(bytes _query) view returns(bool)
 func (_INumericOutcome *INumericOutcomeCaller) IsFinalized(opts *bind.CallOpts, _query []byte) (bool, error) {
 	var (
 		ret0 = new(bool)
@@ -228,14 +211,14 @@ func (_INumericOutcome *INumericOutcomeCaller) IsFinalized(opts *bind.CallOpts, 
 
 // IsFinalized is a free data retrieval call binding the contract method 0xbcdbda94.
 //
-// Solidity: function isFinalized(bytes _query) constant returns(bool)
+// Solidity: function isFinalized(bytes _query) view returns(bool)
 func (_INumericOutcome *INumericOutcomeSession) IsFinalized(_query []byte) (bool, error) {
 	return _INumericOutcome.Contract.IsFinalized(&_INumericOutcome.CallOpts, _query)
 }
 
 // IsFinalized is a free data retrieval call binding the contract method 0xbcdbda94.
 //
-// Solidity: function isFinalized(bytes _query) constant returns(bool)
+// Solidity: function isFinalized(bytes _query) view returns(bool)
 func (_INumericOutcome *INumericOutcomeCallerSession) IsFinalized(_query []byte) (bool, error) {
 	return _INumericOutcome.Contract.IsFinalized(&_INumericOutcome.CallOpts, _query)
 }

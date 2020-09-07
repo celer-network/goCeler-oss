@@ -20,7 +20,6 @@ var (
 	_ = big.NewInt
 	_ = strings.NewReader
 	_ = ethereum.NotFound
-	_ = abi.U256
 	_ = bind.Bind
 	_ = common.Big1
 	_ = types.BloomLookup
@@ -31,7 +30,7 @@ var (
 const RouterRegistryABI = "[{\"constant\":true,\"inputs\":[{\"name\":\"\",\"type\":\"address\"}],\"name\":\"routerInfo\",\"outputs\":[{\"name\":\"\",\"type\":\"uint256\"}],\"payable\":false,\"stateMutability\":\"view\",\"type\":\"function\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"name\":\"op\",\"type\":\"uint8\"},{\"indexed\":true,\"name\":\"routerAddress\",\"type\":\"address\"}],\"name\":\"RouterUpdated\",\"type\":\"event\"},{\"constant\":false,\"inputs\":[],\"name\":\"registerRouter\",\"outputs\":[],\"payable\":false,\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"constant\":false,\"inputs\":[],\"name\":\"deregisterRouter\",\"outputs\":[],\"payable\":false,\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"constant\":false,\"inputs\":[],\"name\":\"refreshRouter\",\"outputs\":[],\"payable\":false,\"stateMutability\":\"nonpayable\",\"type\":\"function\"}]"
 
 // RouterRegistryBin is the compiled bytecode used for deploying new contracts.
-const RouterRegistryBin = `0x608060405234801561001057600080fd5b506102f3806100206000396000f3fe608060405234801561001057600080fd5b5060043610610068577c0100000000000000000000000000000000000000000000000000000000600035046324f277d2811461006d5780632ff0282b14610077578063788094561461007f578063d1cf70d1146100c4575b600080fd5b6100756100cc565b005b610075610186565b6100b26004803603602081101561009557600080fd5b503573ffffffffffffffffffffffffffffffffffffffff1661021a565b60408051918252519081900360200190f35b61007561022c565b336000908152602081905260409020541561014857604080517f08c379a000000000000000000000000000000000000000000000000000000000815260206004820152601d60248201527f526f75746572206164647265737320616c726561647920657869737473000000604482015290519081900360640190fd5b3360008181526020819052604081204390555b6040517fed739f5df64012854c2039ba144af8e3af26211fc7f10a959c6a592ae58c449190600090a3565b3360009081526020819052604090205461020157604080517f08c379a000000000000000000000000000000000000000000000000000000000815260206004820152601d60248201527f526f75746572206164647265737320646f6573206e6f74206578697374000000604482015290519081900360640190fd5b336000818152602081905260409020439055600261015b565b60006020819052908152604090205481565b336000908152602081905260409020546102a757604080517f08c379a000000000000000000000000000000000000000000000000000000000815260206004820152601d60248201527f526f75746572206164647265737320646f6573206e6f74206578697374000000604482015290519081900360640190fd5b33600081815260208190526040812055600161015b56fea265627a7a72305820a6cb3406d5c8b09132b542c813a59bbd1dc3ae874cfeed6b4d800c190e6ffff164736f6c634300050a0032`
+var RouterRegistryBin = "0x608060405234801561001057600080fd5b506102f3806100206000396000f3fe608060405234801561001057600080fd5b5060043610610068577c0100000000000000000000000000000000000000000000000000000000600035046324f277d2811461006d5780632ff0282b14610077578063788094561461007f578063d1cf70d1146100c4575b600080fd5b6100756100cc565b005b610075610186565b6100b26004803603602081101561009557600080fd5b503573ffffffffffffffffffffffffffffffffffffffff1661021a565b60408051918252519081900360200190f35b61007561022c565b336000908152602081905260409020541561014857604080517f08c379a000000000000000000000000000000000000000000000000000000000815260206004820152601d60248201527f526f75746572206164647265737320616c726561647920657869737473000000604482015290519081900360640190fd5b3360008181526020819052604081204390555b6040517fed739f5df64012854c2039ba144af8e3af26211fc7f10a959c6a592ae58c449190600090a3565b3360009081526020819052604090205461020157604080517f08c379a000000000000000000000000000000000000000000000000000000000815260206004820152601d60248201527f526f75746572206164647265737320646f6573206e6f74206578697374000000604482015290519081900360640190fd5b336000818152602081905260409020439055600261015b565b60006020819052908152604090205481565b336000908152602081905260409020546102a757604080517f08c379a000000000000000000000000000000000000000000000000000000000815260206004820152601d60248201527f526f75746572206164647265737320646f6573206e6f74206578697374000000604482015290519081900360640190fd5b33600081815260208190526040812055600161015b56fea265627a7a72305820a6cb3406d5c8b09132b542c813a59bbd1dc3ae874cfeed6b4d800c190e6ffff164736f6c634300050a0032"
 
 // DeployRouterRegistry deploys a new Ethereum contract, binding an instance of RouterRegistry to it.
 func DeployRouterRegistry(auth *bind.TransactOpts, backend bind.ContractBackend) (common.Address, *types.Transaction, *RouterRegistry, error) {
@@ -39,6 +38,7 @@ func DeployRouterRegistry(auth *bind.TransactOpts, backend bind.ContractBackend)
 	if err != nil {
 		return common.Address{}, nil, nil, err
 	}
+
 	address, tx, contract, err := bind.DeployContract(auth, parsed, common.FromHex(RouterRegistryBin), backend)
 	if err != nil {
 		return common.Address{}, nil, nil, err
@@ -190,7 +190,7 @@ func (_RouterRegistry *RouterRegistryTransactorRaw) Transact(opts *bind.Transact
 
 // RouterInfo is a free data retrieval call binding the contract method 0x78809456.
 //
-// Solidity: function routerInfo(address ) constant returns(uint256)
+// Solidity: function routerInfo(address ) view returns(uint256)
 func (_RouterRegistry *RouterRegistryCaller) RouterInfo(opts *bind.CallOpts, arg0 common.Address) (*big.Int, error) {
 	var (
 		ret0 = new(*big.Int)
@@ -202,14 +202,14 @@ func (_RouterRegistry *RouterRegistryCaller) RouterInfo(opts *bind.CallOpts, arg
 
 // RouterInfo is a free data retrieval call binding the contract method 0x78809456.
 //
-// Solidity: function routerInfo(address ) constant returns(uint256)
+// Solidity: function routerInfo(address ) view returns(uint256)
 func (_RouterRegistry *RouterRegistrySession) RouterInfo(arg0 common.Address) (*big.Int, error) {
 	return _RouterRegistry.Contract.RouterInfo(&_RouterRegistry.CallOpts, arg0)
 }
 
 // RouterInfo is a free data retrieval call binding the contract method 0x78809456.
 //
-// Solidity: function routerInfo(address ) constant returns(uint256)
+// Solidity: function routerInfo(address ) view returns(uint256)
 func (_RouterRegistry *RouterRegistryCallerSession) RouterInfo(arg0 common.Address) (*big.Int, error) {
 	return _RouterRegistry.Contract.RouterInfo(&_RouterRegistry.CallOpts, arg0)
 }
@@ -416,4 +416,15 @@ func (_RouterRegistry *RouterRegistryFilterer) WatchRouterUpdated(opts *bind.Wat
 			}
 		}
 	}), nil
+}
+
+// ParseRouterUpdated is a log parse operation binding the contract event 0xed739f5df64012854c2039ba144af8e3af26211fc7f10a959c6a592ae58c4491.
+//
+// Solidity: event RouterUpdated(uint8 indexed op, address indexed routerAddress)
+func (_RouterRegistry *RouterRegistryFilterer) ParseRouterUpdated(log types.Log) (*RouterRegistryRouterUpdated, error) {
+	event := new(RouterRegistryRouterUpdated)
+	if err := _RouterRegistry.contract.UnpackLog(event, "RouterUpdated", log); err != nil {
+		return nil, err
+	}
+	return event, nil
 }

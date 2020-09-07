@@ -20,7 +20,6 @@ var (
 	_ = big.NewInt
 	_ = strings.NewReader
 	_ = ethereum.NotFound
-	_ = abi.U256
 	_ = bind.Bind
 	_ = common.Big1
 	_ = types.BloomLookup
@@ -31,7 +30,7 @@ var (
 const LedgerStructABI = "[]"
 
 // LedgerStructBin is the compiled bytecode used for deploying new contracts.
-const LedgerStructBin = `0x60556023600b82828239805160001a607314601657fe5b30600052607381538281f3fe73000000000000000000000000000000000000000030146080604052600080fdfea265627a7a72305820528a1e514b356516bd7b025fcfaafaf6a807d68d0872a6f1d8966c046ff7457164736f6c634300050a0032`
+var LedgerStructBin = "0x60556023600b82828239805160001a607314601657fe5b30600052607381538281f3fe73000000000000000000000000000000000000000030146080604052600080fdfea265627a7a72305820528a1e514b356516bd7b025fcfaafaf6a807d68d0872a6f1d8966c046ff7457164736f6c634300050a0032"
 
 // DeployLedgerStruct deploys a new Ethereum contract, binding an instance of LedgerStruct to it.
 func DeployLedgerStruct(auth *bind.TransactOpts, backend bind.ContractBackend) (common.Address, *types.Transaction, *LedgerStruct, error) {
@@ -39,6 +38,7 @@ func DeployLedgerStruct(auth *bind.TransactOpts, backend bind.ContractBackend) (
 	if err != nil {
 		return common.Address{}, nil, nil, err
 	}
+
 	address, tx, contract, err := bind.DeployContract(auth, parsed, common.FromHex(LedgerStructBin), backend)
 	if err != nil {
 		return common.Address{}, nil, nil, err

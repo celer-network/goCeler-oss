@@ -20,7 +20,6 @@ var (
 	_ = big.NewInt
 	_ = strings.NewReader
 	_ = ethereum.NotFound
-	_ = abi.U256
 	_ = bind.Bind
 	_ = common.Big1
 	_ = types.BloomLookup
@@ -28,23 +27,7 @@ var (
 )
 
 // ISingleSessionWithOracleABI is the input ABI used to generate the binding from.
-const ISingleSessionWithOracleABI = "[{\"constant\":true,\"inputs\":[{\"name\":\"_key\",\"type\":\"uint256\"}],\"name\":\"getState\",\"outputs\":[{\"name\":\"\",\"type\":\"bytes\"}],\"payable\":false,\"stateMutability\":\"view\",\"type\":\"function\"},{\"constant\":true,\"inputs\":[{\"name\":\"_query\",\"type\":\"bytes\"}],\"name\":\"isFinalized\",\"outputs\":[{\"name\":\"\",\"type\":\"bool\"}],\"payable\":false,\"stateMutability\":\"view\",\"type\":\"function\"},{\"constant\":true,\"inputs\":[],\"name\":\"getStatus\",\"outputs\":[{\"name\":\"\",\"type\":\"uint8\"}],\"payable\":false,\"stateMutability\":\"view\",\"type\":\"function\"},{\"constant\":false,\"inputs\":[{\"name\":\"_oracleProof\",\"type\":\"bytes\"}],\"name\":\"settleBySigTimeout\",\"outputs\":[],\"payable\":false,\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"constant\":false,\"inputs\":[{\"name\":\"_oracleProof\",\"type\":\"bytes\"}],\"name\":\"settleByMoveTimeout\",\"outputs\":[],\"payable\":false,\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"constant\":false,\"inputs\":[{\"name\":\"_oracleProof\",\"type\":\"bytes\"},{\"name\":\"_cosignedStateProof\",\"type\":\"bytes\"}],\"name\":\"settleByInvalidTurn\",\"outputs\":[],\"payable\":false,\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"constant\":false,\"inputs\":[{\"name\":\"_oracleProof\",\"type\":\"bytes\"},{\"name\":\"_cosignedStateProof\",\"type\":\"bytes\"}],\"name\":\"settleByInvalidState\",\"outputs\":[],\"payable\":false,\"stateMutability\":\"nonpayable\",\"type\":\"function\"}]"
-
-// ISingleSessionWithOracleBin is the compiled bytecode used for deploying new contracts.
-const ISingleSessionWithOracleBin = `0x`
-
-// DeployISingleSessionWithOracle deploys a new Ethereum contract, binding an instance of ISingleSessionWithOracle to it.
-func DeployISingleSessionWithOracle(auth *bind.TransactOpts, backend bind.ContractBackend) (common.Address, *types.Transaction, *ISingleSessionWithOracle, error) {
-	parsed, err := abi.JSON(strings.NewReader(ISingleSessionWithOracleABI))
-	if err != nil {
-		return common.Address{}, nil, nil, err
-	}
-	address, tx, contract, err := bind.DeployContract(auth, parsed, common.FromHex(ISingleSessionWithOracleBin), backend)
-	if err != nil {
-		return common.Address{}, nil, nil, err
-	}
-	return address, tx, &ISingleSessionWithOracle{ISingleSessionWithOracleCaller: ISingleSessionWithOracleCaller{contract: contract}, ISingleSessionWithOracleTransactor: ISingleSessionWithOracleTransactor{contract: contract}, ISingleSessionWithOracleFilterer: ISingleSessionWithOracleFilterer{contract: contract}}, nil
-}
+const ISingleSessionWithOracleABI = "[{\"constant\":true,\"inputs\":[{\"name\":\"_key\",\"type\":\"uint256\"}],\"name\":\"getState\",\"outputs\":[{\"name\":\"\",\"type\":\"bytes\"}],\"payable\":false,\"stateMutability\":\"view\",\"type\":\"function\"},{\"constant\":true,\"inputs\":[],\"name\":\"getStatus\",\"outputs\":[{\"name\":\"\",\"type\":\"uint8\"}],\"payable\":false,\"stateMutability\":\"view\",\"type\":\"function\"},{\"constant\":false,\"inputs\":[{\"name\":\"_oracleProof\",\"type\":\"bytes\"}],\"name\":\"settleBySigTimeout\",\"outputs\":[],\"payable\":false,\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"constant\":false,\"inputs\":[{\"name\":\"_oracleProof\",\"type\":\"bytes\"}],\"name\":\"settleByMoveTimeout\",\"outputs\":[],\"payable\":false,\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"constant\":false,\"inputs\":[{\"name\":\"_oracleProof\",\"type\":\"bytes\"},{\"name\":\"_cosignedStateProof\",\"type\":\"bytes\"}],\"name\":\"settleByInvalidTurn\",\"outputs\":[],\"payable\":false,\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"constant\":false,\"inputs\":[{\"name\":\"_oracleProof\",\"type\":\"bytes\"},{\"name\":\"_cosignedStateProof\",\"type\":\"bytes\"}],\"name\":\"settleByInvalidState\",\"outputs\":[],\"payable\":false,\"stateMutability\":\"nonpayable\",\"type\":\"function\"}]"
 
 // ISingleSessionWithOracle is an auto generated Go binding around an Ethereum contract.
 type ISingleSessionWithOracle struct {
@@ -190,7 +173,7 @@ func (_ISingleSessionWithOracle *ISingleSessionWithOracleTransactorRaw) Transact
 
 // GetState is a free data retrieval call binding the contract method 0x44c9af28.
 //
-// Solidity: function getState(uint256 _key) constant returns(bytes)
+// Solidity: function getState(uint256 _key) view returns(bytes)
 func (_ISingleSessionWithOracle *ISingleSessionWithOracleCaller) GetState(opts *bind.CallOpts, _key *big.Int) ([]byte, error) {
 	var (
 		ret0 = new([]byte)
@@ -202,21 +185,21 @@ func (_ISingleSessionWithOracle *ISingleSessionWithOracleCaller) GetState(opts *
 
 // GetState is a free data retrieval call binding the contract method 0x44c9af28.
 //
-// Solidity: function getState(uint256 _key) constant returns(bytes)
+// Solidity: function getState(uint256 _key) view returns(bytes)
 func (_ISingleSessionWithOracle *ISingleSessionWithOracleSession) GetState(_key *big.Int) ([]byte, error) {
 	return _ISingleSessionWithOracle.Contract.GetState(&_ISingleSessionWithOracle.CallOpts, _key)
 }
 
 // GetState is a free data retrieval call binding the contract method 0x44c9af28.
 //
-// Solidity: function getState(uint256 _key) constant returns(bytes)
+// Solidity: function getState(uint256 _key) view returns(bytes)
 func (_ISingleSessionWithOracle *ISingleSessionWithOracleCallerSession) GetState(_key *big.Int) ([]byte, error) {
 	return _ISingleSessionWithOracle.Contract.GetState(&_ISingleSessionWithOracle.CallOpts, _key)
 }
 
 // GetStatus is a free data retrieval call binding the contract method 0x4e69d560.
 //
-// Solidity: function getStatus() constant returns(uint8)
+// Solidity: function getStatus() view returns(uint8)
 func (_ISingleSessionWithOracle *ISingleSessionWithOracleCaller) GetStatus(opts *bind.CallOpts) (uint8, error) {
 	var (
 		ret0 = new(uint8)
@@ -228,42 +211,16 @@ func (_ISingleSessionWithOracle *ISingleSessionWithOracleCaller) GetStatus(opts 
 
 // GetStatus is a free data retrieval call binding the contract method 0x4e69d560.
 //
-// Solidity: function getStatus() constant returns(uint8)
+// Solidity: function getStatus() view returns(uint8)
 func (_ISingleSessionWithOracle *ISingleSessionWithOracleSession) GetStatus() (uint8, error) {
 	return _ISingleSessionWithOracle.Contract.GetStatus(&_ISingleSessionWithOracle.CallOpts)
 }
 
 // GetStatus is a free data retrieval call binding the contract method 0x4e69d560.
 //
-// Solidity: function getStatus() constant returns(uint8)
+// Solidity: function getStatus() view returns(uint8)
 func (_ISingleSessionWithOracle *ISingleSessionWithOracleCallerSession) GetStatus() (uint8, error) {
 	return _ISingleSessionWithOracle.Contract.GetStatus(&_ISingleSessionWithOracle.CallOpts)
-}
-
-// IsFinalized is a free data retrieval call binding the contract method 0xbcdbda94.
-//
-// Solidity: function isFinalized(bytes _query) constant returns(bool)
-func (_ISingleSessionWithOracle *ISingleSessionWithOracleCaller) IsFinalized(opts *bind.CallOpts, _query []byte) (bool, error) {
-	var (
-		ret0 = new(bool)
-	)
-	out := ret0
-	err := _ISingleSessionWithOracle.contract.Call(opts, out, "isFinalized", _query)
-	return *ret0, err
-}
-
-// IsFinalized is a free data retrieval call binding the contract method 0xbcdbda94.
-//
-// Solidity: function isFinalized(bytes _query) constant returns(bool)
-func (_ISingleSessionWithOracle *ISingleSessionWithOracleSession) IsFinalized(_query []byte) (bool, error) {
-	return _ISingleSessionWithOracle.Contract.IsFinalized(&_ISingleSessionWithOracle.CallOpts, _query)
-}
-
-// IsFinalized is a free data retrieval call binding the contract method 0xbcdbda94.
-//
-// Solidity: function isFinalized(bytes _query) constant returns(bool)
-func (_ISingleSessionWithOracle *ISingleSessionWithOracleCallerSession) IsFinalized(_query []byte) (bool, error) {
-	return _ISingleSessionWithOracle.Contract.IsFinalized(&_ISingleSessionWithOracle.CallOpts, _query)
 }
 
 // SettleByInvalidState is a paid mutator transaction binding the contract method 0xfb3fe806.

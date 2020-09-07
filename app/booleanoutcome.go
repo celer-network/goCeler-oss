@@ -20,7 +20,6 @@ var (
 	_ = big.NewInt
 	_ = strings.NewReader
 	_ = ethereum.NotFound
-	_ = abi.U256
 	_ = bind.Bind
 	_ = common.Big1
 	_ = types.BloomLookup
@@ -29,22 +28,6 @@ var (
 
 // IBooleanOutcomeABI is the input ABI used to generate the binding from.
 const IBooleanOutcomeABI = "[{\"constant\":true,\"inputs\":[{\"name\":\"_query\",\"type\":\"bytes\"}],\"name\":\"isFinalized\",\"outputs\":[{\"name\":\"\",\"type\":\"bool\"}],\"payable\":false,\"stateMutability\":\"view\",\"type\":\"function\"},{\"constant\":true,\"inputs\":[{\"name\":\"_query\",\"type\":\"bytes\"}],\"name\":\"getOutcome\",\"outputs\":[{\"name\":\"\",\"type\":\"bool\"}],\"payable\":false,\"stateMutability\":\"view\",\"type\":\"function\"}]"
-
-// IBooleanOutcomeBin is the compiled bytecode used for deploying new contracts.
-const IBooleanOutcomeBin = `0x`
-
-// DeployIBooleanOutcome deploys a new Ethereum contract, binding an instance of IBooleanOutcome to it.
-func DeployIBooleanOutcome(auth *bind.TransactOpts, backend bind.ContractBackend) (common.Address, *types.Transaction, *IBooleanOutcome, error) {
-	parsed, err := abi.JSON(strings.NewReader(IBooleanOutcomeABI))
-	if err != nil {
-		return common.Address{}, nil, nil, err
-	}
-	address, tx, contract, err := bind.DeployContract(auth, parsed, common.FromHex(IBooleanOutcomeBin), backend)
-	if err != nil {
-		return common.Address{}, nil, nil, err
-	}
-	return address, tx, &IBooleanOutcome{IBooleanOutcomeCaller: IBooleanOutcomeCaller{contract: contract}, IBooleanOutcomeTransactor: IBooleanOutcomeTransactor{contract: contract}, IBooleanOutcomeFilterer: IBooleanOutcomeFilterer{contract: contract}}, nil
-}
 
 // IBooleanOutcome is an auto generated Go binding around an Ethereum contract.
 type IBooleanOutcome struct {
@@ -190,7 +173,7 @@ func (_IBooleanOutcome *IBooleanOutcomeTransactorRaw) Transact(opts *bind.Transa
 
 // GetOutcome is a free data retrieval call binding the contract method 0xea4ba8eb.
 //
-// Solidity: function getOutcome(bytes _query) constant returns(bool)
+// Solidity: function getOutcome(bytes _query) view returns(bool)
 func (_IBooleanOutcome *IBooleanOutcomeCaller) GetOutcome(opts *bind.CallOpts, _query []byte) (bool, error) {
 	var (
 		ret0 = new(bool)
@@ -202,21 +185,21 @@ func (_IBooleanOutcome *IBooleanOutcomeCaller) GetOutcome(opts *bind.CallOpts, _
 
 // GetOutcome is a free data retrieval call binding the contract method 0xea4ba8eb.
 //
-// Solidity: function getOutcome(bytes _query) constant returns(bool)
+// Solidity: function getOutcome(bytes _query) view returns(bool)
 func (_IBooleanOutcome *IBooleanOutcomeSession) GetOutcome(_query []byte) (bool, error) {
 	return _IBooleanOutcome.Contract.GetOutcome(&_IBooleanOutcome.CallOpts, _query)
 }
 
 // GetOutcome is a free data retrieval call binding the contract method 0xea4ba8eb.
 //
-// Solidity: function getOutcome(bytes _query) constant returns(bool)
+// Solidity: function getOutcome(bytes _query) view returns(bool)
 func (_IBooleanOutcome *IBooleanOutcomeCallerSession) GetOutcome(_query []byte) (bool, error) {
 	return _IBooleanOutcome.Contract.GetOutcome(&_IBooleanOutcome.CallOpts, _query)
 }
 
 // IsFinalized is a free data retrieval call binding the contract method 0xbcdbda94.
 //
-// Solidity: function isFinalized(bytes _query) constant returns(bool)
+// Solidity: function isFinalized(bytes _query) view returns(bool)
 func (_IBooleanOutcome *IBooleanOutcomeCaller) IsFinalized(opts *bind.CallOpts, _query []byte) (bool, error) {
 	var (
 		ret0 = new(bool)
@@ -228,14 +211,14 @@ func (_IBooleanOutcome *IBooleanOutcomeCaller) IsFinalized(opts *bind.CallOpts, 
 
 // IsFinalized is a free data retrieval call binding the contract method 0xbcdbda94.
 //
-// Solidity: function isFinalized(bytes _query) constant returns(bool)
+// Solidity: function isFinalized(bytes _query) view returns(bool)
 func (_IBooleanOutcome *IBooleanOutcomeSession) IsFinalized(_query []byte) (bool, error) {
 	return _IBooleanOutcome.Contract.IsFinalized(&_IBooleanOutcome.CallOpts, _query)
 }
 
 // IsFinalized is a free data retrieval call binding the contract method 0xbcdbda94.
 //
-// Solidity: function isFinalized(bytes _query) constant returns(bool)
+// Solidity: function isFinalized(bytes _query) view returns(bool)
 func (_IBooleanOutcome *IBooleanOutcomeCallerSession) IsFinalized(_query []byte) (bool, error) {
 	return _IBooleanOutcome.Contract.IsFinalized(&_IBooleanOutcome.CallOpts, _query)
 }

@@ -20,7 +20,6 @@ var (
 	_ = big.NewInt
 	_ = strings.NewReader
 	_ = ethereum.NotFound
-	_ = abi.U256
 	_ = bind.Bind
 	_ = common.Big1
 	_ = types.BloomLookup
@@ -31,7 +30,7 @@ var (
 const EthPoolABI = "[{\"constant\":true,\"inputs\":[],\"name\":\"name\",\"outputs\":[{\"name\":\"\",\"type\":\"string\"}],\"payable\":false,\"stateMutability\":\"view\",\"type\":\"function\"},{\"constant\":true,\"inputs\":[],\"name\":\"decimals\",\"outputs\":[{\"name\":\"\",\"type\":\"uint8\"}],\"payable\":false,\"stateMutability\":\"view\",\"type\":\"function\"},{\"constant\":true,\"inputs\":[],\"name\":\"symbol\",\"outputs\":[{\"name\":\"\",\"type\":\"string\"}],\"payable\":false,\"stateMutability\":\"view\",\"type\":\"function\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"name\":\"receiver\",\"type\":\"address\"},{\"indexed\":false,\"name\":\"value\",\"type\":\"uint256\"}],\"name\":\"Deposit\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"name\":\"from\",\"type\":\"address\"},{\"indexed\":true,\"name\":\"to\",\"type\":\"address\"},{\"indexed\":false,\"name\":\"value\",\"type\":\"uint256\"}],\"name\":\"Transfer\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"name\":\"owner\",\"type\":\"address\"},{\"indexed\":true,\"name\":\"spender\",\"type\":\"address\"},{\"indexed\":false,\"name\":\"value\",\"type\":\"uint256\"}],\"name\":\"Approval\",\"type\":\"event\"},{\"constant\":false,\"inputs\":[{\"name\":\"_receiver\",\"type\":\"address\"}],\"name\":\"deposit\",\"outputs\":[],\"payable\":true,\"stateMutability\":\"payable\",\"type\":\"function\"},{\"constant\":false,\"inputs\":[{\"name\":\"_value\",\"type\":\"uint256\"}],\"name\":\"withdraw\",\"outputs\":[],\"payable\":false,\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"constant\":false,\"inputs\":[{\"name\":\"_spender\",\"type\":\"address\"},{\"name\":\"_value\",\"type\":\"uint256\"}],\"name\":\"approve\",\"outputs\":[{\"name\":\"\",\"type\":\"bool\"}],\"payable\":false,\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"constant\":false,\"inputs\":[{\"name\":\"_from\",\"type\":\"address\"},{\"name\":\"_to\",\"type\":\"address\"},{\"name\":\"_value\",\"type\":\"uint256\"}],\"name\":\"transferFrom\",\"outputs\":[{\"name\":\"\",\"type\":\"bool\"}],\"payable\":false,\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"constant\":false,\"inputs\":[{\"name\":\"_from\",\"type\":\"address\"},{\"name\":\"_walletAddr\",\"type\":\"address\"},{\"name\":\"_walletId\",\"type\":\"bytes32\"},{\"name\":\"_value\",\"type\":\"uint256\"}],\"name\":\"transferToCelerWallet\",\"outputs\":[{\"name\":\"\",\"type\":\"bool\"}],\"payable\":false,\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"constant\":false,\"inputs\":[{\"name\":\"_spender\",\"type\":\"address\"},{\"name\":\"_addedValue\",\"type\":\"uint256\"}],\"name\":\"increaseAllowance\",\"outputs\":[{\"name\":\"\",\"type\":\"bool\"}],\"payable\":false,\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"constant\":false,\"inputs\":[{\"name\":\"_spender\",\"type\":\"address\"},{\"name\":\"_subtractedValue\",\"type\":\"uint256\"}],\"name\":\"decreaseAllowance\",\"outputs\":[{\"name\":\"\",\"type\":\"bool\"}],\"payable\":false,\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"constant\":true,\"inputs\":[{\"name\":\"_owner\",\"type\":\"address\"}],\"name\":\"balanceOf\",\"outputs\":[{\"name\":\"\",\"type\":\"uint256\"}],\"payable\":false,\"stateMutability\":\"view\",\"type\":\"function\"},{\"constant\":true,\"inputs\":[{\"name\":\"_owner\",\"type\":\"address\"},{\"name\":\"_spender\",\"type\":\"address\"}],\"name\":\"allowance\",\"outputs\":[{\"name\":\"\",\"type\":\"uint256\"}],\"payable\":false,\"stateMutability\":\"view\",\"type\":\"function\"}]"
 
 // EthPoolBin is the compiled bytecode used for deploying new contracts.
-const EthPoolBin = `0x608060405234801561001057600080fd5b50610b3f806100206000396000f3fe6080604052600436106100c4576000357c01000000000000000000000000000000000000000000000000000000009004806370a082311161008157806370a08231146102735780637e1cd431146102b857806395d89b4114610301578063a457c2d714610316578063dd62ed3e1461034f578063f340fa011461038a576100c4565b806306fdde03146100c9578063095ea7b31461015357806323b872dd146101a05780632e1a7d4d146101e3578063313ce5671461020f578063395093511461023a575b600080fd5b3480156100d557600080fd5b506100de6103b0565b6040805160208082528351818301528351919283929083019185019080838360005b83811015610118578181015183820152602001610100565b50505050905090810190601f1680156101455780820380516001836020036101000a031916815260200191505b509250505060405180910390f35b34801561015f57600080fd5b5061018c6004803603604081101561017657600080fd5b50600160a060020a0381351690602001356103e9565b604080519115158252519081900360200190f35b3480156101ac57600080fd5b5061018c600480360360608110156101c357600080fd5b50600160a060020a0381358116916020810135909116906040013561049e565b3480156101ef57600080fd5b5061020d6004803603602081101561020657600080fd5b5035610531565b005b34801561021b57600080fd5b5061022461053f565b6040805160ff9092168252519081900360200190f35b34801561024657600080fd5b5061018c6004803603604081101561025d57600080fd5b50600160a060020a038135169060200135610544565b34801561027f57600080fd5b506102a66004803603602081101561029657600080fd5b5035600160a060020a031661062b565b60408051918252519081900360200190f35b3480156102c457600080fd5b5061018c600480360360808110156102db57600080fd5b50600160a060020a03813581169160208101359091169060408101359060600135610646565b34801561030d57600080fd5b506100de6107d0565b34801561032257600080fd5b5061018c6004803603604081101561033957600080fd5b50600160a060020a038135169060200135610809565b34801561035b57600080fd5b506102a66004803603604081101561037257600080fd5b50600160a060020a038135811691602001351661089d565b61020d600480360360208110156103a057600080fd5b5035600160a060020a03166108c8565b6040518060400160405280600981526020017f457468496e506f6f6c000000000000000000000000000000000000000000000081525081565b6000600160a060020a038316610449576040805160e560020a62461bcd02815260206004820152601460248201527f5370656e64657220616464726573732069732030000000000000000000000000604482015290519081900360640190fd5b336000818152600160209081526040808320600160a060020a0388168085529083529281902086905580518681529051929392600080516020610aeb833981519152929181900390910190a350600192915050565b600160a060020a03831660009081526001602090815260408083203384529091528120546104d2908363ffffffff6109a216565b600160a060020a038516600081815260016020908152604080832033808552908352928190208590558051948552519193600080516020610aeb833981519152929081900390910190a36105278484846109b7565b5060019392505050565b61053c3333836109b7565b50565b601281565b6000600160a060020a0383166105a4576040805160e560020a62461bcd02815260206004820152601460248201527f5370656e64657220616464726573732069732030000000000000000000000000604482015290519081900360640190fd5b336000908152600160209081526040808320600160a060020a03871684529091529020546105d8908363ffffffff610ad116565b336000818152600160209081526040808320600160a060020a038916808552908352928190208590558051948552519193600080516020610aeb833981519152929081900390910190a350600192915050565b600160a060020a031660009081526020819052604090205490565b600160a060020a038416600090815260016020908152604080832033845290915281205461067a908363ffffffff6109a216565b600160a060020a038616600081815260016020908152604080832033808552908352928190208590558051948552519193600080516020610aeb833981519152929081900390910190a3600160a060020a0385166000908152602081905260409020546106ed908363ffffffff6109a216565b600160a060020a038087166000818152602081815260409182902094909455805186815290519288169391927fddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef929181900390910190a3600084905080600160a060020a031663d68d9d4e84866040518363ffffffff167c0100000000000000000000000000000000000000000000000000000000028152600401808281526020019150506000604051808303818588803b1580156107ab57600080fd5b505af11580156107bf573d6000803e3d6000fd5b5060019a9950505050505050505050565b6040518060400160405280600581526020017f457468495000000000000000000000000000000000000000000000000000000081525081565b6000600160a060020a038316610869576040805160e560020a62461bcd02815260206004820152601460248201527f5370656e64657220616464726573732069732030000000000000000000000000604482015290519081900360640190fd5b336000908152600160209081526040808320600160a060020a03871684529091529020546105d8908363ffffffff6109a216565b600160a060020a03918216600090815260016020908152604080832093909416825291909152205490565b600160a060020a038116610926576040805160e560020a62461bcd02815260206004820152601560248201527f5265636569766572206164647265737320697320300000000000000000000000604482015290519081900360640190fd5b600160a060020a03811660009081526020819052604090205461094f903463ffffffff610ad116565b600160a060020a03821660008181526020818152604091829020939093558051348152905191927fe1fffcc4923d04b559f4d29a8bfc6cda04eb5b0d3c460751c2402c5c5cc9109c92918290030190a250565b6000828211156109b157600080fd5b50900390565b600160a060020a038216610a15576040805160e560020a62461bcd02815260206004820152600f60248201527f546f206164647265737320697320300000000000000000000000000000000000604482015290519081900360640190fd5b600160a060020a038316600090815260208190526040902054610a3e908263ffffffff6109a216565b600160a060020a038085166000818152602081815260409182902094909455805185815290519286169391927fddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef929181900390910190a3604051600160a060020a0383169082156108fc029083906000818181858888f19350505050158015610acb573d6000803e3d6000fd5b50505050565b600082820183811015610ae357600080fd5b939250505056fe8c5be1e5ebec7d5bd14f71427d1e84f3dd0314c0f7b2291e5b200ac8c7c3b925a265627a7a72305820e51338a3c6ac672fc2d366d593d9a46aebef69c804363974cd743a137e9b05e064736f6c634300050a0032`
+var EthPoolBin = "0x608060405234801561001057600080fd5b50610b3f806100206000396000f3fe6080604052600436106100c4576000357c01000000000000000000000000000000000000000000000000000000009004806370a082311161008157806370a08231146102735780637e1cd431146102b857806395d89b4114610301578063a457c2d714610316578063dd62ed3e1461034f578063f340fa011461038a576100c4565b806306fdde03146100c9578063095ea7b31461015357806323b872dd146101a05780632e1a7d4d146101e3578063313ce5671461020f578063395093511461023a575b600080fd5b3480156100d557600080fd5b506100de6103b0565b6040805160208082528351818301528351919283929083019185019080838360005b83811015610118578181015183820152602001610100565b50505050905090810190601f1680156101455780820380516001836020036101000a031916815260200191505b509250505060405180910390f35b34801561015f57600080fd5b5061018c6004803603604081101561017657600080fd5b50600160a060020a0381351690602001356103e9565b604080519115158252519081900360200190f35b3480156101ac57600080fd5b5061018c600480360360608110156101c357600080fd5b50600160a060020a0381358116916020810135909116906040013561049e565b3480156101ef57600080fd5b5061020d6004803603602081101561020657600080fd5b5035610531565b005b34801561021b57600080fd5b5061022461053f565b6040805160ff9092168252519081900360200190f35b34801561024657600080fd5b5061018c6004803603604081101561025d57600080fd5b50600160a060020a038135169060200135610544565b34801561027f57600080fd5b506102a66004803603602081101561029657600080fd5b5035600160a060020a031661062b565b60408051918252519081900360200190f35b3480156102c457600080fd5b5061018c600480360360808110156102db57600080fd5b50600160a060020a03813581169160208101359091169060408101359060600135610646565b34801561030d57600080fd5b506100de6107d0565b34801561032257600080fd5b5061018c6004803603604081101561033957600080fd5b50600160a060020a038135169060200135610809565b34801561035b57600080fd5b506102a66004803603604081101561037257600080fd5b50600160a060020a038135811691602001351661089d565b61020d600480360360208110156103a057600080fd5b5035600160a060020a03166108c8565b6040518060400160405280600981526020017f457468496e506f6f6c000000000000000000000000000000000000000000000081525081565b6000600160a060020a038316610449576040805160e560020a62461bcd02815260206004820152601460248201527f5370656e64657220616464726573732069732030000000000000000000000000604482015290519081900360640190fd5b336000818152600160209081526040808320600160a060020a0388168085529083529281902086905580518681529051929392600080516020610aeb833981519152929181900390910190a350600192915050565b600160a060020a03831660009081526001602090815260408083203384529091528120546104d2908363ffffffff6109a216565b600160a060020a038516600081815260016020908152604080832033808552908352928190208590558051948552519193600080516020610aeb833981519152929081900390910190a36105278484846109b7565b5060019392505050565b61053c3333836109b7565b50565b601281565b6000600160a060020a0383166105a4576040805160e560020a62461bcd02815260206004820152601460248201527f5370656e64657220616464726573732069732030000000000000000000000000604482015290519081900360640190fd5b336000908152600160209081526040808320600160a060020a03871684529091529020546105d8908363ffffffff610ad116565b336000818152600160209081526040808320600160a060020a038916808552908352928190208590558051948552519193600080516020610aeb833981519152929081900390910190a350600192915050565b600160a060020a031660009081526020819052604090205490565b600160a060020a038416600090815260016020908152604080832033845290915281205461067a908363ffffffff6109a216565b600160a060020a038616600081815260016020908152604080832033808552908352928190208590558051948552519193600080516020610aeb833981519152929081900390910190a3600160a060020a0385166000908152602081905260409020546106ed908363ffffffff6109a216565b600160a060020a038087166000818152602081815260409182902094909455805186815290519288169391927fddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef929181900390910190a3600084905080600160a060020a031663d68d9d4e84866040518363ffffffff167c0100000000000000000000000000000000000000000000000000000000028152600401808281526020019150506000604051808303818588803b1580156107ab57600080fd5b505af11580156107bf573d6000803e3d6000fd5b5060019a9950505050505050505050565b6040518060400160405280600581526020017f457468495000000000000000000000000000000000000000000000000000000081525081565b6000600160a060020a038316610869576040805160e560020a62461bcd02815260206004820152601460248201527f5370656e64657220616464726573732069732030000000000000000000000000604482015290519081900360640190fd5b336000908152600160209081526040808320600160a060020a03871684529091529020546105d8908363ffffffff6109a216565b600160a060020a03918216600090815260016020908152604080832093909416825291909152205490565b600160a060020a038116610926576040805160e560020a62461bcd02815260206004820152601560248201527f5265636569766572206164647265737320697320300000000000000000000000604482015290519081900360640190fd5b600160a060020a03811660009081526020819052604090205461094f903463ffffffff610ad116565b600160a060020a03821660008181526020818152604091829020939093558051348152905191927fe1fffcc4923d04b559f4d29a8bfc6cda04eb5b0d3c460751c2402c5c5cc9109c92918290030190a250565b6000828211156109b157600080fd5b50900390565b600160a060020a038216610a15576040805160e560020a62461bcd02815260206004820152600f60248201527f546f206164647265737320697320300000000000000000000000000000000000604482015290519081900360640190fd5b600160a060020a038316600090815260208190526040902054610a3e908263ffffffff6109a216565b600160a060020a038085166000818152602081815260409182902094909455805185815290519286169391927fddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef929181900390910190a3604051600160a060020a0383169082156108fc029083906000818181858888f19350505050158015610acb573d6000803e3d6000fd5b50505050565b600082820183811015610ae357600080fd5b939250505056fe8c5be1e5ebec7d5bd14f71427d1e84f3dd0314c0f7b2291e5b200ac8c7c3b925a265627a7a72305820e51338a3c6ac672fc2d366d593d9a46aebef69c804363974cd743a137e9b05e064736f6c634300050a0032"
 
 // DeployEthPool deploys a new Ethereum contract, binding an instance of EthPool to it.
 func DeployEthPool(auth *bind.TransactOpts, backend bind.ContractBackend) (common.Address, *types.Transaction, *EthPool, error) {
@@ -39,6 +38,7 @@ func DeployEthPool(auth *bind.TransactOpts, backend bind.ContractBackend) (commo
 	if err != nil {
 		return common.Address{}, nil, nil, err
 	}
+
 	address, tx, contract, err := bind.DeployContract(auth, parsed, common.FromHex(EthPoolBin), backend)
 	if err != nil {
 		return common.Address{}, nil, nil, err
@@ -190,7 +190,7 @@ func (_EthPool *EthPoolTransactorRaw) Transact(opts *bind.TransactOpts, method s
 
 // Allowance is a free data retrieval call binding the contract method 0xdd62ed3e.
 //
-// Solidity: function allowance(address _owner, address _spender) constant returns(uint256)
+// Solidity: function allowance(address _owner, address _spender) view returns(uint256)
 func (_EthPool *EthPoolCaller) Allowance(opts *bind.CallOpts, _owner common.Address, _spender common.Address) (*big.Int, error) {
 	var (
 		ret0 = new(*big.Int)
@@ -202,21 +202,21 @@ func (_EthPool *EthPoolCaller) Allowance(opts *bind.CallOpts, _owner common.Addr
 
 // Allowance is a free data retrieval call binding the contract method 0xdd62ed3e.
 //
-// Solidity: function allowance(address _owner, address _spender) constant returns(uint256)
+// Solidity: function allowance(address _owner, address _spender) view returns(uint256)
 func (_EthPool *EthPoolSession) Allowance(_owner common.Address, _spender common.Address) (*big.Int, error) {
 	return _EthPool.Contract.Allowance(&_EthPool.CallOpts, _owner, _spender)
 }
 
 // Allowance is a free data retrieval call binding the contract method 0xdd62ed3e.
 //
-// Solidity: function allowance(address _owner, address _spender) constant returns(uint256)
+// Solidity: function allowance(address _owner, address _spender) view returns(uint256)
 func (_EthPool *EthPoolCallerSession) Allowance(_owner common.Address, _spender common.Address) (*big.Int, error) {
 	return _EthPool.Contract.Allowance(&_EthPool.CallOpts, _owner, _spender)
 }
 
 // BalanceOf is a free data retrieval call binding the contract method 0x70a08231.
 //
-// Solidity: function balanceOf(address _owner) constant returns(uint256)
+// Solidity: function balanceOf(address _owner) view returns(uint256)
 func (_EthPool *EthPoolCaller) BalanceOf(opts *bind.CallOpts, _owner common.Address) (*big.Int, error) {
 	var (
 		ret0 = new(*big.Int)
@@ -228,21 +228,21 @@ func (_EthPool *EthPoolCaller) BalanceOf(opts *bind.CallOpts, _owner common.Addr
 
 // BalanceOf is a free data retrieval call binding the contract method 0x70a08231.
 //
-// Solidity: function balanceOf(address _owner) constant returns(uint256)
+// Solidity: function balanceOf(address _owner) view returns(uint256)
 func (_EthPool *EthPoolSession) BalanceOf(_owner common.Address) (*big.Int, error) {
 	return _EthPool.Contract.BalanceOf(&_EthPool.CallOpts, _owner)
 }
 
 // BalanceOf is a free data retrieval call binding the contract method 0x70a08231.
 //
-// Solidity: function balanceOf(address _owner) constant returns(uint256)
+// Solidity: function balanceOf(address _owner) view returns(uint256)
 func (_EthPool *EthPoolCallerSession) BalanceOf(_owner common.Address) (*big.Int, error) {
 	return _EthPool.Contract.BalanceOf(&_EthPool.CallOpts, _owner)
 }
 
 // Decimals is a free data retrieval call binding the contract method 0x313ce567.
 //
-// Solidity: function decimals() constant returns(uint8)
+// Solidity: function decimals() view returns(uint8)
 func (_EthPool *EthPoolCaller) Decimals(opts *bind.CallOpts) (uint8, error) {
 	var (
 		ret0 = new(uint8)
@@ -254,21 +254,21 @@ func (_EthPool *EthPoolCaller) Decimals(opts *bind.CallOpts) (uint8, error) {
 
 // Decimals is a free data retrieval call binding the contract method 0x313ce567.
 //
-// Solidity: function decimals() constant returns(uint8)
+// Solidity: function decimals() view returns(uint8)
 func (_EthPool *EthPoolSession) Decimals() (uint8, error) {
 	return _EthPool.Contract.Decimals(&_EthPool.CallOpts)
 }
 
 // Decimals is a free data retrieval call binding the contract method 0x313ce567.
 //
-// Solidity: function decimals() constant returns(uint8)
+// Solidity: function decimals() view returns(uint8)
 func (_EthPool *EthPoolCallerSession) Decimals() (uint8, error) {
 	return _EthPool.Contract.Decimals(&_EthPool.CallOpts)
 }
 
 // Name is a free data retrieval call binding the contract method 0x06fdde03.
 //
-// Solidity: function name() constant returns(string)
+// Solidity: function name() view returns(string)
 func (_EthPool *EthPoolCaller) Name(opts *bind.CallOpts) (string, error) {
 	var (
 		ret0 = new(string)
@@ -280,21 +280,21 @@ func (_EthPool *EthPoolCaller) Name(opts *bind.CallOpts) (string, error) {
 
 // Name is a free data retrieval call binding the contract method 0x06fdde03.
 //
-// Solidity: function name() constant returns(string)
+// Solidity: function name() view returns(string)
 func (_EthPool *EthPoolSession) Name() (string, error) {
 	return _EthPool.Contract.Name(&_EthPool.CallOpts)
 }
 
 // Name is a free data retrieval call binding the contract method 0x06fdde03.
 //
-// Solidity: function name() constant returns(string)
+// Solidity: function name() view returns(string)
 func (_EthPool *EthPoolCallerSession) Name() (string, error) {
 	return _EthPool.Contract.Name(&_EthPool.CallOpts)
 }
 
 // Symbol is a free data retrieval call binding the contract method 0x95d89b41.
 //
-// Solidity: function symbol() constant returns(string)
+// Solidity: function symbol() view returns(string)
 func (_EthPool *EthPoolCaller) Symbol(opts *bind.CallOpts) (string, error) {
 	var (
 		ret0 = new(string)
@@ -306,14 +306,14 @@ func (_EthPool *EthPoolCaller) Symbol(opts *bind.CallOpts) (string, error) {
 
 // Symbol is a free data retrieval call binding the contract method 0x95d89b41.
 //
-// Solidity: function symbol() constant returns(string)
+// Solidity: function symbol() view returns(string)
 func (_EthPool *EthPoolSession) Symbol() (string, error) {
 	return _EthPool.Contract.Symbol(&_EthPool.CallOpts)
 }
 
 // Symbol is a free data retrieval call binding the contract method 0x95d89b41.
 //
-// Solidity: function symbol() constant returns(string)
+// Solidity: function symbol() view returns(string)
 func (_EthPool *EthPoolCallerSession) Symbol() (string, error) {
 	return _EthPool.Contract.Symbol(&_EthPool.CallOpts)
 }
@@ -362,21 +362,21 @@ func (_EthPool *EthPoolTransactorSession) DecreaseAllowance(_spender common.Addr
 
 // Deposit is a paid mutator transaction binding the contract method 0xf340fa01.
 //
-// Solidity: function deposit(address _receiver) returns()
+// Solidity: function deposit(address _receiver) payable returns()
 func (_EthPool *EthPoolTransactor) Deposit(opts *bind.TransactOpts, _receiver common.Address) (*types.Transaction, error) {
 	return _EthPool.contract.Transact(opts, "deposit", _receiver)
 }
 
 // Deposit is a paid mutator transaction binding the contract method 0xf340fa01.
 //
-// Solidity: function deposit(address _receiver) returns()
+// Solidity: function deposit(address _receiver) payable returns()
 func (_EthPool *EthPoolSession) Deposit(_receiver common.Address) (*types.Transaction, error) {
 	return _EthPool.Contract.Deposit(&_EthPool.TransactOpts, _receiver)
 }
 
 // Deposit is a paid mutator transaction binding the contract method 0xf340fa01.
 //
-// Solidity: function deposit(address _receiver) returns()
+// Solidity: function deposit(address _receiver) payable returns()
 func (_EthPool *EthPoolTransactorSession) Deposit(_receiver common.Address) (*types.Transaction, error) {
 	return _EthPool.Contract.Deposit(&_EthPool.TransactOpts, _receiver)
 }
@@ -607,6 +607,17 @@ func (_EthPool *EthPoolFilterer) WatchApproval(opts *bind.WatchOpts, sink chan<-
 	}), nil
 }
 
+// ParseApproval is a log parse operation binding the contract event 0x8c5be1e5ebec7d5bd14f71427d1e84f3dd0314c0f7b2291e5b200ac8c7c3b925.
+//
+// Solidity: event Approval(address indexed owner, address indexed spender, uint256 value)
+func (_EthPool *EthPoolFilterer) ParseApproval(log types.Log) (*EthPoolApproval, error) {
+	event := new(EthPoolApproval)
+	if err := _EthPool.contract.UnpackLog(event, "Approval", log); err != nil {
+		return nil, err
+	}
+	return event, nil
+}
+
 // EthPoolDepositIterator is returned from FilterDeposit and is used to iterate over the raw logs and unpacked data for Deposit events raised by the EthPool contract.
 type EthPoolDepositIterator struct {
 	Event *EthPoolDeposit // Event containing the contract specifics and raw log
@@ -738,6 +749,17 @@ func (_EthPool *EthPoolFilterer) WatchDeposit(opts *bind.WatchOpts, sink chan<- 
 			}
 		}
 	}), nil
+}
+
+// ParseDeposit is a log parse operation binding the contract event 0xe1fffcc4923d04b559f4d29a8bfc6cda04eb5b0d3c460751c2402c5c5cc9109c.
+//
+// Solidity: event Deposit(address indexed receiver, uint256 value)
+func (_EthPool *EthPoolFilterer) ParseDeposit(log types.Log) (*EthPoolDeposit, error) {
+	event := new(EthPoolDeposit)
+	if err := _EthPool.contract.UnpackLog(event, "Deposit", log); err != nil {
+		return nil, err
+	}
+	return event, nil
 }
 
 // EthPoolTransferIterator is returned from FilterTransfer and is used to iterate over the raw logs and unpacked data for Transfer events raised by the EthPool contract.
@@ -880,4 +902,15 @@ func (_EthPool *EthPoolFilterer) WatchTransfer(opts *bind.WatchOpts, sink chan<-
 			}
 		}
 	}), nil
+}
+
+// ParseTransfer is a log parse operation binding the contract event 0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef.
+//
+// Solidity: event Transfer(address indexed from, address indexed to, uint256 value)
+func (_EthPool *EthPoolFilterer) ParseTransfer(log types.Log) (*EthPoolTransfer, error) {
+	event := new(EthPoolTransfer)
+	if err := _EthPool.contract.UnpackLog(event, "Transfer", log); err != nil {
+		return nil, err
+	}
+	return event, nil
 }

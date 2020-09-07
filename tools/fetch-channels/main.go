@@ -79,14 +79,14 @@ func main() {
 	data.EndBlockNumber = endBlk.Uint64()
 
 	openChanEv, ok := parsedABI.Events[event.OpenChannel]
-	openChanEvHash := openChanEv.ID()
+	openChanEvHash := openChanEv.ID
 	openChanString := openChanEvHash.Hex()
 	if !ok {
 		log.Fatalf("Unknown event name: %s", event.OpenChannel)
 		return
 	}
 	settleChanEv, ok := parsedABI.Events[event.ConfirmSettle]
-	settleChanEvHash := settleChanEv.ID()
+	settleChanEvHash := settleChanEv.ID
 	settleChanString := settleChanEvHash.Hex()
 	if !ok {
 		log.Fatalf("Unknown event name: %s", event.ConfirmSettle)

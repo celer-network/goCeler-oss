@@ -87,14 +87,14 @@ func (p *Controller) startRoutingRecoverProcess(
 	}
 
 	openChanEv, ok := parsedABI.Events[event.OpenChannel]
-	openChanEvHash := openChanEv.ID()
+	openChanEvHash := openChanEv.ID
 	openChanString := openChanEvHash.Hex()
 	if !ok {
 		log.Errorf("Unknown event name: %s", event.OpenChannel)
 		return errors.New("Unknown event name")
 	}
 	settleChanEv, ok := parsedABI.Events[event.ConfirmSettle]
-	settleChanEvHash := settleChanEv.ID()
+	settleChanEvHash := settleChanEv.ID
 	settleChanString := settleChanEvHash.Hex()
 	if !ok {
 		log.Errorf("Unknown event name: %s", event.ConfirmSettle)

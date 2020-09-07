@@ -4,8 +4,8 @@ go 1.13
 
 require (
 	contrib.go.opencensus.io/exporter/prometheus v0.1.0
-	github.com/celer-network/goutils v0.1.13
-	github.com/ethereum/go-ethereum v1.9.6
+	github.com/celer-network/goutils v0.1.16
+	github.com/ethereum/go-ethereum v1.9.20
 	github.com/go-redis/redis v6.15.6+incompatible
 	github.com/golang/groupcache v0.0.0-20191002201903-404acd9df4cc // indirect
 	github.com/golang/protobuf v1.3.3
@@ -21,8 +21,8 @@ require (
 	github.com/tevino/abool v0.0.0-20170917061928-9b9efcf221b5
 	go.opencensus.io v0.22.1
 	go.uber.org/atomic v1.4.0
-	golang.org/x/crypto v0.0.0-20200510223506-06a226fb4e37
-	golang.org/x/net v0.0.0-20200222125558-5a598a2470a0
+	golang.org/x/crypto v0.0.0-20200622213623-75b288015ac9
+	golang.org/x/net v0.0.0-20200625001655-4c5254603344
 	google.golang.org/genproto v0.0.0-20200218151345-dad8c97a84f5
 	google.golang.org/grpc v1.27.1
 )

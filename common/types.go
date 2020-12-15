@@ -38,6 +38,8 @@ type CProfile struct {
 	Ledgers            map[string]string `json:"ledgers"`
 	ExplorerUrl        string            `json:"explorerUrl,omitempty"`
 	CheckInterval      map[string]uint64 `json:"checkInterval,omitempty"`
+	SgnGateway         string            `json:"sgnGateway"`
+	SgnContractAddr    string            `json:"sgnAddr"`
 }
 
 type GlobalNodeConfig interface {

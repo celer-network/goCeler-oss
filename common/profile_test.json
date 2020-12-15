@@ -18,5 +18,8 @@
   "osp": {
     "host": "xxx.celer.app:10000",
     "address": "c5b5.."
+  },
+  "sgn": {
+    "gateway": "https://1.1.1.1"
   }
 }

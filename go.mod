@@ -5,6 +5,7 @@ go 1.13
 require (
 	contrib.go.opencensus.io/exporter/prometheus v0.1.0
 	github.com/celer-network/goutils v0.1.16
+	github.com/celer-network/sgn-contract v0.2.8
 	github.com/ethereum/go-ethereum v1.9.20
 	github.com/go-redis/redis v6.15.6+incompatible
 	github.com/golang/groupcache v0.0.0-20191002201903-404acd9df4cc // indirect
@@ -12,6 +13,7 @@ require (
 	github.com/google/uuid v1.1.1
 	github.com/grpc-ecosystem/grpc-gateway v1.11.3
 	github.com/improbable-eng/grpc-web v0.9.6
+	github.com/levigross/grequests v0.0.0-20190908174114-253788527a1a
 	github.com/lib/pq v1.3.0
 	github.com/mattn/go-sqlite3 v2.0.3+incompatible
 	github.com/mwitkow/go-conntrack v0.0.0-20190716064945-2f068394615f // indirect

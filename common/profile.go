@@ -19,6 +19,7 @@ type ProfileJSON struct {
 	Version  string
 	Ethereum ProfileEthereum
 	Osp      ProfileOsp
+	Sgn      ProfileSgn
 }
 
 type ProfileEthereum struct {
@@ -41,6 +42,11 @@ type ProfileOsp struct {
 	Host, Address, ExplorerUrl string
 }
 
+type ProfileSgn struct {
+	Gateway         string
+	SgnContractAddr string
+}
+
 func (pj *ProfileJSON) ToCProfile() *CProfile {
 	cp := &CProfile{
 		ChainId:            int64(pj.Ethereum.ChainId),
@@ -60,6 +66,8 @@ func (pj *ProfileJSON) ToCProfile() *CProfile {
 		SvrRPC:             pj.Osp.Host,
 		ExplorerUrl:        pj.Osp.ExplorerUrl,
 		CheckInterval:      pj.Ethereum.CheckInterval, // json.Unmarshal guarantee non-nil map (could be empty)
+		SgnGateway:         pj.Sgn.Gateway,            // json.Unmarshal guarantee non-nil map (could be empty)
+		SgnContractAddr:    pj.Sgn.SgnContractAddr,    // json.Unmarshal guarantee non-nil map (could be empty)
 	}
 	return cp
 }

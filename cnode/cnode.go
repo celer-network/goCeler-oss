@@ -105,6 +105,9 @@ type CNode struct {
 
 	// signal for goroutines to exit
 	quit chan bool
+
+	sgnGw   string
+	sgnAddr ctype.Addr
 }
 
 func (c *CNode) GetConnManager() *rpc.ConnectionManager {
@@ -646,6 +649,9 @@ func (c *CNode) initialize(
 	if c.isOSP {
 		go c.runOspRoutineJob()
 	}
+
+	c.sgnGw = profile.SgnGateway
+	c.sgnAddr = ctype.Hex2Addr(profile.SgnContractAddr)
 
 	return nil
 }

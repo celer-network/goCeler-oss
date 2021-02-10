@@ -140,6 +140,8 @@ message RevealSecret {
   bytes pay_id = 1;
   // preimage of the hash
   bytes secret = 2;
+  // used for cross net pay
+  bytes original_pay_id = 3;
 }
 
 message RevealSecretAck {
@@ -147,6 +149,20 @@ message RevealSecretAck {
   bytes pay_id = 1;
   // pay dest sign secret to avoid spoof
   bytes pay_dest_secret_sig = 2;
+  // used for cross net pay
+  bytes original_pay_id = 3;
+}
+
+message CrossNetPay {
+  // vars 1-3 are updated by pay src
+  uint64 src_net_id = 1;
+  uint64 dst_net_id = 2;
+  bytes original_pay = 3;
+  // vars 4-7 are updated by bridge OSPs
+  bool crossing = 4;
+  bytes bridge_addr = 5;
+  uint64 bridge_net_id = 6;
+  uint64 timeout = 7;
 }
 
 // CondPayRequest is the first request setting up a pay path.
@@ -164,9 +180,11 @@ message CondPayRequest {
   // are directly-connected peers (e.g. client sending a payment to its OSP)
   // and the payment is unconditional.
   bool direct_pay = 5;
+  // used for cross network payment
+  CrossNetPay cross_net = 6;
 }
 
-// CondPayResponse is returning the signature of the other side in PSC.
+// CondPayResponse is returning the signature of the other side in the channel.
 message CondPayResponse {
   SignedSimplexState state_cosigned = 1;
   Error error = 2;
@@ -209,6 +227,8 @@ message SettledPayment {
   bytes amount = 3;
   // used in pay settle proof to track path for failed payments
   PayPath path = 4;
+  // used for cross net pay
+  bytes original_pay_id = 5;
 }
 
 // PaymentSettleProof provides all condition results to settle a pay.
@@ -298,6 +318,8 @@ message CondPayReceipt {
   bytes pay_dest_sig = 2;
   bytes pay_delegator_sig = 3;
   DelegationProof delegation_proof = 4;
+  // used for cross net pay
+  bytes original_pay_id = 5;
 }
 
 // Next Tag: 4

@@ -251,8 +251,9 @@ func RegisterRouters(ksfiles []string) error {
 		log.Errorln(err)
 		return err
 	}
-	log.Infof("RoutingRegistryAddr: %s", E2eProfile.Ethereum.Contracts.RouterRegistry)
-	rrContract, err := routerregistry.NewRouterRegistry(ctype.Hex2Addr(E2eProfile.Ethereum.Contracts.RouterRegistry), conn)
+	registryAddr := ctype.Hex2Addr(E2eProfile.Ethereum.Contracts.RouterRegistry)
+	log.Infof("RoutingRegistryAddr: %x", registryAddr)
+	rrContract, err := routerregistry.NewRouterRegistry(registryAddr, conn)
 	if err != nil {
 		log.Errorln(err)
 		return err
@@ -285,7 +286,7 @@ func RegisterRouters(ksfiles []string) error {
 	}
 	return nil
 }
-func UnregisterRouter(ksfile string) error {
+func UnregisterRouter(ksfile string, registryAddr string) error {
 	conn, _, _, _, err := prepareEthClient()
 	if err != nil {
 		return err
@@ -294,7 +295,7 @@ func UnregisterRouter(ksfile string) error {
 	if err != nil {
 		return err
 	}
-	rrContract, err := routerregistry.NewRouterRegistry(ctype.Hex2Addr(E2eProfile.Ethereum.Contracts.RouterRegistry), conn)
+	rrContract, err := routerregistry.NewRouterRegistry(ctype.Hex2Addr(registryAddr), conn)
 	if err != nil {
 		return err
 	}

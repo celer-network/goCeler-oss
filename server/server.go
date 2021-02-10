@@ -638,7 +638,7 @@ func (s *adminService) SendToken(ctx context.Context, in *rpc.SendTokenRequest) 
 	}
 
 	metrics.IncSvrAdminSendTokenCnt(metrics.SvrAdminSendAttempt, noteType)
-	payID, err := s.cNode.AddBooleanPay(pay, in.Note)
+	payID, err := s.cNode.AddBooleanPay(pay, in.Note, in.DstNetId)
 	if err != nil {
 		log.Errorln(
 			err, "sending token from admin error to", ctype.Bytes2Hex(dstAddr),

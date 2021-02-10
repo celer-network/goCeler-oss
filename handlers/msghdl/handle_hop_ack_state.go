@@ -150,7 +150,7 @@ func (h *CelerMsgHandler) HandleHopAckState(frame *common.MsgFrame) error {
 			resendLogEntry.PayId = ctype.PayID2Hex(payID)
 			resendLogEntry.Dst = ctype.Bytes2Hex(pay.GetDest())
 			resendLogEntry.DirectPay = directPay
-			err = h.messager.SendCondPayRequest(req.GetCondPay(), req.GetNote(), resendLogEntry)
+			err = h.messager.SendCondPayRequest(req.GetCondPay(), req.GetNote(), req.GetCrossNet(), resendLogEntry)
 			if err != nil {
 				log.Error(err)
 				resendLogEntry.Error = append(resendLogEntry.Error, err.Error())

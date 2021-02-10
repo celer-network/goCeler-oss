@@ -98,7 +98,7 @@ func multiOspRouting(args ...*tf.ServerController) func(*testing.T) {
 		c5cid := ctype.Hex2Cid(res.GetChannelId())
 		log.Infoln("channel id for c5:", ctype.Cid2Hex(c5cid))
 
-		dal1, dal2, dal3, dal4, dal5 := getAllOspDALs()
+		dal1, dal2, dal3, dal4, dal5 := getMultiOspDALs()
 		token := utils.GetTokenInfoFromAddress(ctype.Hex2Addr(tokenAddrEth))
 		cid12, found, err := dal1.GetCidByPeerToken(ctype.Hex2Addr(osp2EthAddr), token)
 		if err != nil {
@@ -510,7 +510,7 @@ func multiOspRouting(args ...*tf.ServerController) func(*testing.T) {
 	}
 }
 
-func getAllOspDALs() (dal1, dal2, dal3, dal4, dal5 *storage.DAL) {
+func getMultiOspDALs() (dal1, dal2, dal3, dal4, dal5 *storage.DAL) {
 	profile1 := &common.CProfile{
 		StoreDir: sStoreDir + "/" + osp1EthAddr,
 	}
@@ -542,7 +542,7 @@ func startClientForOsp2(keystorePath string) (*tf.ClientController, error) {
 	return tf.StartClientController(
 		tf.GetNextClientPort(),
 		keystorePath,
-		outRootDir+"c2o2.json",
+		outRootDir+"profile-o2.json",
 		outRootDir+"c2Store",
 		"c2")
 }
@@ -550,7 +550,7 @@ func startClientForOsp3(keystorePath string) (*tf.ClientController, error) {
 	return tf.StartClientController(
 		tf.GetNextClientPort(),
 		keystorePath,
-		outRootDir+"c3o3.json",
+		outRootDir+"profile-o3.json",
 		outRootDir+"c3Store",
 		"c3")
 }
@@ -558,7 +558,7 @@ func startClientForOsp4(keystorePath string) (*tf.ClientController, error) {
 	return tf.StartClientController(
 		tf.GetNextClientPort(),
 		keystorePath,
-		outRootDir+"c4o4.json",
+		outRootDir+"profile-o4.json",
 		outRootDir+"c4Store",
 		"c4")
 }
@@ -566,7 +566,7 @@ func startClientForOsp5(keystorePath string) (*tf.ClientController, error) {
 	return tf.StartClientController(
 		tf.GetNextClientPort(),
 		keystorePath,
-		outRootDir+"c5o5.json",
+		outRootDir+"profile-o5.json",
 		outRootDir+"c5Store",
 		"c5")
 }

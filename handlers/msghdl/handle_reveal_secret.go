@@ -37,7 +37,16 @@ func (h *CelerMsgHandler) HandleRevealSecret(frame *common.MsgFrame) error {
 	if dst != h.nodeConfig.GetOnChainAddr() {
 		_, peer, err := h.routeForwarder.LookupEgressChannelOnPay(payID)
 		if err != nil {
-			return fmt.Errorf("LookupEgressChannelOnPay err %w", err)
+			if (err == common.ErrPayNoEgress || err == common.ErrPayNotFound) && msg.GetOriginalPayId() != nil {
+				// proceed as crossnet payment
+				peer, err = h.forwardRevealSecret(frame)
+				if err != nil {
+					return err
+				}
+				logEntry.Xnet.OriginalPayId = ctype.Bytes2Hex(msg.GetOriginalPayId())
+			} else {
+				return fmt.Errorf("LookupEgressChannelOnPay err %w", err)
+			}
 		}
 		log.Debugf("Forwarding reveal secret to %x, next hop %x", dst, peer)
 		return h.messager.ForwardCelerMsg(peer, frame.Message)
@@ -63,6 +72,7 @@ func (h *CelerMsgHandler) HandleRevealSecret(frame *common.MsgFrame) error {
 	ack := &rpc.RevealSecretAck{
 		PayId:            payID[:],
 		PayDestSecretSig: secretSig,
+		OriginalPayId:    msg.GetOriginalPayId(),
 	}
 	celerMsg := &rpc.CelerMsg{
 		ToAddr: pay.Src,
@@ -147,7 +157,16 @@ func (h *CelerMsgHandler) HandleRevealSecretAck(frame *common.MsgFrame) error {
 	if dst != h.nodeConfig.GetOnChainAddr() {
 		_, peer, err := h.routeForwarder.LookupIngressChannelOnPay(payID)
 		if err != nil {
-			return fmt.Errorf("LookupIngressChannelOnPay err %w", err)
+			if (err == common.ErrPayNoIngress || err == common.ErrPayNotFound) && ack.GetOriginalPayId() != nil {
+				// proceed as crossnet payment
+				peer, err = h.forwardRevealSecretAck(frame)
+				if err != nil {
+					return err
+				}
+				logEntry.Xnet.OriginalPayId = ctype.Bytes2Hex(ack.GetOriginalPayId())
+			} else {
+				return fmt.Errorf("LookupIngressChannelOnPay err %w", err)
+			}
 		}
 		log.Debugf("Forwarding reveal secret ack to %x, next hop %x", dst, peer)
 		return h.messager.ForwardCelerMsg(peer, frame.Message)
@@ -223,4 +242,60 @@ func (h *CelerMsgHandler) recvSecretAckTx(tx *storage.DALTx, args ...interface{}
 	}
 
 	return nil
+}
+
+func (h *CelerMsgHandler) forwardRevealSecret(frame *common.MsgFrame) (ctype.Addr, error) {
+	secretMsg := frame.Message.GetRevealSecret()
+	payID, state, bridgeAddr, found, err := h.dal.GetCrossNetInfoByOrignalPayID(ctype.Bytes2PayID(secretMsg.GetOriginalPayId()))
+	if err != nil {
+		return ctype.ZeroAddr, fmt.Errorf("GetCrossNetInfo err %w", err)
+	}
+	if !found {
+		return ctype.ZeroAddr, fmt.Errorf("GetCrossNetInfo %w", common.ErrPayNotFound)
+	}
+	if state == structs.CrossNetPay_EGRESS {
+		return bridgeAddr, nil
+	} else if state == structs.CrossNetPay_INGRESS {
+		_, peer, err := h.routeForwarder.LookupEgressChannelOnPay(payID)
+		if err != nil {
+			return ctype.ZeroAddr, fmt.Errorf("LookupEgressChannelOnPay err %w", err)
+		}
+		secretMsg.PayId = payID.Bytes()
+		frame.Message = &rpc.CelerMsg{
+			ToAddr: frame.Message.GetToAddr(),
+			Message: &rpc.CelerMsg_RevealSecret{
+				RevealSecret: secretMsg,
+			},
+		}
+		return peer, nil
+	}
+	return ctype.ZeroAddr, fmt.Errorf("invalid cross net pay state %d", state)
+}
+
+func (h *CelerMsgHandler) forwardRevealSecretAck(frame *common.MsgFrame) (ctype.Addr, error) {
+	ackMsg := frame.Message.GetRevealSecretAck()
+	payID, state, bridgeAddr, found, err := h.dal.GetCrossNetInfoByOrignalPayID(ctype.Bytes2PayID(ackMsg.GetOriginalPayId()))
+	if err != nil {
+		return ctype.ZeroAddr, fmt.Errorf("GetCrossNetInfo err %w", err)
+	}
+	if !found {
+		return ctype.ZeroAddr, fmt.Errorf("GetCrossNetInfo %w", common.ErrPayNotFound)
+	}
+	if state == structs.CrossNetPay_INGRESS {
+		return bridgeAddr, nil
+	} else if state == structs.CrossNetPay_EGRESS {
+		_, peer, err := h.routeForwarder.LookupIngressChannelOnPay(payID)
+		if err != nil {
+			return ctype.ZeroAddr, fmt.Errorf("LookupIngressChannelOnPay err %w", err)
+		}
+		ackMsg.PayId = payID.Bytes()
+		frame.Message = &rpc.CelerMsg{
+			ToAddr: frame.Message.GetToAddr(),
+			Message: &rpc.CelerMsg_RevealSecretAck{
+				RevealSecretAck: ackMsg,
+			},
+		}
+		return peer, nil
+	}
+	return ctype.ZeroAddr, fmt.Errorf("invalid cross net pay state %d", state)
 }

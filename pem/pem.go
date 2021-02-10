@@ -13,6 +13,7 @@ func NewPem(machine string) *PayEventMessage {
 		StartTimeStamp: time.Now().UnixNano(),
 		Machine:        machine,
 		SeqNums:        &SimplexSeqNums{},
+		Xnet:           &CrossNetInfo{},
 	}
 }
 func CommitPem(pem *PayEventMessage) {
@@ -22,6 +23,9 @@ func CommitPem(pem *PayEventMessage) {
 	pem.StartTimeStamp = 0
 	if zeroSeqNums(pem.SeqNums) {
 		pem.SeqNums = nil
+	}
+	if emptyXnet(pem.Xnet) {
+		pem.Xnet = nil
 	}
 
 	if len(pem.Error) > 0 {
@@ -58,6 +62,17 @@ func zeroSeqNums(seq *SimplexSeqNums) bool {
 	}
 	if seq.Out == 0 && seq.OutBase == 0 && seq.In == 0 && seq.InBase == 0 &&
 		seq.Stored == 0 && seq.Ack == 0 && seq.LastInflight == 0 {
+		return true
+	}
+	return false
+}
+
+func emptyXnet(xnet *CrossNetInfo) bool {
+	if xnet == nil {
+		return true
+	}
+	if xnet.GetSrcNetId() == 0 && xnet.GetDstNetId() == 0 &&
+		xnet.GetOriginalPayId() == "" && xnet.GetToBridgeAddr() == "" {
 		return true
 	}
 	return false

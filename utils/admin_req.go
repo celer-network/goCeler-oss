@@ -22,19 +22,21 @@ import (
 
 var ErrHttpReponse = errors.New("http response error")
 
-func RequestSendToken(adminHostPort string, receiver, tokenAddr ctype.Addr, amount *big.Int) (ctype.PayIDType, error) {
-	return RequestSendTokenWithNote(adminHostPort, receiver, tokenAddr, amount, "", nil)
+func RequestSendToken(
+	adminHostPort string, receiver, tokenAddr ctype.Addr, amount *big.Int, dstNetId uint64) (ctype.PayIDType, error) {
+	return RequestSendTokenWithNote(adminHostPort, receiver, tokenAddr, amount, dstNetId, "", nil)
 }
 
 func RequestSendTokenWithNote(
 	adminHostPort string,
-	receiver, tokenAddr ctype.Addr, amount *big.Int,
+	receiver, tokenAddr ctype.Addr, amount *big.Int, dstNetId uint64,
 	noteTypeUrl string, noteValueByte []byte) (ctype.PayIDType, error) {
 
 	request := &rpc.SendTokenRequest{
 		DstAddr:   ctype.Addr2Hex(receiver),
 		AmtWei:    amount.String(),
 		TokenAddr: ctype.Addr2Hex(tokenAddr),
+		DstNetId:  dstNetId,
 	}
 	if noteTypeUrl != "" {
 		request.Note = &any.Any{

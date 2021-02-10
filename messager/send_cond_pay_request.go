@@ -26,8 +26,8 @@ import (
 	"github.com/golang/protobuf/ptypes/any"
 )
 
-func (m *Messager) SendCondPayRequest(payBytes []byte, note *any.Any, logEntry *pem.PayEventMessage) error {
-	pay, cid, peer, celerMsg, directPay, err := m.getPayNextHopAndCelerMsg(payBytes, note, logEntry)
+func (m *Messager) SendCondPayRequest(payBytes []byte, note *any.Any, xnet *rpc.CrossNetPay, logEntry *pem.PayEventMessage) error {
+	pay, cid, peer, celerMsg, directPay, err := m.getPayNextHopAndCelerMsg(payBytes, note, xnet, logEntry)
 	if err != nil {
 		return err
 	}
@@ -43,12 +43,12 @@ func (m *Messager) SendCondPayRequest(payBytes []byte, note *any.Any, logEntry *
 	// It's either meant to a local peer or it's a failed forwarding
 	// of a direct-pay.  In both cases handle it locally which puts
 	// the message in the queue for delivery (now or later).
-	return m.sendCondPayRequest(payBytes, pay, note, cid, peer, logEntry)
+	return m.sendCondPayRequest(payBytes, pay, note, cid, peer, xnet, logEntry)
 }
 
 func (m *Messager) ForwardCondPayRequest(
-	payBytes []byte, note *any.Any, delegable bool, logEntry *pem.PayEventMessage) (ctype.Addr, error) {
-	pay, cid, peer, celerMsg, _, err := m.getPayNextHopAndCelerMsg(payBytes, note, logEntry)
+	payBytes []byte, note *any.Any, delegable bool, xnet *rpc.CrossNetPay, logEntry *pem.PayEventMessage) (ctype.Addr, error) {
+	pay, cid, peer, celerMsg, _, err := m.getPayNextHopAndCelerMsg(payBytes, note, xnet, logEntry)
 	if err != nil {
 		return peer, err
 	}
@@ -58,7 +58,7 @@ func (m *Messager) ForwardCondPayRequest(
 		return peer, err
 	}
 	if isLocalPeer {
-		return peer, m.sendCondPayRequest(payBytes, pay, note, cid, peer, logEntry)
+		return peer, m.sendCondPayRequest(payBytes, pay, note, cid, peer, xnet, logEntry)
 	}
 
 	return peer, nil
@@ -68,8 +68,9 @@ func (m *Messager) ForwardCondPayRequestMsg(frame *common.MsgFrame) error {
 	msg := frame.Message
 	logEntry := frame.LogEntry
 	payBytes := msg.GetCondPayRequest().GetCondPay()
+	xnet := msg.GetCondPayRequest().GetCrossNet()
 
-	pay, cid, peer, _, err := m.getPayNextHop(payBytes, logEntry)
+	pay, cid, peer, _, err := m.getPayNextHop(payBytes, xnet, logEntry)
 	if err != nil {
 		return err
 	}
@@ -77,10 +78,10 @@ func (m *Messager) ForwardCondPayRequestMsg(frame *common.MsgFrame) error {
 	logEntry.PayId = ctype.PayID2Hex(ctype.Pay2PayID(pay))
 	logEntry.Dst = ctype.Bytes2Hex(pay.GetDest())
 
-	return m.sendCondPayRequest(payBytes, pay, msg.GetCondPayRequest().GetNote(), cid, peer, logEntry)
+	return m.sendCondPayRequest(payBytes, pay, msg.GetCondPayRequest().GetNote(), cid, peer, xnet, logEntry)
 }
 
-func (m *Messager) getPayNextHop(payBytes []byte, logEntry *pem.PayEventMessage) (
+func (m *Messager) getPayNextHop(payBytes []byte, xnet *rpc.CrossNetPay, logEntry *pem.PayEventMessage) (
 	*entity.ConditionalPay, ctype.CidType, ctype.Addr, bool, error) {
 
 	var pay entity.ConditionalPay
@@ -88,14 +89,51 @@ func (m *Messager) getPayNextHop(payBytes []byte, logEntry *pem.PayEventMessage)
 	if err != nil {
 		return nil, ctype.ZeroCid, ctype.ZeroAddr, false, err
 	}
+	dst := ctype.Bytes2Addr(pay.GetDest())
 	token := pay.GetTransferFunc().GetMaxTransfer().GetToken()
-	cid, peer, err := m.routeForwarder.LookupNextChannelOnToken(
-		ctype.Bytes2Addr(pay.GetDest()), utils.GetTokenAddr(token))
-	if err != nil {
-		return nil, ctype.ZeroCid, ctype.ZeroAddr, false, err
+	var cid ctype.CidType
+	var peer ctype.Addr
+
+	if xnet.GetDstNetId() != 0 {
+		logEntry.Xnet.SrcNetId = xnet.GetSrcNetId()
+		logEntry.Xnet.DstNetId = xnet.GetDstNetId()
+		myNetId, err2 := m.dal.GetNetId()
+		if err2 != nil {
+			return nil, ctype.ZeroCid, ctype.ZeroAddr, false, fmt.Errorf("GetNetId err: %w", err2)
+		}
+		if myNetId != xnet.GetDstNetId() { // destination is in a remote network
+			if myNetId == xnet.GetBridgeNetId() && m.nodeConfig.GetOnChainAddr() != ctype.Bytes2Addr(xnet.GetBridgeAddr()) {
+				// local bridge known but not me, route to the local bridge
+				dst = ctype.Bytes2Addr(xnet.GetBridgeAddr())
+			} else {
+				bridgeAddr, bridgeNetId, err2 := m.getBridgeRouting(xnet.GetDstNetId())
+				if err2 != nil {
+					return nil, ctype.ZeroCid, ctype.ZeroAddr, false, err2
+				}
+				if bridgeNetId == myNetId {
+					// route to the local bridge
+					dst = bridgeAddr
+				} else {
+					// forward to the remote bridge
+					peer = bridgeAddr
+					xnet.Crossing = true
+				}
+				xnet.BridgeAddr = bridgeAddr.Bytes()
+				xnet.BridgeNetId = bridgeNetId
+			}
+			logEntry.Xnet.ToBridgeAddr = ctype.Bytes2Hex(xnet.GetBridgeAddr())
+			logEntry.Xnet.ToBridgeNetId = xnet.GetBridgeNetId()
+		}
 	}
 
-	directPay := m.IsDirectPay(&pay, peer)
+	if !xnet.GetCrossing() {
+		cid, peer, err = m.routeForwarder.LookupNextChannelOnToken(dst, utils.GetTokenAddr(token))
+		if err != nil {
+			return nil, ctype.ZeroCid, ctype.ZeroAddr, false, err
+		}
+	}
+
+	directPay := m.IsDirectPay(&pay, peer, xnet.GetDstNetId())
 	logEntry.MsgTo = ctype.Addr2Hex(peer)
 	logEntry.ToCid = ctype.Cid2Hex(cid)
 	logEntry.DirectPay = directPay
@@ -103,9 +141,9 @@ func (m *Messager) getPayNextHop(payBytes []byte, logEntry *pem.PayEventMessage)
 	return &pay, cid, peer, directPay, nil
 }
 
-func (m *Messager) getPayNextHopAndCelerMsg(payBytes []byte, note *any.Any, logEntry *pem.PayEventMessage) (
+func (m *Messager) getPayNextHopAndCelerMsg(payBytes []byte, note *any.Any, xnet *rpc.CrossNetPay, logEntry *pem.PayEventMessage) (
 	*entity.ConditionalPay, ctype.CidType, ctype.Addr, *rpc.CelerMsg, bool, error) {
-	pay, cid, peer, directPay, err := m.getPayNextHop(payBytes, logEntry)
+	pay, cid, peer, directPay, err := m.getPayNextHop(payBytes, xnet, logEntry)
 	if err != nil {
 		return nil, ctype.ZeroCid, ctype.ZeroAddr, nil, false, err
 	}
@@ -115,6 +153,7 @@ func (m *Messager) getPayNextHopAndCelerMsg(payBytes []byte, note *any.Any, logE
 				CondPay:   payBytes,
 				Note:      note,
 				DirectPay: directPay,
+				CrossNet:  xnet,
 			},
 		},
 	}
@@ -122,10 +161,15 @@ func (m *Messager) getPayNextHopAndCelerMsg(payBytes []byte, note *any.Any, logE
 }
 
 func (m *Messager) sendCondPayRequest(
-	payBytes []byte, pay *entity.ConditionalPay, note *any.Any, cid ctype.CidType, peerTo ctype.Addr, logEntry *pem.PayEventMessage) error {
+	payBytes []byte, pay *entity.ConditionalPay, note *any.Any,
+	cid ctype.CidType, peerTo ctype.Addr,
+	xnet *rpc.CrossNetPay, logEntry *pem.PayEventMessage) error {
 
 	payID := ctype.Pay2PayID(pay)
-	directPay := m.IsDirectPay(pay, peerTo)
+	if xnet.GetCrossing() {
+		return m.sendCrossNetPay(payID, payBytes, pay, note, peerTo, xnet, logEntry)
+	}
+	directPay := m.IsDirectPay(pay, peerTo, xnet.GetDstNetId())
 	log.Debugf("Send pay request %x, src %x, dst %x, direct %t", payID, pay.GetSrc(), pay.GetDest(), directPay)
 
 	// verify pay destination
@@ -141,7 +185,7 @@ func (m *Messager) sendCondPayRequest(
 
 	var seqnum uint64
 	var celerMsg *rpc.CelerMsg
-	err := m.dal.Transactional(m.runCondPayTx, cid, payID, pay, payBytes, note, directPay, &seqnum, &celerMsg)
+	err := m.dal.Transactional(m.runCondPayTx, cid, payID, pay, payBytes, note, directPay, xnet, &seqnum, &celerMsg)
 	if err != nil {
 		return err
 	}
@@ -155,6 +199,13 @@ func (m *Messager) sendCondPayRequest(
 	logEntry.SeqNums.Out = seqnum
 	logEntry.SeqNums.OutBase = celerMsg.GetCondPayRequest().GetBaseSeq()
 
+	// if I am the src of a cross network payment
+	if xnet.GetDstNetId() != 0 && xnet.GetSrcNetId() == xnet.GetBridgeNetId() &&
+		ctype.Bytes2Addr(pay.GetSrc()) == m.nodeConfig.GetOnChainAddr() {
+		return m.dal.InsertCrossNetPay(
+			payID, payID, nil, enums.CrossNetPay_SRC, xnet.GetSrcNetId(), xnet.GetDstNetId(),
+			ctype.Bytes2Addr(xnet.GetBridgeAddr()), xnet.GetBridgeNetId())
+	}
 	return nil
 }
 
@@ -165,8 +216,9 @@ func (m *Messager) runCondPayTx(tx *storage.DALTx, args ...interface{}) error {
 	payBytes := args[3].([]byte)
 	note := args[4].(*any.Any)
 	directPay := args[5].(bool)
-	retSeqNum := args[6].(*uint64)
-	retCelerMgr := args[7].(**rpc.CelerMsg)
+	xnet := args[6].(*rpc.CrossNetPay)
+	retSeqNum := args[7].(*uint64)
+	retCelerMgr := args[8].(**rpc.CelerMsg)
 
 	peer, chanState, onChainBalance, baseSeq, lastUsedSeq, lastAckedSeq,
 		selfSimplex, peerSimplex, found, err := tx.GetChanForSendCondPayRequest(cid)
@@ -255,6 +307,7 @@ func (m *Messager) runCondPayTx(tx *storage.DALTx, args ...interface{}) error {
 		Note:                 note,
 		BaseSeq:              baseSeq,
 		DirectPay:            directPay,
+		CrossNet:             xnet,
 	}
 	celerMsg := &rpc.CelerMsg{
 		Message: &rpc.CelerMsg_CondPayRequest{
@@ -289,6 +342,7 @@ func (m *Messager) runCondPayTx(tx *storage.DALTx, args ...interface{}) error {
 			return fmt.Errorf("InsertPayment err %w", err)
 		}
 	}
+
 	return nil
 }
 
@@ -311,4 +365,57 @@ func (m *Messager) updateDelegatedPay(tx *storage.DALTx, payID ctype.PayIDType, 
 		}
 	}
 	return nil
+}
+
+func (m *Messager) sendCrossNetPay(
+	payID ctype.PayIDType, payBytes []byte, pay *entity.ConditionalPay, note *any.Any,
+	peerTo ctype.Addr, xnet *rpc.CrossNetPay, logEntry *pem.PayEventMessage) error {
+	if !xnet.GetCrossing() {
+		return fmt.Errorf("not crossing net payment")
+	}
+	logEntry.Xnet.State = pem.CrossNetPayState_XNET_EGRESS
+	originalPayId := ctype.PayBytes2PayID(xnet.GetOriginalPay())
+	if payID != originalPayId {
+		logEntry.Xnet.OriginalPayId = ctype.PayID2Hex(originalPayId)
+	}
+
+	_, found, err := m.dal.GetPayIngressChannel(payID)
+	if err != nil {
+		return fmt.Errorf("GetPayIngressChannel err: %w", err)
+	}
+	if !found {
+		return fmt.Errorf("no ingress for crossing net payment")
+	}
+
+	err = m.dal.InsertCrossNetPay(
+		payID, originalPayId, xnet.GetOriginalPay(), enums.CrossNetPay_EGRESS,
+		xnet.GetSrcNetId(), xnet.GetDstNetId(), ctype.Bytes2Addr(xnet.GetBridgeAddr()), xnet.GetBridgeNetId())
+	if err != nil {
+		return fmt.Errorf("InsertCrossNetPay err: %w", err)
+	}
+
+	xnet.Timeout = pay.ResolveDeadline - m.monitorService.GetCurrentBlockNumber().Uint64()
+	request := &rpc.CondPayRequest{
+		CondPay:  payBytes,
+		Note:     note,
+		CrossNet: xnet,
+	}
+	celerMsg := &rpc.CelerMsg{
+		Message: &rpc.CelerMsg_CondPayRequest{
+			CondPayRequest: request,
+		},
+	}
+
+	return m.streamWriter.WriteCelerMsg(peerTo, celerMsg)
+}
+
+func (m *Messager) getBridgeRouting(destNetId uint64) (ctype.Addr, uint64, error) {
+	bridgeAddr, bridgeNetId, found, err := m.dal.GetBridgeRouting(destNetId)
+	if err != nil {
+		return ctype.ZeroAddr, 0, fmt.Errorf("GetBridgeRouting err: %w", err)
+	}
+	if !found {
+		return ctype.ZeroAddr, 0, fmt.Errorf("BridgeRouting not found")
+	}
+	return bridgeAddr, bridgeNetId, nil
 }

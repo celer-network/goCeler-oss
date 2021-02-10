@@ -1551,6 +1551,47 @@ func getPayDelegator(st SqlStorage, payID ctype.PayIDType) (ctype.Addr, bool, er
 	return delegator, found, err
 }
 
+// The "crossnetpays" table.
+func insertCrossNetPay(
+	st SqlStorage,
+	payID, originalPayID ctype.PayIDType,
+	originalPay []byte, state int,
+	srcNetId, DstNetId uint64,
+	bridgeAddr ctype.Addr, bridgeNetId uint64) error {
+	q := `INSERT INTO crossnetpays (payid, originalpayid, originalpay, state, srcnetid, dstnetid, bridgeaddr, bridgenetid)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
+	res, err := st.Exec(
+		q, ctype.PayID2Hex(payID), ctype.PayID2Hex(originalPayID), originalPay, state,
+		srcNetId, DstNetId, ctype.Addr2Hex(bridgeAddr), bridgeNetId)
+	return chkExec(res, err, 1, "insertCrossNetPay")
+}
+
+func getCrossNetInfoByPayID(st SqlStorage, payID ctype.PayIDType) (ctype.PayIDType, int, ctype.Addr, bool, error) {
+	var originalPayID string
+	var state int
+	var bridgeAddr string
+	q := `SELECT originalpayid, state, bridgeaddr FROM crossnetpays WHERE payid = $1`
+	err := st.QueryRow(q, ctype.PayID2Hex(payID)).Scan(&originalPayID, &state, &bridgeAddr)
+	found, err := chkQueryRow(err)
+	return ctype.Hex2PayID(originalPayID), state, ctype.Hex2Addr(bridgeAddr), found, err
+}
+
+func getCrossNetInfoByOrignalPayID(st SqlStorage, originalPayID ctype.PayIDType) (ctype.PayIDType, int, ctype.Addr, bool, error) {
+	var payID string
+	var state int
+	var bridgeAddr string
+	q := `SELECT payid, state, bridgeaddr FROM crossnetpays WHERE originalpayid = $1`
+	err := st.QueryRow(q, ctype.PayID2Hex(originalPayID)).Scan(&payID, &state, &bridgeAddr)
+	found, err := chkQueryRow(err)
+	return ctype.Hex2PayID(payID), state, ctype.Hex2Addr(bridgeAddr), found, err
+}
+
+func deleteCrossNetPay(st SqlStorage, payID ctype.PayIDType) error {
+	q := `DELETE FROM crossnetpays WHERE payid = $1`
+	res, err := st.Exec(q, ctype.PayID2Hex(payID))
+	return chkExec(res, err, 1, "deleteCrossNetPay")
+}
+
 // The "secrets" table.
 func insertSecret(st SqlStorage, hash, preImage string, payID ctype.PayIDType) error {
 	q := `INSERT INTO secrets (hash, preimage, payid) VALUES ($1, $2, $3)`
@@ -1820,6 +1861,82 @@ func deleteEdge(st SqlStorage, cid ctype.CidType) error {
 	q := `DELETE FROM edges WHERE cid = $1`
 	res, err := st.Exec(q, ctype.Cid2Hex(cid))
 	return chkExec(res, err, 1, "deleteEdge")
+}
+
+// The "netbridge" table
+func upsertNetBridge(st SqlStorage, bridgeAddr ctype.Addr, bridgeNetId uint64) error {
+	q := `INSERT INTO netbridge (bridgeaddr, bridgenetid) VALUES ($1, $2)
+		ON CONFLICT (bridgeaddr) DO UPDATE SET bridgenetid = excluded.bridgenetid`
+	res, err := st.Exec(q, ctype.Addr2Hex(bridgeAddr), bridgeNetId)
+	return chkExec(res, err, 1, "upsertNetBridge")
+}
+
+func getNetBridge(st SqlStorage, bridgeAddr ctype.Addr) (uint64, bool, error) {
+	var bridgeNetId uint64
+	q := `SELECT bridgenetid FROM netbridge WHERE bridgeaddr = $1`
+	err := st.QueryRow(q, ctype.Addr2Hex(bridgeAddr)).Scan(&bridgeNetId)
+	found, err := chkQueryRow(err)
+	return bridgeNetId, found, err
+}
+
+func deleteNetBridge(st SqlStorage, bridgeAddr ctype.Addr) error {
+	q := `DELETE FROM netbridge WHERE bridgeaddr = $1`
+	res, err := st.Exec(q, ctype.Addr2Hex(bridgeAddr))
+	return chkExec(res, err, 1, "deleteNetBridge")
+}
+
+// The "bridgerouting" table
+func upsertBridgeRouting(st SqlStorage, destNetId uint64, bridgeAddr ctype.Addr) error {
+	q := `INSERT INTO bridgerouting (destnetid, bridgeaddr) VALUES ($1, $2)
+		ON CONFLICT (destnetid) DO UPDATE SET bridgeaddr = excluded.bridgeaddr`
+	res, err := st.Exec(q, destNetId, ctype.Addr2Hex(bridgeAddr))
+	return chkExec(res, err, 1, "upsertBridgeRouting")
+}
+
+func getBridgeRouting(st SqlStorage, destNetId uint64) (ctype.Addr, uint64, bool, error) {
+	var bridgeAddr string
+	var bridgeNetId uint64
+	q := `
+		SELECT r.bridgeaddr, b.bridgenetid
+		FROM bridgerouting AS r
+		JOIN netbridge AS b ON r.bridgeaddr = b.bridgeaddr
+		WHERE destnetid = $1
+	`
+	err := st.QueryRow(q, destNetId).Scan(&bridgeAddr, &bridgeNetId)
+	found, err := chkQueryRow(err)
+	return ctype.Hex2Addr(bridgeAddr), bridgeNetId, found, err
+}
+
+func deleteBridgeRouting(st SqlStorage, destNetId uint64) error {
+	q := `DELETE FROM bridgerouting WHERE destnetid = $1`
+	res, err := st.Exec(q, destNetId)
+	return chkExec(res, err, 1, "deleteBridgeRouting")
+}
+
+// The "nettokens" table
+func upsertNetToken(st SqlStorage, netId uint64, netToken *entity.TokenInfo, localToken *entity.TokenInfo) error {
+	q := `INSERT INTO nettokens (netid, nettoken, localtoken, rate) VALUES ($1, $2, $3, $4)
+		ON CONFLICT (netid, nettoken) DO UPDATE SET localtoken = excluded.localtoken`
+	res, err := st.Exec(q, netId, utils.GetTokenAddrStr(netToken), utils.GetTokenAddrStr(localToken), 1.0)
+	return chkExec(res, err, 1, "upsertNetToken")
+}
+
+func getLocalToken(st SqlStorage, netId uint64, netToken *entity.TokenInfo) (*entity.TokenInfo, bool, error) {
+	var localTokenAddr string
+	var localToken *entity.TokenInfo
+	q := `SELECT localtoken FROM nettokens WHERE netid = $1 AND nettoken = $2`
+	err := st.QueryRow(q, netId, utils.GetTokenAddrStr(netToken)).Scan(&localTokenAddr)
+	found, err := chkQueryRow(err)
+	if found {
+		localToken = utils.GetTokenInfoFromAddress(ctype.Hex2Addr(localTokenAddr))
+	}
+	return localToken, found, err
+}
+
+func deleteNetToken(st SqlStorage, netId uint64, netToken *entity.TokenInfo) error {
+	q := `DELETE FROM nettokens WHERE netid = $1 AND nettoken = $2`
+	res, err := st.Exec(q, netId, utils.GetTokenAddrStr(netToken))
+	return chkExec(res, err, 1, "deleteNetToken")
 }
 
 // The "peers" table.

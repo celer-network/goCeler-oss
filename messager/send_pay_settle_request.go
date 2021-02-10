@@ -7,7 +7,7 @@ import (
 	"math/big"
 
 	"github.com/celer-network/goCeler/common"
-
+	enums "github.com/celer-network/goCeler/common/structs"
 	"github.com/celer-network/goCeler/ctype"
 	"github.com/celer-network/goCeler/entity"
 	"github.com/celer-network/goCeler/fsm"
@@ -52,6 +52,9 @@ func (m *Messager) SendPaysSettleRequest(
 	var cid ctype.CidType
 	var peerTo ctype.Addr
 	err := m.dal.Transactional(m.runPaySettleTx, pays, payAmts, reason, &seqnum, &celerMsg, &skippedPays, &cid, &peerTo)
+	if err == common.ErrPayNoEgress && len(pays) == 1 && reason == rpc.PaymentSettleReason_PAY_PAID_MAX {
+		return nil, m.sendCrossNetPaySettleRequest(pays[0], payAmts[0], logEntry)
+	}
 	logEntry.ToCid = ctype.Cid2Hex(cid)
 	logEntry.MsgTo = ctype.Addr2Hex(peerTo)
 	if err != nil {
@@ -79,6 +82,9 @@ func (m *Messager) runPaySettleTx(tx *storage.DALTx, args ...interface{}) error 
 	}
 	if !found {
 		return fmt.Errorf("GetPayEgress err %w", common.ErrPayNotFound)
+	}
+	if cid == ctype.ZeroCid {
+		return common.ErrPayNoEgress
 	}
 	*retCid = cid
 
@@ -221,4 +227,35 @@ func (m *Messager) ForwardPaySettleRequestMsg(frame *common.MsgFrame) error {
 	}
 	amt := new(big.Int).SetBytes(pay.TransferFunc.MaxTransfer.Receiver.Amt)
 	return m.SendOnePaySettleRequest(pay, amt, rpc.PaymentSettleReason_PAY_PAID_MAX, logEntry)
+}
+
+func (m *Messager) sendCrossNetPaySettleRequest(
+	pay *entity.ConditionalPay,
+	payAmt *big.Int,
+	logEntry *pem.PayEventMessage) error {
+	payID := ctype.Pay2PayID(pay)
+	originalPayID, state, bridgeAddr, found, err := m.dal.GetCrossNetInfoByPayID(payID)
+	if err != nil {
+		return fmt.Errorf("GetCrossNetInfo err %w", err)
+	}
+	if !found {
+		return common.ErrPayNoEgress
+	}
+	if state != enums.CrossNetPay_EGRESS {
+		return fmt.Errorf("invalid cross net pay state %d", state)
+	}
+	settledPay := &rpc.SettledPayment{
+		SettledPayId:  payID.Bytes(),
+		Reason:        rpc.PaymentSettleReason_PAY_PAID_MAX,
+		OriginalPayId: originalPayID.Bytes(),
+	}
+	request := &rpc.PaymentSettleRequest{}
+	request.SettledPays = append(request.SettledPays, settledPay)
+	celerMsg := &rpc.CelerMsg{
+		Message: &rpc.CelerMsg_PaymentSettleRequest{
+			PaymentSettleRequest: request,
+		},
+	}
+
+	return m.streamWriter.WriteCelerMsg(bridgeAddr, celerMsg)
 }

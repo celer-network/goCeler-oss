@@ -78,6 +78,18 @@ CREATE TABLE IF NOT EXISTS paydelegation (
 );
 CREATE INDEX IF NOT EXISTS paydel_dest_idx ON paydelegation (dest);
 
+CREATE TABLE IF NOT EXISTS crossnetpays (
+    payid TEXT PRIMARY KEY NOT NULL REFERENCES payments (payid) ON UPDATE CASCADE ON DELETE CASCADE,
+    originalpayid TEXT NOT NULL,
+    originalpay BYTEA,
+    state INT NOT NULL,
+    srcnetid INT NOT NULL,
+    dstnetid INT NOT NULL,
+    bridgeaddr TEXT NOT NULL,
+    bridgenetid INT NOT NULL,
+    UNIQUE (originalpayid)
+);
+
 CREATE TABLE IF NOT EXISTS secrets (
     hash TEXT PRIMARY KEY NOT NULL,
     preimage TEXT NOT NULL,
@@ -113,6 +125,25 @@ CREATE TABLE IF NOT EXISTS edges (
     addr2 TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS edges_token_idx ON edges (token);
+
+CREATE TABLE IF NOT EXISTS netbridge (
+    bridgeaddr TEXT PRIMARY KEY NOT NULL,
+    bridgenetid INT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS bridgerouting (
+    destnetid INT PRIMARY KEY NOT NULL,
+    bridgeaddr TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS nettokens (
+    netid INT NOT NULL,
+    nettoken TEXT NOT NULL,
+    localtoken TEXT NOT NULL,
+    rate FLOAT NOT NULL,
+    UNIQUE (netid, nettoken),
+    UNIQUE (netid, localtoken)
+);
 
 CREATE TABLE IF NOT EXISTS peers (
     peer TEXT PRIMARY KEY NOT NULL,

@@ -59,6 +59,11 @@ func (h *CelerMsgHandler) condPayRequestInbound(frame *common.MsgFrame) error {
 	logEntry.Src = ctype.Bytes2Hex(pay.GetSrc())
 	logEntry.Dst = ctype.Bytes2Hex(pay.GetDest())
 
+	if request.GetCrossNet().GetCrossing() {
+		// proceed as crossnet payment
+		return h.crossNetPayInbound(frame, pay, payID, logEntry)
+	}
+
 	// Sign the state in advance, verify request later
 	mySig, err := h.signer.SignEthMessage(request.GetStateOnlyPeerFromSig().GetSimplexState())
 	if err != nil {
@@ -455,16 +460,52 @@ func (h *CelerMsgHandler) condPayRequestOutbound(frame *common.MsgFrame) error {
 	} else if logEntry.GetPayId() != ctype.PayID2Hex(payID) {
 		logEntry.Error = append(logEntry.Error, "different payID:"+ctype.PayID2Hex(payID))
 	}
+
+	isRecipient := false
+	var originalPayID ctype.PayIDType
 	if dest == h.nodeConfig.GetOnChainAddr() {
+		xnet := request.GetCrossNet()
+		if xnet.GetDstNetId() == 0 {
+			isRecipient = true
+		} else {
+			myNetId, err2 := h.dal.GetNetId()
+			if err2 != nil {
+				return fmt.Errorf("GetNetId err: %w", err2)
+			}
+			if myNetId == xnet.GetDstNetId() {
+				isRecipient = true
+				originalPayID = ctype.PayBytes2PayID(xnet.GetOriginalPay())
+				err = h.dal.InsertCrossNetPay(
+					payID, originalPayID, xnet.GetOriginalPay(), structs.CrossNetPay_DST,
+					xnet.GetSrcNetId(), xnet.GetDstNetId(), ctype.ZeroAddr, 0)
+				if err != nil {
+					return fmt.Errorf("InsertCrossNetPay err: %w", err)
+				}
+			}
+		}
+	}
+
+	if isRecipient {
 		// reply conPay receipt
 		log.Debugln("Reply pay receipt", payID.Hex())
-		sigOfCondPay, err2 := h.signer.SignEthMessage(payBytes)
+		signedPayBytes := payBytes
+		if request.GetCrossNet().GetDstNetId() != 0 {
+			err = h.verifyCrossNetPay(pay, request.GetCrossNet().GetOriginalPay(), request.GetCrossNet().GetSrcNetId())
+			if err != nil {
+				return err
+			}
+			signedPayBytes = request.GetCrossNet().GetOriginalPay()
+		}
+		sigOfCondPay, err2 := h.signer.SignEthMessage(signedPayBytes)
 		if err2 != nil {
 			return err2
 		}
 		receipt := &rpc.CondPayReceipt{
-			PayId:      payID[:],
+			PayId:      payID.Bytes(),
 			PayDestSig: sigOfCondPay,
+		}
+		if originalPayID != ctype.ZeroPayID {
+			receipt.OriginalPayId = originalPayID.Bytes()
 		}
 		celerMsg := &rpc.CelerMsg{
 			ToAddr: pay.Src,
@@ -482,7 +523,7 @@ func (h *CelerMsgHandler) condPayRequestOutbound(frame *common.MsgFrame) error {
 	// Forward condPay to next hop if I am not the destination
 	log.Debugln("Forward", payID.Hex())
 	delegable, proof, description := h.checkPayDelegable(&pay, ctype.Bytes2Addr(pay.GetDest()), logEntry)
-	peerTo, err := h.messager.ForwardCondPayRequest(payBytes, request.GetNote(), delegable, logEntry)
+	peerTo, err := h.messager.ForwardCondPayRequest(payBytes, request.GetNote(), delegable, request.GetCrossNet(), logEntry)
 	if err != nil {
 		if delegable && errors.Is(err, common.ErrPeerNotOnline) {
 			return h.delegatePay(payID, &pay, payBytes, description, proof, peerFrom, dest, logEntry)
@@ -593,4 +634,118 @@ func (h *CelerMsgHandler) checkPayDelegable(
 		description.GetExpiresAfterBlock() > h.monitorService.GetCurrentBlockNumber().Int64()
 
 	return delegable, proof, description
+}
+
+func (h *CelerMsgHandler) crossNetPayInbound(
+	frame *common.MsgFrame, pay entity.ConditionalPay, payID ctype.PayIDType, logEntry *pem.PayEventMessage) error {
+	request := frame.Message.GetCondPayRequest()
+	xnet := request.GetCrossNet()
+	originalPayId := ctype.PayBytes2PayID(xnet.GetOriginalPay())
+
+	logEntry.Xnet.SrcNetId = xnet.GetSrcNetId()
+	logEntry.Xnet.DstNetId = xnet.GetDstNetId()
+	logEntry.Xnet.OriginalPayId = ctype.PayID2Hex(originalPayId)
+	logEntry.Xnet.FromPayId = ctype.PayID2Hex(payID)
+	logEntry.Xnet.State = pem.CrossNetPayState_XNET_INGRESS
+
+	bridgeAddr := frame.PeerAddr
+	bridgeNetId, found, err := h.dal.GetNetBridge(bridgeAddr)
+	if err != nil {
+		return fmt.Errorf("GetNetBridge err: %w", err)
+	}
+	if !found {
+		return fmt.Errorf("bridgeNetId not found")
+	}
+	logEntry.Xnet.FromBridgeId = bridgeNetId
+
+	if ctype.Bytes2Addr(pay.GetDest()) == h.nodeConfig.GetOnChainAddr() {
+		return fmt.Errorf("ingress bridge cannot be the dest addr")
+	}
+
+	newPay := pay
+	if pay.GetTransferFunc().GetMaxTransfer().GetToken().GetTokenType() != entity.TokenType_ETH {
+		localToken, found, err2 := h.dal.GetLocalToken(bridgeNetId, pay.GetTransferFunc().GetMaxTransfer().GetToken())
+		if err2 != nil {
+			return fmt.Errorf("GetLocalToken err: %w", err2)
+		}
+		if !found {
+			return fmt.Errorf("local token not found")
+		}
+		newPay.TransferFunc.MaxTransfer.Token = localToken
+	}
+	// TODO: update resolve dealine and timeout, check conditions
+	newPay.ResolveDeadline = h.monitorService.GetCurrentBlockNumber().Uint64() + xnet.GetTimeout()
+	newPay.ResolveTimeout = config.PayResolveTimeout
+	newPay.PayResolver = h.nodeConfig.GetPayResolverContract().GetAddr().Bytes()
+	newPayID := ctype.Pay2PayID(&newPay)
+	newPayBytes, err := proto.Marshal(&newPay)
+	if err != nil {
+		return err
+	}
+
+	err = h.dal.InsertCrossNetPay(
+		newPayID, originalPayId, xnet.GetOriginalPay(), structs.CrossNetPay_INGRESS, xnet.GetSrcNetId(), xnet.GetDstNetId(),
+		bridgeAddr, bridgeNetId)
+	if err != nil {
+		return fmt.Errorf("InsertCrossNetPay err: %w", err)
+	}
+
+	xnet.Crossing = false
+	xnet.BridgeAddr = nil
+	xnet.BridgeNetId = 0
+	xnet.Timeout = 0
+
+	frame.Message = &rpc.CelerMsg{
+		Message: &rpc.CelerMsg_CondPayRequest{
+			CondPayRequest: &rpc.CondPayRequest{
+				CondPay:  newPayBytes,
+				Note:     request.GetNote(),
+				CrossNet: xnet,
+			},
+		},
+	}
+
+	logEntry.PayId = ctype.PayID2Hex(newPayID)
+	logEntry.Token = utils.PrintTokenInfo(newPay.GetTransferFunc().GetMaxTransfer().GetToken())
+
+	return nil
+}
+
+func (h *CelerMsgHandler) verifyCrossNetPay(pay entity.ConditionalPay, originalPayBytes []byte, srcNetId uint64) error {
+	var originalPay entity.ConditionalPay
+	err := proto.Unmarshal(originalPayBytes, &originalPay)
+	if err != nil {
+		return err
+	}
+	if originalPay.GetTransferFunc().GetMaxTransfer().GetToken().GetTokenType() != entity.TokenType_ETH {
+		token, found, err2 := h.dal.GetLocalToken(srcNetId, originalPay.GetTransferFunc().GetMaxTransfer().GetToken())
+		if err2 != nil {
+			return fmt.Errorf("GetLocalToken err: %w", err2)
+		}
+		if !found {
+			return fmt.Errorf("local token not found")
+		}
+		originalPay.TransferFunc.MaxTransfer.Token = token
+	}
+
+	pay.ResolveDeadline = 0
+	pay.ResolveTimeout = 0
+	pay.PayResolver = nil
+	originalPay.ResolveDeadline = 0
+	originalPay.ResolveTimeout = 0
+	originalPay.PayResolver = nil
+
+	b1, err := proto.Marshal(&pay)
+	if err != nil {
+		return err
+	}
+	b2, err := proto.Marshal(&originalPay)
+	if err != nil {
+		return err
+	}
+	if bytes.Compare(b1, b2) != 0 {
+		return fmt.Errorf("original pay not match")
+	}
+
+	return nil
 }

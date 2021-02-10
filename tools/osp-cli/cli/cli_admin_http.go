@@ -64,7 +64,7 @@ func OpenChannel() {
 func SendToken() {
 	amtWei := utils.Float2Wei(*amount)
 	payID, err := utils.RequestSendToken(
-		*adminhostport, ctype.Hex2Addr(*receiver), ctype.Hex2Addr(*tokenaddr), amtWei)
+		*adminhostport, ctype.Hex2Addr(*receiver), ctype.Hex2Addr(*tokenaddr), amtWei, 0)
 	if err != nil {
 		log.Error(err)
 		return

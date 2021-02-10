@@ -126,7 +126,7 @@ func (c *CelerClient) InstantiateChannelForToken(token *entity.TokenInfo, appcb 
 // AddBooleanPay creates a condpay based on args, and call cnode to send CondPayRequest
 // returns payId or err
 func (c *CelerClient) AddBooleanPay(
-	xfer *entity.TokenTransfer, conds []*entity.Condition, resolveDeadline uint64, note *any.Any) (ctype.PayIDType, error) {
+	xfer *entity.TokenTransfer, conds []*entity.Condition, resolveDeadline uint64, note *any.Any, dstNetId uint64) (ctype.PayIDType, error) {
 
 	if xfer == nil || xfer.Receiver == nil || xfer.Receiver.Account == nil {
 		return ctype.ZeroPayID, common.ErrInvalidArg
@@ -151,7 +151,7 @@ func (c *CelerClient) AddBooleanPay(
 	var payID ctype.PayIDType
 	var cnoderr error
 	for i := 0; i < 10; i++ {
-		payID, cnoderr = c.cNode.AddBooleanPay(pay, note)
+		payID, cnoderr = c.cNode.AddBooleanPay(pay, note, dstNetId)
 		if cnoderr != common.ErrPendingSimplex {
 			break
 		}

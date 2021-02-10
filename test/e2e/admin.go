@@ -97,15 +97,19 @@ func requestSvrSendToken(receiver, amt, tokenAddr string) (string, error) {
 	if !ok {
 		return "", common.ErrInvalidArg
 	}
-	payId, err := utils.RequestSendToken(sAdminWeb, ctype.Hex2Addr(receiver), ctype.Hex2Addr(tokenAddr), amtInt)
+	payId, err := utils.RequestSendToken(sAdminWeb, ctype.Hex2Addr(receiver), ctype.Hex2Addr(tokenAddr), amtInt, 0)
 	return ctype.PayID2Hex(payId), err
 }
 
 func requestSendToken(adminWebAddr, receiver, amt, tokenAddr string) (string, error) {
+	return requestSendCrossNetToken(adminWebAddr, receiver, amt, tokenAddr, 0)
+}
+
+func requestSendCrossNetToken(adminWebAddr, receiver, amt, tokenAddr string, dstNetId uint64) (string, error) {
 	amtInt, ok := new(big.Int).SetString(amt, 10)
 	if !ok {
 		return "", common.ErrInvalidArg
 	}
-	payId, err := utils.RequestSendToken(adminWebAddr, ctype.Hex2Addr(receiver), ctype.Hex2Addr(tokenAddr), amtInt)
+	payId, err := utils.RequestSendToken(adminWebAddr, ctype.Hex2Addr(receiver), ctype.Hex2Addr(tokenAddr), amtInt, dstNetId)
 	return ctype.PayID2Hex(payId), err
 }

@@ -18,7 +18,7 @@ import (
 )
 
 type delegateProcess interface {
-	AddBooleanPay(pay *entity.ConditionalPay, note *any.Any) (ctype.PayIDType, error)
+	AddBooleanPay(pay *entity.ConditionalPay, note *any.Any, dstNetId uint64) (ctype.PayIDType, error)
 	GetCurrentBlockNumber() *big.Int
 }
 
@@ -154,7 +154,7 @@ func (m *DelegateManager) sendToken(dst ctype.Addr, lumpsum *lumpSum) error {
 		ResolveTimeout:  config.PayResolveTimeout,
 	}
 
-	payID, err := m.process.AddBooleanPay(pay, note)
+	payID, err := m.process.AddBooleanPay(pay, note, 0)
 	if err != nil {
 		log.Errorln(err, utils.PrintConditionalPay(pay), note)
 		return err

@@ -30,7 +30,7 @@ enum PayMessageType {
     CONFIRM_BOOLEAN_PAY_API = 17;
     ROUTING_REQUEST = 18;
 }
-// Next tag: 29
+// Next tag: 30
 message PayEventMessage {
     PayMessageType type = 1;  // all
     // pay_id this message is about.
@@ -79,7 +79,10 @@ message PayEventMessage {
     bool direct_pay = 26;
     // When filled, it means the node tries to delegate receiving the pay. This field logs delegation description
     rpc.DelegationDescription delegation_description = 27;
+    // pay routing path
     string pay_path = 28;
+    // cross net payment info
+    CrossNetInfo xnet = 29;
 }
 
 message SimplexSeqNums {
@@ -97,4 +100,23 @@ message SimplexSeqNums {
     uint64 ack = 6; 
     // highest inflight sequence number, usually needed only when there is a nack to trigger resend
     uint64 last_inflight = 7;
+}
+
+message CrossNetInfo {
+    uint64 src_net_id = 1;
+    uint64 dst_net_id = 2;
+    string original_pay_id = 3;
+    string from_pay_id = 4;
+    string to_bridge_addr = 5;
+    uint64 to_bridge_net_id = 6;
+    uint64 from_bridge_id = 7;
+    CrossNetPayState state = 8;
+}
+
+enum CrossNetPayState {
+    XNET_NULL = 0;
+    XNET_SRC = 1;
+    XNET_DST = 2;
+    XNET_INGRESS = 3;
+    XNET_EGRESS = 4;
 }

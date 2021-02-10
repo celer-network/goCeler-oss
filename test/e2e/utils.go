@@ -36,6 +36,9 @@ var (
 	// map from app type to deployed addr, updated by SetupOnChain
 	appAddrMap     = make(map[string]ctype.Addr)
 	tokenAddrErc20 string // set by setupOnchain deploy erc20 contract
+
+	tokenAddrNet1 string
+	tokenAddrNet2 string
 )
 
 // toBuild map package subpath to binary file name eg. server -> server means build goCeler/server and output server

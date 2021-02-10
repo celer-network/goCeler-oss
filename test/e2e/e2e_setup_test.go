@@ -12,12 +12,14 @@ import (
 	"time"
 
 	"github.com/celer-network/goCeler/common"
+	"github.com/celer-network/goCeler/ctype"
 	tf "github.com/celer-network/goCeler/testing"
 	"github.com/celer-network/goutils/log"
 )
 
 var (
-	reuse = flag.String("reuse", "", "data dir of previously failed test run, skip geth/building binaries if set")
+	reuse    = flag.String("reuse", "", "data dir of previously failed test run, skip geth/building binaries if set")
+	multinet = flag.Bool("multinet", false, "multilple networks")
 )
 
 // TestMain handles common setup (start chain, deploy, build  etc)
@@ -50,29 +52,54 @@ func TestMain(m *testing.M) {
 		err = buildBins(outRootDir)
 		chkErr(err, "build binaries")
 		// deploy contracts and fund ethpool etc, also update appAddrMap
-		tf.E2eProfile, tokenAddrErc20 = SetupOnChain(appAddrMap, true)
+		tf.E2eProfile, tokenAddrErc20 = SetupOnChain(appAddrMap, 0, true)
 		// profile.json is the default OSP profile
 		noProxyProfile = outRootDir + "profile.json"
 		saveProfile(tf.E2eProfile, noProxyProfile)
 		// client profiles for multiosp tests
-		c2o2Profile := *tf.E2eProfile
-		c2o2Profile.Osp.Address = osp2EthAddr
-		c2o2Profile.Osp.Host = localhost + o2Port
-		saveProfile(&c2o2Profile, outRootDir+"c2o2.json")
-		c3o3Profile := *tf.E2eProfile
-		c3o3Profile.Osp.Address = osp3EthAddr
-		c3o3Profile.Osp.Host = localhost + o3Port
-		saveProfile(&c3o3Profile, outRootDir+"c3o3.json")
-		c4o4Profile := *tf.E2eProfile
-		c4o4Profile.Osp.Address = osp4EthAddr
-		c4o4Profile.Osp.Host = localhost + o4Port
-		saveProfile(&c4o4Profile, outRootDir+"c4o4.json")
-		c5o5Profile := *tf.E2eProfile
-		c5o5Profile.Osp.Address = osp5EthAddr
-		c5o5Profile.Osp.Host = localhost + o5Port
-		saveProfile(&c5o5Profile, outRootDir+"c5o5.json")
+		o2Profile := *tf.E2eProfile
+		o2Profile.Osp.Address = osp2EthAddr
+		o2Profile.Osp.Host = localhost + o2Port
+		saveProfile(&o2Profile, outRootDir+"profile-o2.json")
+		o3Profile := *tf.E2eProfile
+		o3Profile.Osp.Address = osp3EthAddr
+		o3Profile.Osp.Host = localhost + o3Port
+		saveProfile(&o3Profile, outRootDir+"profile-o3.json")
+		o4Profile := *tf.E2eProfile
+		o4Profile.Osp.Address = osp4EthAddr
+		o4Profile.Osp.Host = localhost + o4Port
+		saveProfile(&o4Profile, outRootDir+"profile-o4.json")
+		o5Profile := *tf.E2eProfile
+		o5Profile.Osp.Address = osp5EthAddr
+		o5Profile.Osp.Host = localhost + o5Port
+		saveProfile(&o5Profile, outRootDir+"profile-o5.json")
 
 		saveMisc(outRootDir+"misc.json", gethpid, tokenAddrErc20, appAddrMap)
+
+		if *multinet {
+			var n1profile, n2profile *common.ProfileJSON
+			log.Infoln("Setup network 1 ...")
+			n1profile, tokenAddrNet1 = SetupOnChain(make(map[string]ctype.Addr), 1, true)
+			o6Profile := *n1profile
+			o6Profile.Osp.Address = osp6EthAddr
+			o6Profile.Osp.Host = localhost + o6Port
+			saveProfile(&o6Profile, outRootDir+"profile-o6-n1.json")
+			o7Profile := *n1profile
+			o7Profile.Osp.Address = osp7EthAddr
+			o7Profile.Osp.Host = localhost + o7Port
+			saveProfile(&o7Profile, outRootDir+"profile-o7-n1.json")
+			log.Infoln("Setup network 2 ...")
+			n2profile, tokenAddrNet2 = SetupOnChain(make(map[string]ctype.Addr), 2, true)
+			o8Profile := *n2profile
+			o8Profile.Osp.Address = osp8EthAddr
+			o8Profile.Osp.Host = localhost + o8Port
+			saveProfile(&o8Profile, outRootDir+"profile-o8-n2.json")
+			o9Profile := *n2profile
+			o9Profile.Osp.Address = osp9EthAddr
+			o9Profile.Osp.Host = localhost + o9Port
+			saveProfile(&o9Profile, outRootDir+"profile-o9-n2.json")
+		}
+
 	} else {
 		noProxyProfile = outRootDir + "profile.json"
 		tf.E2eProfile = common.ParseProfileJSON(noProxyProfile)

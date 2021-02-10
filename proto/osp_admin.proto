@@ -22,6 +22,7 @@ message SendTokenRequest {
   string amt_wei = 2;
   string token_addr = 3;
   google.protobuf.Any note = 4;
+  uint64 dst_net_id = 5;
 }
 
 // Next Tag: 4

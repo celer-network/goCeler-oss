@@ -21,6 +21,7 @@ var (
 	intendwithdraw  = flag.Bool("intendwithdraw", false, "intend unilaterally withdraw from channel")
 	confirmwithdraw = flag.Bool("confirmwithdraw", false, "confirm unilaterally withdraw from channel")
 	dbview          = flag.String("dbview", "", "database view command")
+	dbupdate        = flag.String("dbupdate", "", "database update command")
 	onchainview     = flag.String("onchainview", "", "onchain view command")
 	ethpooldeposit  = flag.Bool("ethpooldeposit", false, "deposit ETH to ethpool")
 	ethpoolwithdraw = flag.Bool("ethpoolwithdraw", false, "withdraw ETH from ethpool")
@@ -58,7 +59,7 @@ func main() {
 	}
 
 	var p cli.Processor
-	if *intendsettle || *confirmsettle || *intendwithdraw || *confirmwithdraw || *dbview != "" {
+	if *intendsettle || *confirmsettle || *intendwithdraw || *confirmwithdraw || *dbview != "" || *dbupdate != "" {
 		p.Setup(true, false, true) // connect to db, not enforcig osp keystore, set disputer if keystore is provided
 	} else if *ethpoolwithdraw || *register || *deregister {
 		p.Setup(false, true, false) // no db, enforce using osp keystore, no disputer
@@ -97,6 +98,22 @@ func main() {
 		p.ViewRoute()
 	default:
 		log.Fatalln("unsupported dbview command", *dbview)
+	}
+
+	switch *dbupdate {
+	case "":
+	case "netid":
+		p.UpdateNetId()
+	case "netbridge":
+		p.UpdateNetBridge()
+	case "bridgerouting":
+		p.UpdateBridgeRouting()
+	case "nettoken":
+		p.UpdateNetToken()
+	case "xnet":
+		p.ConfigXnet()
+	default:
+		log.Fatalln("unsupported dbupdate command", *dbupdate)
 	}
 
 	switch *onchainview {

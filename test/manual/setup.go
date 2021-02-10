@@ -72,7 +72,7 @@ func main() {
 	time.Sleep(3 * time.Second)
 	e2e.CheckError(err, "starting chain")
 
-	tf.E2eProfile, _ = e2e.SetupOnChain(make(map[string]ctype.Addr), *auto)
+	tf.E2eProfile, _ = e2e.SetupOnChain(make(map[string]ctype.Addr), 0, *auto)
 	if *auto {
 		// if auto fund, also register all osps on-chain as routers
 		tf.RegisterRouters([]string{osp1Keystore, osp2Keystore, osp3Keystore, osp4Keystore, osp5Keystore})

@@ -31,9 +31,20 @@ var ethPoolContract *ethpool.EthPool
 var erc20Contract *chain.ERC20
 var autoFund bool
 
+var grpAddrs = [][]string{
+	[]string{ospEthAddr, depositorEthAddr, osp2EthAddr, osp3EthAddr, osp4EthAddr, osp5EthAddr},
+	[]string{osp6EthAddr, osp7EthAddr},
+	[]string{osp8EthAddr, osp9EthAddr},
+}
+var grpPrivs = [][]string{
+	[]string{osp1Priv, depositorPriv, osp2Priv, osp3Priv, osp4Priv, osp5Priv},
+	[]string{osp6Priv, osp7Priv},
+	[]string{osp8Priv, osp9Priv},
+}
+
 // SetupOnChain deploy contracts, and set limit etc
 // return profile, tokenAddrErc20 and set testapp related addr
-func SetupOnChain(appMap map[string]ctype.Addr, autofund bool) (*common.ProfileJSON, string) {
+func SetupOnChain(appMap map[string]ctype.Addr, groupId uint64, autofund bool) (*common.ProfileJSON, string) {
 	flag.Parse()
 	autoFund = autofund
 	var err error
@@ -156,10 +167,10 @@ func SetupOnChain(appMap map[string]ctype.Addr, autofund bool) (*common.ProfileJ
 	}
 	chkTxStatus(receipt.Status, "Deploy v2 Ledger contract at "+ctype.Addr2Hex(newLedgerAddr))
 
-	log.Infoln("Add fund to osp1, osp1depositor, osp2, osp3, osp4, osp5 ...")
-	fundEthAddrs(
-		[]string{ospEthAddr, depositorEthAddr, osp2EthAddr, osp3EthAddr, osp4EthAddr, osp5EthAddr},
-		[]string{osp1Priv, depositorPriv, osp2Priv, osp3Priv, osp4Priv, osp5Priv})
+	log.Infoln("Add fund to OSP accounts ...")
+	if groupId < 3 {
+		fundEthAddrs(grpAddrs[groupId], grpPrivs[groupId])
+	}
 
 	// contruct ledger map
 	ledgers := map[string]string{

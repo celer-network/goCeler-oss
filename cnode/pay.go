@@ -47,13 +47,13 @@ func (c *CNode) OnSendToken(sendCallback event.OnSendingTokenCallback) {
 }
 
 // Similar to EstablishCondPayOnToken. This will add hash lock condition to pay condition and set time stamp.
-func (c *CNode) AddBooleanPay(newPay *entity.ConditionalPay, note *any.Any) (ctype.PayIDType, error) {
+func (c *CNode) AddBooleanPay(newPay *entity.ConditionalPay, note *any.Any, dstNetId uint64) (ctype.PayIDType, error) {
 	if utils.GetTokenAddr(newPay.TransferFunc.MaxTransfer.Token) == ctype.InvalidTokenAddr {
 		return ctype.ZeroPayID, common.ErrUnknownTokenType
 	}
 
 	newPay.PayTimestamp = uint64(time.Now().UnixNano())
-	directPay := c.messager.IsDirectPay(newPay, ctype.ZeroAddr)
+	directPay := c.messager.IsDirectPay(newPay, ctype.ZeroAddr, dstNetId)
 
 	// Skip prepending HL if it's already there or for direct-pay.
 	var hashStr, secretStr string
@@ -87,7 +87,25 @@ func (c *CNode) AddBooleanPay(newPay *entity.ConditionalPay, note *any.Any) (cty
 	if err != nil {
 		return ctype.ZeroPayID, err
 	}
-	err = c.messager.SendCondPayRequest(newPayBytes, note, logEntry)
+
+	var xnet *rpc.CrossNetPay
+	if dstNetId != 0 {
+		myNetId, err2 := c.dal.GetNetId()
+		if err != nil {
+			return ctype.ZeroPayID, fmt.Errorf("GetNetId err %w", err2)
+		}
+		if myNetId != dstNetId { // cross network payment
+			xnet = &rpc.CrossNetPay{
+				SrcNetId:    myNetId,
+				DstNetId:    dstNetId,
+				OriginalPay: newPayBytes,
+			}
+			logEntry.Xnet.SrcNetId = myNetId
+			logEntry.Xnet.DstNetId = dstNetId
+			logEntry.Xnet.State = pem.CrossNetPayState_XNET_SRC
+		}
+	}
+	err = c.messager.SendCondPayRequest(newPayBytes, note, xnet, logEntry)
 	if err != nil {
 		logEntry.Error = append(logEntry.Error, err.Error())
 		payID = ctype.ZeroPayID

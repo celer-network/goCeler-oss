@@ -29,6 +29,8 @@ const (
 	payPathTable = "ppt" // payID -> rpc.PayPath
 	// client only
 	queryTimeTable = "qtt" // query -> last time (unit defined by query, either unix sec or block number)
+	// single-entry self netid table
+	netIdTable = "netid"
 
 	transactionalMaxRetry   = 10
 	transactionalRetryDelay = 10 * time.Millisecond
@@ -592,6 +594,23 @@ func (dtx *DALTx) GetPayDelegator(payID ctype.PayIDType) (ctype.Addr, bool, erro
 	return getPayDelegator(dtx.stx, payID)
 }
 
+// The "crossnetpays" table.
+func (d *DAL) InsertCrossNetPay(payID, originalPayID ctype.PayIDType, originalPay []byte, state int, srcNetId, DstNetId uint64, bridgeAddr ctype.Addr, bridgeNetId uint64) error {
+	return insertCrossNetPay(d.st, payID, originalPayID, originalPay, state, srcNetId, DstNetId, bridgeAddr, bridgeNetId)
+}
+
+func (d *DAL) GetCrossNetInfoByPayID(payID ctype.PayIDType) (ctype.PayIDType, int, ctype.Addr, bool, error) {
+	return getCrossNetInfoByPayID(d.st, payID)
+}
+
+func (d *DAL) GetCrossNetInfoByOrignalPayID(originalPayID ctype.PayIDType) (ctype.PayIDType, int, ctype.Addr, bool, error) {
+	return getCrossNetInfoByOrignalPayID(d.st, originalPayID)
+}
+
+func (d *DAL) DeleteCrossNetPay(payID ctype.PayIDType) error {
+	return deleteCrossNetPay(d.st, payID)
+}
+
 // The "secrets" table.
 func (d *DAL) InsertSecret(hash, preImage string, payID ctype.PayIDType) error {
 	return insertSecret(d.st, hash, preImage, payID)
@@ -731,6 +750,45 @@ func (d *DAL) GetAllEdges() ([]*structs.Edge, error) {
 
 func (d *DAL) DeleteEdge(cid ctype.CidType) error {
 	return deleteEdge(d.st, cid)
+}
+
+// The "netbridge" table
+func (d *DAL) UpsertNetBridge(bridgeAddr ctype.Addr, bridgeNetId uint64) error {
+	return upsertNetBridge(d.st, bridgeAddr, bridgeNetId)
+}
+
+func (d *DAL) GetNetBridge(bridgeAddr ctype.Addr) (uint64, bool, error) {
+	return getNetBridge(d.st, bridgeAddr)
+}
+
+func (d *DAL) DeleteNetBridge(bridgeAddr ctype.Addr) error {
+	return deleteNetBridge(d.st, bridgeAddr)
+}
+
+// The "bridgerouting" table
+func (d *DAL) UpsertBridgeRouting(destNetId uint64, bridgeAddr ctype.Addr) error {
+	return upsertBridgeRouting(d.st, destNetId, bridgeAddr)
+}
+
+func (d *DAL) GetBridgeRouting(destNetId uint64) (ctype.Addr, uint64, bool, error) {
+	return getBridgeRouting(d.st, destNetId)
+}
+
+func (d *DAL) DeleteBridgeRouting(destNetId uint64) error {
+	return deleteBridgeRouting(d.st, destNetId)
+}
+
+// The "nettokens" table
+func (d *DAL) UpsertNetToken(netId uint64, netToken *entity.TokenInfo, localToken *entity.TokenInfo) error {
+	return upsertNetToken(d.st, netId, netToken, localToken)
+}
+
+func (d *DAL) GetLocalToken(netId uint64, netToken *entity.TokenInfo) (*entity.TokenInfo, bool, error) {
+	return getLocalToken(d.st, netId, netToken)
+}
+
+func (d *DAL) DeleteLocalToken(netId uint64, netToken *entity.TokenInfo) error {
+	return deleteNetToken(d.st, netId, netToken)
 }
 
 // The "peers" table.
@@ -1059,6 +1117,28 @@ func (dtx *DALTx) GetQueryTime(query string) (uint64, error) {
 }
 func (dtx *DALTx) DeleteQueryTime(query string) error {
 	return deleteQueryTime(dtx.stx, query)
+}
+
+// netIdTable
+func putNetId(st Storage, id uint64) error {
+	return st.Put(netIdTable, "myid", id)
+}
+func getNetId(st Storage) (uint64, error) {
+	var id uint64
+	err := st.Get(netIdTable, "myid", &id)
+	return id, err
+}
+func hasNetId(st Storage) (bool, error) {
+	return st.Has(netIdTable, "myid")
+}
+func (d *DAL) PutNetId(id uint64) error {
+	return putNetId(d.st, id)
+}
+func (d *DAL) GetNetId() (uint64, error) {
+	return getNetId(d.st)
+}
+func (d *DAL) HasNetId() (bool, error) {
+	return hasNetId(d.st)
 }
 
 // DAL for on chain balances

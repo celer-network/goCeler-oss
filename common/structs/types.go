@@ -65,6 +65,12 @@ const (
 	ChanState_OPENED        int = 3
 	ChanState_SETTLING      int = 4
 	ChanState_CLOSED        int = 5
+
+	CrossNetPay_NULL    int = 0
+	CrossNetPay_SRC     int = 1
+	CrossNetPay_DST     int = 2
+	CrossNetPay_INGRESS int = 3
+	CrossNetPay_EGRESS  int = 4
 )
 
 type DepositJob struct {

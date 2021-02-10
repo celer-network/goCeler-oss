@@ -33,7 +33,7 @@ func (mc *Client) SendToken(tk *Token, receiver string, amtWei string, noteTypeU
 		Value:   noteValueByte,
 	}
 	payID, err := mc.c.AddBooleanPay(
-		xfer, []*entity.Condition{}, mc.c.GetCurrentBlockNumberUint64()+cPayTimeout, note)
+		xfer, []*entity.Condition{}, mc.c.GetCurrentBlockNumberUint64()+cPayTimeout, note, 0)
 	if err != nil {
 		log.Errorln("SendToken:", err)
 		return ctype.ZeroPayIDHex, err
@@ -60,7 +60,7 @@ func (mc *Client) SendTokenWithCondition(tk *Token, receiver string, amtWei stri
 		return ctype.ZeroPayIDHex, err
 	}
 	payID, err := mc.c.AddBooleanPay(
-		xfer, []*entity.Condition{condition}, mc.c.GetCurrentBlockNumberUint64()+uint64(timeout), nil /*note*/)
+		xfer, []*entity.Condition{condition}, mc.c.GetCurrentBlockNumberUint64()+uint64(timeout), nil /*note*/, 0)
 	if err != nil {
 		log.Errorln("SendTokenWithCondition:", err)
 		return ctype.ZeroPayIDHex, err
@@ -153,12 +153,11 @@ func (mc *Client) SendConditionalPayment(
 	for i, condition := range conditions {
 		entityConditions[i] = conditionToEntityCondition(condition)
 	}
-	payID, err :=
-		mc.c.AddBooleanPay(
-			transfer,
-			entityConditions,
-			mc.c.GetCurrentBlockNumberUint64()+uint64(timeout),
-			note)
+	payID, err := mc.c.AddBooleanPay(
+		transfer,
+		entityConditions,
+		mc.c.GetCurrentBlockNumberUint64()+uint64(timeout),
+		note, 0)
 	if err != nil {
 		log.Error(err)
 		return ctype.ZeroPayIDHex, err

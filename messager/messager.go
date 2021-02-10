@@ -97,7 +97,28 @@ func (m *Messager) GetMsgQueue(cid ctype.CidType, seqnum uint64) (*rpc.CelerMsg,
 // looked up.  For now only consider unconditional payments where I am the
 // source and the destination is my next hop peer.  This is typical of fee
 // (client to OSP) and prize (OSP to client) payments in centralized games.
-func (m *Messager) IsDirectPay(pay *entity.ConditionalPay, peer ctype.Addr) bool {
+func (m *Messager) IsDirectPay(pay *entity.ConditionalPay, peer ctype.Addr, dstNetId uint64) bool {
+	if dstNetId != 0 {
+		found, err := m.dal.HasNetId()
+		if err != nil {
+			log.Error(err)
+			return false
+		}
+		if !found {
+			log.Warn("NetId not found")
+		} else {
+			netid, err := m.dal.GetNetId()
+			if err != nil {
+				log.Error(err)
+				return false
+			}
+			if netid != dstNetId {
+				// different network
+				return false
+			}
+		}
+
+	}
 	if len(pay.GetConditions()) > 0 {
 		return false
 	}

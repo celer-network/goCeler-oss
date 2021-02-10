@@ -61,6 +61,11 @@ func (h *CelerMsgHandler) HandlePaySettleRequest(frame *common.MsgFrame) error {
 func (h *CelerMsgHandler) paySettleRequestInbound(
 	request *rpc.PaymentSettleRequest, peerFrom ctype.Addr, logEntry *pem.PayEventMessage) ([]*settledPayInfo, error) {
 
+	if len(request.GetSettledPays()) == 1 && request.GetSettledPays()[0].GetOriginalPayId() != nil {
+		// proceed as crossnet payment
+		return h.crossNetPaySettleInbound(request.GetSettledPays()[0], peerFrom, logEntry)
+	}
+
 	// Sign the state in advance, verify request later
 	mySig, err := h.signer.SignEthMessage(request.GetStateOnlyPeerFromSig().GetSimplexState())
 	if err != nil {
@@ -440,7 +445,14 @@ func (h *CelerMsgHandler) paySettleRequestOutbound(payInfos []*settledPayInfo, l
 			}
 			_, peer, err := h.routeForwarder.LookupEgressChannelOnPay(payID)
 			if err != nil {
-				return fmt.Errorf("LookupEgressChannelOnPay err %w", err)
+				if err == common.ErrPayNoEgress {
+					peer, err = h.getCrossNetSettleNextHop(payID)
+					if err != nil {
+						return err
+					}
+				} else {
+					return fmt.Errorf("LookupEgressChannelOnPay err %w", err)
+				}
 			}
 
 			isLocalPeer, err := h.serverForwarder(peer, true, celerMsg)
@@ -448,10 +460,64 @@ func (h *CelerMsgHandler) paySettleRequestOutbound(payInfos []*settledPayInfo, l
 			// the msg will not be sent from local. All other situations would triger the msg to be sent from local.
 			// This ensures that PAID_MAX settle request would be eventually forwarded.
 			if !(isLocalPeer == false && err == nil) {
-				amt := new(big.Int).SetBytes(pay.TransferFunc.MaxTransfer.Receiver.Amt)
+				amt := new(big.Int).SetBytes(pay.GetTransferFunc().GetMaxTransfer().GetReceiver().GetAmt())
 				return h.messager.SendOnePaySettleRequest(pay, amt, rpc.PaymentSettleReason_PAY_PAID_MAX, logEntry)
 			}
 		}
 	}
 	return nil
+}
+
+func (h *CelerMsgHandler) crossNetPaySettleInbound(
+	settledPay *rpc.SettledPayment, peerFrom ctype.Addr, logEntry *pem.PayEventMessage) ([]*settledPayInfo, error) {
+	if settledPay.GetReason() != rpc.PaymentSettleReason_PAY_PAID_MAX {
+		return nil, fmt.Errorf("reason not supported for cross net settle pay")
+	}
+	logEntry.Xnet.OriginalPayId = ctype.Bytes2Hex(settledPay.GetOriginalPayId())
+
+	payID, state, bridgeAddr, found, err :=
+		h.dal.GetCrossNetInfoByOrignalPayID(ctype.Bytes2PayID(settledPay.GetOriginalPayId()))
+	if err != nil {
+		return nil, fmt.Errorf("GetCrossNetInfo err %w", err)
+	}
+	if !found {
+		return nil, fmt.Errorf("GetCrossNetInfo %w", common.ErrPayNotFound)
+	}
+	if state != enums.CrossNetPay_INGRESS {
+		return nil, fmt.Errorf("invalid cross net pay state %d", state)
+	}
+	if bridgeAddr != peerFrom {
+		return nil, fmt.Errorf("invalid cross net pay peer bridge")
+	}
+
+	settledPay.SettledPayId = payID.Bytes()
+	settledPay.OriginalPayId = nil
+
+	pay, _, found, err := h.dal.GetPayment(payID)
+	if err != nil {
+		return nil, fmt.Errorf("GetPayment err %w", err)
+	}
+	if !found {
+		return nil, common.ErrPayNotFound
+	}
+	payInfo := &settledPayInfo{
+		req: settledPay,
+		pay: pay,
+	}
+
+	return []*settledPayInfo{payInfo}, nil
+}
+
+func (h *CelerMsgHandler) getCrossNetSettleNextHop(payID ctype.PayIDType) (ctype.Addr, error) {
+	_, state, bridgeAddr, found, err := h.dal.GetCrossNetInfoByPayID(payID)
+	if err != nil {
+		return ctype.ZeroAddr, fmt.Errorf("GetCrossNetInfo err %w", err)
+	}
+	if !found {
+		return ctype.ZeroAddr, fmt.Errorf("GetCrossNetInfo %w", common.ErrPayNotFound)
+	}
+	if state != enums.CrossNetPay_EGRESS {
+		return ctype.ZeroAddr, fmt.Errorf("invalid cross net pay state %d", state)
+	}
+	return bridgeAddr, nil
 }

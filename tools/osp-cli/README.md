@@ -67,3 +67,13 @@ Note: `chanstate` is enum integer, valid states for commands above include 3 for
 * `-ethpoolwithdraw -amount [amount]`: withdraw ETH from EthPool
 * `-register`: register OSP as a state channel router
 * `-deregister`: deregister OSP as a state channel router
+
+### Config crossnet routing info
+
+`osp-cli -profile [profile file] -storedir [sqlite store directory]` followed by:
+
+* `-dbupdate xnet -file [crossnet table config]`: set all crossnet table entries specified in the json file
+* `-dbupdate netid -netid [my net id]`: set local network id
+* `-dbupdate netbridge -bridgeaddr [bridge addr] -netid [bridge net id]`: set net bridge info
+* `-dbupdate bridgerouting -netid [destination net id] -bridgeaddr [next hop bridge addr]`: set bridge route
+* `-dbupdate nettoken -netid [remote net id] -token [remote token addr] -localtoken [local token addr]`: set net token mapping

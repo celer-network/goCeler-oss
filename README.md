@@ -23,7 +23,7 @@ Here we only show how to operate ETH channels as examples. ERC20 channels are al
 ### Get prebuilt binaries and config files
 1. Download prebuit binaries from https://github.com/celer-network/goCeler-oss/releases. Then run
    ```bash
-   tar xzf goceler-v0.16.15-linux-amd64.tar.gz
+   tar xzf goceler-v0.16.16-linux-amd64.tar.gz
    export PATH=$PATH:$PWD/goceler
    ```
 

@@ -1879,6 +1879,27 @@ func getNetBridge(st SqlStorage, bridgeAddr ctype.Addr) (uint64, bool, error) {
 	return bridgeNetId, found, err
 }
 
+func getAllNetBridges(st SqlStorage) (map[ctype.Addr]uint64, error) {
+	q := `SELECT bridgeaddr, bridgenetid FROM netbridge`
+	rows, err := st.Query(q)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	netBridges := make(map[ctype.Addr]uint64)
+	var addrStr string
+	var netid uint64
+	for rows.Next() {
+		err = rows.Scan(&addrStr, &netid)
+		if err != nil {
+			return nil, err
+		}
+		netBridges[ctype.Hex2Addr(addrStr)] = netid
+	}
+	return netBridges, nil
+}
+
 func deleteNetBridge(st SqlStorage, bridgeAddr ctype.Addr) error {
 	q := `DELETE FROM netbridge WHERE bridgeaddr = $1`
 	res, err := st.Exec(q, ctype.Addr2Hex(bridgeAddr))
@@ -1907,6 +1928,27 @@ func getBridgeRouting(st SqlStorage, destNetId uint64) (ctype.Addr, uint64, bool
 	return ctype.Hex2Addr(bridgeAddr), bridgeNetId, found, err
 }
 
+func getAllBridgeRouting(st SqlStorage) (map[uint64]ctype.Addr, error) {
+	q := `SELECT destnetid, bridgeaddr FROM bridgerouting`
+	rows, err := st.Query(q)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	bridgeRoutings := make(map[uint64]ctype.Addr)
+	var netid uint64
+	var addrStr string
+	for rows.Next() {
+		err = rows.Scan(&netid, &addrStr)
+		if err != nil {
+			return nil, err
+		}
+		bridgeRoutings[netid] = ctype.Hex2Addr(addrStr)
+	}
+	return bridgeRoutings, nil
+}
+
 func deleteBridgeRouting(st SqlStorage, destNetId uint64) error {
 	q := `DELETE FROM bridgerouting WHERE destnetid = $1`
 	res, err := st.Exec(q, destNetId)
@@ -1931,6 +1973,32 @@ func getLocalToken(st SqlStorage, netId uint64, netToken *entity.TokenInfo) (*en
 		localToken = utils.GetTokenInfoFromAddress(ctype.Hex2Addr(localTokenAddr))
 	}
 	return localToken, found, err
+}
+
+func getAllNetTokents(st SqlStorage) (map[ctype.Addr]map[uint64]ctype.Addr, error) {
+	q := `SELECT netid, nettoken, localtoken FROM nettokens`
+	rows, err := st.Query(q)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	netTokens := make(map[ctype.Addr]map[uint64]ctype.Addr)
+	var netid uint64
+	var netTokenStr, localTokenStr string
+	for rows.Next() {
+		err = rows.Scan(&netid, &netTokenStr, &localTokenStr)
+		if err != nil {
+			return nil, err
+		}
+		netToken := ctype.Hex2Addr(netTokenStr)
+		localToken := ctype.Hex2Addr(localTokenStr)
+		if _, ok := netTokens[localToken]; !ok {
+			netTokens[localToken] = make(map[uint64]ctype.Addr)
+		}
+		netTokens[localToken][netid] = netToken
+	}
+	return netTokens, nil
 }
 
 func deleteNetToken(st SqlStorage, netId uint64, netToken *entity.TokenInfo) error {

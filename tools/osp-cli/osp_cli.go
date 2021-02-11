@@ -96,22 +96,30 @@ func main() {
 		p.ViewDeposit()
 	case "route":
 		p.ViewRoute()
+	case "xnet":
+		p.ViewXnet()
 	default:
 		log.Fatalln("unsupported dbview command", *dbview)
 	}
 
 	switch *dbupdate {
 	case "":
-	case "netid":
-		p.UpdateNetId()
-	case "netbridge":
-		p.UpdateNetBridge()
-	case "bridgerouting":
-		p.UpdateBridgeRouting()
-	case "nettoken":
-		p.UpdateNetToken()
-	case "xnet":
+	case "config-xnet":
 		p.ConfigXnet()
+	case "set-netid":
+		p.SetNetId()
+	case "set-netbridge":
+		p.SetNetBridge()
+	case "set-bridgerouting":
+		p.SetBridgeRouting()
+	case "set-nettoken":
+		p.SetNetToken()
+	case "delete-netbridge":
+		p.DeleteNetBridge()
+	case "delete-bridgerouting":
+		p.DeleteBridgeRouting()
+	case "delete-nettoken":
+		p.DeleteNetToken()
 	default:
 		log.Fatalln("unsupported dbupdate command", *dbupdate)
 	}

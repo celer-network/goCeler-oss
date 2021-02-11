@@ -265,7 +265,6 @@ func crossNetSendToken(t *testing.T, tokenType entity.TokenType, tokenAddr strin
 		t.Errorf("p3 err at o9: %s", err)
 		return
 	}
-
 }
 
 func getCrossNetOspDALs() (dal1, dal2, dal6, dal7, dal8, dal9 *storage.DAL) {
@@ -319,7 +318,7 @@ func updateCrossNetTables() {
 		tf.StartProcess(outRootDir+"ospcli",
 			"-profile", profiles[i],
 			"-storedir", sStoreDir+"/"+addrs[i],
-			"-dbupdate", "xnet",
+			"-dbupdate", "config-xnet",
 			"-file", xnetConfigDir+names[i]+".json",
 			"-logcolor",
 			"-logprefix", "cli-"+names[i]).Wait()

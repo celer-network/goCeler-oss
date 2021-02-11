@@ -761,6 +761,10 @@ func (d *DAL) GetNetBridge(bridgeAddr ctype.Addr) (uint64, bool, error) {
 	return getNetBridge(d.st, bridgeAddr)
 }
 
+func (d *DAL) GetAllNetBridges() (map[ctype.Addr]uint64, error) {
+	return getAllNetBridges(d.st)
+}
+
 func (d *DAL) DeleteNetBridge(bridgeAddr ctype.Addr) error {
 	return deleteNetBridge(d.st, bridgeAddr)
 }
@@ -772,6 +776,10 @@ func (d *DAL) UpsertBridgeRouting(destNetId uint64, bridgeAddr ctype.Addr) error
 
 func (d *DAL) GetBridgeRouting(destNetId uint64) (ctype.Addr, uint64, bool, error) {
 	return getBridgeRouting(d.st, destNetId)
+}
+
+func (d *DAL) GetAllBridgeRouting() (map[uint64]ctype.Addr, error) {
+	return getAllBridgeRouting(d.st)
 }
 
 func (d *DAL) DeleteBridgeRouting(destNetId uint64) error {
@@ -787,7 +795,11 @@ func (d *DAL) GetLocalToken(netId uint64, netToken *entity.TokenInfo) (*entity.T
 	return getLocalToken(d.st, netId, netToken)
 }
 
-func (d *DAL) DeleteLocalToken(netId uint64, netToken *entity.TokenInfo) error {
+func (d *DAL) GetAllNetTokents() (map[ctype.Addr]map[uint64]ctype.Addr, error) {
+	return getAllNetTokents(d.st)
+}
+
+func (d *DAL) DeleteNetToken(netId uint64, netToken *entity.TokenInfo) error {
 	return deleteNetToken(d.st, netId, netToken)
 }
 

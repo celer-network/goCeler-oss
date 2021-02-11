@@ -29,6 +29,7 @@
 * `-dbview deposit -depositid [deposit job ID]`: get deposit job info for a given deposit id
 * `-dbview deposit -cid [channel ID]`: get all deposit jobs for a given channel id
 * `-dbview route -dest [destination addr] -token [token addr]`: get route info
+* `-dbview xnet -payid [payment ID]`: get cross-net payment by original pay id
 
 #### Off-chain state slow query (table scan)
 * `-dbview channel -cid [channel ID] -payhistory`: get channel info including full pay history
@@ -37,6 +38,7 @@
 * `-dbview channel -list -token [token addr] -chanstate [int] -inactiveday [int]`: list inactive channel ids
 * `-dbview channel -count [token addr] -chanstate [int] -inactiveday [int]`: count inactive channels
 * `-dbview channel -balance -token [token addr] -chanstate [int]`: get the total balance of all my channels
+* `-dbview xnet`: dump cross-net related tables
 
 Note: `chanstate` is enum integer, valid states for commands above include 3 for *opened* and 4 for *settling*. Default chanstate is 3 if arg is not provided in command.
 
@@ -72,8 +74,11 @@ Note: `chanstate` is enum integer, valid states for commands above include 3 for
 
 `osp-cli -profile [profile file] -storedir [sqlite store directory]` followed by:
 
-* `-dbupdate xnet -file [crossnet table config]`: set all crossnet table entries specified in the json file
-* `-dbupdate netid -netid [my net id]`: set local network id
-* `-dbupdate netbridge -bridgeaddr [bridge addr] -netid [bridge net id]`: set net bridge info
-* `-dbupdate bridgerouting -netid [destination net id] -bridgeaddr [next hop bridge addr]`: set bridge route
-* `-dbupdate nettoken -netid [remote net id] -token [remote token addr] -localtoken [local token addr]`: set net token mapping
+* `-dbupdate config-xnet -file [crossnet table config]`: set all crossnet table entries specified in the json file
+* `-dbupdate set-netid -netid [my net id]`: set local network id
+* `-dbupdate set-netbridge -bridgeaddr [bridge addr] -netid [bridge net id]`: set net bridge info
+* `-dbupdate set-bridgerouting -netid [destination net id] -bridgeaddr [next hop bridge addr]`: set bridge route
+* `-dbupdate set-nettoken -netid [remote net id] -token [remote token addr] -localtoken [local token addr]`: set net token mapping
+* `-dbupdate delete-netbridge -bridgeaddr [bridge addr]`: delete net bridge info
+* `-dbupdate delete-bridgerouting -netid [destination net id]`: delete bridge route
+* `-dbupdate delete-nettoken -netid [remote net id] -token [remote token addr]`: delete net token mapping

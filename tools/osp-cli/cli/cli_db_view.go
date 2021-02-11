@@ -466,3 +466,65 @@ func (p *Processor) getCidPeerStr(cid ctype.CidType) string {
 	}
 	return fmt.Sprintf("channel %x peer %x", cid, peer)
 }
+
+func (p *Processor) ViewXnet() {
+	fmt.Println()
+	if *payid != "" {
+		p.ViewXnetPay()
+		return
+	}
+	found, err := p.dal.HasNetId()
+	if err != nil {
+		log.Fatal(err)
+	}
+	if found {
+		netid, err2 := p.dal.GetNetId()
+		if err2 != nil {
+			log.Fatal(err)
+		}
+		fmt.Println("-- my net id", netid)
+	}
+
+	netBriges, err := p.dal.GetAllNetBridges()
+	if err != nil {
+		log.Fatal(err)
+	}
+	if len(netBriges) > 0 {
+		fmt.Println("\n-- all net bridges --")
+		for addr, id := range netBriges {
+			fmt.Printf("-- bridge addr %x, net id %d\n", addr, id)
+		}
+	}
+
+	bridgeRouting, err := p.dal.GetAllBridgeRouting()
+	if len(bridgeRouting) > 0 {
+		fmt.Println("\n-- all bridge routings --")
+		for id, addr := range bridgeRouting {
+			fmt.Printf("-- dest net id %d, next hop bridge %x\n", id, addr)
+		}
+	}
+
+	netTokens, err := p.dal.GetAllNetTokents()
+	if len(netTokens) > 0 {
+		fmt.Println("\n-- all net tokens --")
+		for localToken, netToken := range netTokens {
+			for id, token := range netToken {
+				fmt.Printf("-- local token %x, remote net id %d, remote token %x\n", localToken, id, token)
+			}
+		}
+	}
+}
+
+func (p *Processor) ViewXnetPay() {
+	fmt.Println("-- original pay id:", *payid)
+	originalPayID := ctype.Hex2PayID(*payid)
+	payId, state, bridgeAddr, found, err := p.dal.GetCrossNetInfoByOrignalPayID(originalPayID)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if found {
+		fmt.Println("-- local pay id:", ctype.PayID2Hex(payId))
+		fmt.Println("-- crossnet pay state:", state)
+		fmt.Println("-- bridge addr:", ctype.Addr2Hex(bridgeAddr))
+	}
+}

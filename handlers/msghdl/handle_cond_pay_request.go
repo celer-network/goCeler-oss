@@ -475,6 +475,10 @@ func (h *CelerMsgHandler) condPayRequestOutbound(frame *common.MsgFrame) error {
 			if myNetId == xnet.GetDstNetId() {
 				isRecipient = true
 				originalPayID = ctype.PayBytes2PayID(xnet.GetOriginalPay())
+				logEntry.Xnet.SrcNetId = xnet.GetSrcNetId()
+				logEntry.Xnet.DstNetId = xnet.GetDstNetId()
+				logEntry.Xnet.OriginalPayId = ctype.PayID2Hex(originalPayID)
+				logEntry.Xnet.State = pem.CrossNetPayState_XNET_DST
 				err = h.dal.InsertCrossNetPay(
 					payID, originalPayID, xnet.GetOriginalPay(), structs.CrossNetPay_DST,
 					xnet.GetSrcNetId(), xnet.GetDstNetId(), ctype.ZeroAddr, 0)

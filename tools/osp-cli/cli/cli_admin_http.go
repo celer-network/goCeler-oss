@@ -64,13 +64,18 @@ func OpenChannel() {
 func SendToken() {
 	amtWei := utils.Float2Wei(*amount)
 	payID, err := utils.RequestSendToken(
-		*adminhostport, ctype.Hex2Addr(*receiver), ctype.Hex2Addr(*tokenaddr), amtWei, 0)
+		*adminhostport, ctype.Hex2Addr(*receiver), ctype.Hex2Addr(*tokenaddr), amtWei, *netid)
 	if err != nil {
 		log.Error(err)
 		return
 	}
-	log.Infof("requested to send payment %x to %s, token %s, amount %f",
-		payID, *receiver, utils.PrintTokenAddr(ctype.Hex2Addr(*tokenaddr)), *amount)
+	if *netid == 0 {
+		log.Infof("requested to send payment %x to %s, token %s, amount %f",
+			payID, *receiver, utils.PrintTokenAddr(ctype.Hex2Addr(*tokenaddr)), *amount)
+	} else {
+		log.Infof("requested to send payment %x to %s, token %s, amount %f, netid %d",
+			payID, *receiver, utils.PrintTokenAddr(ctype.Hex2Addr(*tokenaddr)), *amount, *netid)
+	}
 }
 
 func MakeDeposit() {

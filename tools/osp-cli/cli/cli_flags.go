@@ -46,10 +46,9 @@ var (
 	argfinalize  = flag.String("finalize", "", "arg for query finalized")
 	argoutcome   = flag.String("outcome", "", "arg for query outcome")
 	argdecode    = flag.Bool("decode", false, "decode arg according to multisession app format")
-	// for db update
-	bridgeaddr = flag.String("bridgeaddr", "", "net bridge address")
-	netid      = flag.Uint64("netid", 0, "net id")
-	localtoken = flag.String("localtoken", "", "local token address")
+	netid        = flag.Uint64("netid", 0, "net id")
+	bridgeaddr   = flag.String("bridgeaddr", "", "net bridge address")
+	localtoken   = flag.String("localtoken", "", "local token address")
 )
 
 func CheckFlags() {

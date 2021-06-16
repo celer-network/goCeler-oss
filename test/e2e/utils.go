@@ -276,10 +276,10 @@ func StartChain() (*os.Process, error) {
 		return nil, err
 	}
 	// actually run geth, blocking. set syncmode full to avoid bloom mem cache by fast sync
-	cmd := exec.Command("geth", "--networkid", "883", "--cache", "256", "--nousb", "--syncmode", "full", "--nodiscover", "--maxpeers", "0",
-		"--netrestrict", "127.0.0.1/8", "--datadir", chainDataDir, "--keystore", filepath.Join(chainDataDir, "keystore"), "--targetgaslimit", "8000000",
+	cmd := exec.Command("geth","--verbosity", "5", "--networkid", "883", "--cache", "256", "--nousb", "--syncmode", "full", "--nodiscover", "--maxpeers", "0",
+		"--netrestrict", "127.0.0.1/8", "--datadir", chainDataDir, "--keystore", filepath.Join(chainDataDir, "keystore"),
 		"--mine", "--allow-insecure-unlock", "--unlock", "0", "--password", "empty_password.txt", "--rpc", "--rpccorsdomain", "*",
-		"--rpcapi", "admin,debug,eth,miner,net,personal,shh,txpool,web3", "--ws", "--wsaddr", "localhost", "--wsport", "8546", "--wsapi", "admin,debug,eth,miner,net,personal,shh,txpool,web3")
+		"--rpcapi", "admin,debug,eth,miner,net,personal,shh,txpool,web3","--rpc.allow-unprotected-txs", "--ws", "--ws.addr", "localhost", "--ws.port", "8546", "--ws.api", "admin,debug,eth,miner,net,personal,shh,txpool,web3")
 	cmd.Dir = cmdInit.Dir
 
 	logF, _ := os.Create(logFname)

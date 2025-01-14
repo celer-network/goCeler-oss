@@ -5,7 +5,7 @@ Celer state channel network is a generic framework of state channels with deeply
 
 ## Run Local Manual Tests
 
-One who plans to run a full Off-chain Service Provider (OSP) node should start by following the [instructions on local manual tests](./test/manual/README.md) to play with the code and essential tools, and to get familiar with the operaton process.
+One who plans to run a full Off-chain Service Provider (OSP) node should start by following the [instructions on local manual tests](./test/manual/README.md) to play with the code and essential tools, and to get familiar with the operationprocess.
 
 ## Run OSP on Ethereum Mainnet
 
@@ -21,7 +21,7 @@ Here we only show how to operate ETH channels as examples. ERC20 channels are al
 - Hardware requirements are minimal (e.g., 1 core CPU, <1GB memory), as the full-stack software is running smoothly on many iOS and Android devices every day.
 
 ### Get prebuilt binaries and config files
-1. Download prebuit binaries from https://github.com/celer-network/goCeler-oss/releases. Then run
+1. Download prebuiltbinaries from https://github.com/celer-network/goCeler-oss/releases. Then run
    ```bash
    tar xzf goceler-v0.16.16-linux-amd64.tar.gz
    export PATH=$PATH:$PWD/goceler
@@ -52,7 +52,7 @@ Here we only show how to operate ETH channels as examples. ERC20 channels are al
 7. Start OSP: **`server -profile $HOME/profile.json -ks $HOME/ks.json -svrname s0 -storesql postgresql://celer@localhost:26257/celer?sslmode=disable -rtc $HOME/rt_config.json -routedata $HOME/channels_2020_05_08.json`**.
 
 **Notes (for both options):**
-- Use `-routedata` only when starting OSP from scracth for the first time.
+- Use `-routedata` only when starting OSP from scratch for the first time.
 - Use [log args](https://github.com/celer-network/goutils/blob/v0.1.13/log/log.go) as needed, e.g., `-logdir $HOME/logs -logrotate`.
 - The default rpc port is `10000`, default admin http endpoint is `localhost:8090`, use `-port` and `-adminweb` to change those values ([example](./test/manual/run_osp.sh)) if needed.
 - Your OSP should be shown on the [Explorer](https://explorer.celer.network) within 15 minutes after the server started.
@@ -81,8 +81,8 @@ Use [OSP CLI Commands](./tools/osp-cli/README.md) to operate the OSP. See [local
 
 ### Close channel and withdraw fund
 You can close a channel and withdraw all tokens to the OSP ETH address through [unilateral settle](https://www.celer.network/docs/celercore/channel/pay_contracts.html#unilateral-settle).
-   - First, submit `intentSettle` transaction: **`osp-cli -profile $HOME/profile.json -ks $HOME/ks.json -storedir $HOME/celerdb -intendsettle -cid [channel ID]`**
-   - Then, submit `confirmSettle` transaction after the channel dispute timeout (10000 blocks by default): **`osp-cli -profile $HOME/profile.json -ks $HOME/ks.json -storedir $HOME/celerdb -confirmsettle -cid [channel ID]`**.
+   - First, submit `intentSettle` transaction: **`osp-cli -profile $HOME/profile.json -ks $HOME/ks.json -storedir $HOME/celerdb -intendsettle-cid [channel ID]`**
+   - Then, submit `confirmsettle` transaction after the channel dispute timeout (10000 blocks by default): **`osp-cli -profile $HOME/profile.json -ks $HOME/ks.json -storedir $HOME/celerdb -confirmsettle -cid [channel ID]`**.
 
 [Cooperative withdrawal](https://www.celer.network/docs/celercore/channel/pay_contracts.html#cooperative-withdraw) is currently supported only for Client-to-OSP channels. We will release new version to support [cooperative settle](https://www.celer.network/docs/celercore/channel/pay_contracts.html#cooperative-settle) and [cooperative withdrawal](https://www.celer.network/docs/celercore/channel/pay_contracts.html#cooperative-withdraw) for both OSP-to-OSP and Client-to-OSP channels soon.
 
